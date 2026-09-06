@@ -9,32 +9,63 @@ from app.models import Company, Job
 GREENHOUSE_API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
 HIGH_PRIORITY_KEYWORDS = [
-    "mlops", "ml infrastructure", "ai infrastructure",
-    "ml platform", "ai platform", "machine learning infrastructure",
+    "mlops",
+    "ml infrastructure",
+    "ai infrastructure",
+    "ml platform",
+    "ai platform",
+    "machine learning infrastructure",
 ]
 HARDWARE_INFRA_KEYWORDS = [
-    "kernel", "gpu", "tpu", "compiler", "distributed training",
-    "inference optimization", "cluster", "cuda",
+    "kernel",
+    "gpu",
+    "tpu",
+    "compiler",
+    "distributed training",
+    "inference optimization",
+    "cluster",
+    "cuda",
 ]
 MEDIUM_PRIORITY_KEYWORDS = [
-    "site reliability", "sre", "platform engineer", "infrastructure engineer",
+    "site reliability",
+    "sre",
+    "platform engineer",
+    "infrastructure engineer",
 ]
 LOW_PRIORITY_KEYWORDS = [
-    "ai agent", "agent engineer", "llm", "prompt engineering",
+    "ai agent",
+    "agent engineer",
+    "llm",
+    "prompt engineering",
 ]
 AI_ML_CONTEXT_KEYWORDS = [
-    "ai", "ml", "machine learning", "model", "llm", "inference", "gpu",
+    "ai",
+    "ml",
+    "machine learning",
+    "model",
+    "llm",
+    "inference",
+    "gpu",
 ]
 BASE_KEYWORDS = ["software engineer", "backend engineer", "platform"]
 
 EXCLUDE_TITLE_PATTERNS = [
-    "account executive", "recruiter", "economist", "counsel",
-    "paralegal", "warehouse", "applied ai architect", "program manager",
+    "account executive",
+    "recruiter",
+    "economist",
+    "counsel",
+    "paralegal",
+    "warehouse",
+    "applied ai architect",
+    "program manager",
     "director",
 ]
 ENGINEERING_MANAGER_ALLOW = [
-    "engineering manager", "infrastructure manager", "platform manager",
-    "sre manager", "site reliability manager",
+    "engineering manager",
+    "infrastructure manager",
+    "platform manager",
+    "sre manager",
+    "site reliability manager",
 ]
 
 

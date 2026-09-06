@@ -3,6 +3,7 @@
 Run with:
     python -m app.seed
 """
+
 from datetime import datetime
 
 from app.database import Base, SessionLocal, engine
@@ -12,7 +13,12 @@ Base.metadata.create_all(bind=engine)
 
 SAMPLE_COMPANIES = [
     {"name": "Datadog", "source_type": "greenhouse", "board_token": "datadog", "priority": "high"},
-    {"name": "Cloudflare", "source_type": "greenhouse", "board_token": "cloudflare", "priority": "high"},
+    {
+        "name": "Cloudflare",
+        "source_type": "greenhouse",
+        "board_token": "cloudflare",
+        "priority": "high",
+    },
     {"name": "Vercel", "source_type": "lever", "board_token": "vercel", "priority": "medium"},
 ]
 
@@ -25,7 +31,9 @@ SAMPLE_JOBS = [
         "title": "Platform Engineer",
         "location": "New York, NY",
         "workplace_type": "Hybrid",
-        "description": "Build internal developer platform tooling with Python, Docker, and Kubernetes.",
+        "description": (
+            "Build internal developer platform tooling with Python, Docker, and Kubernetes."
+        ),
         "application_url": "https://boards.greenhouse.io/datadog/jobs/seed-001",
         "status": "new",
         "match_score": 78,
@@ -38,7 +46,7 @@ SAMPLE_JOBS = [
         "title": "Site Reliability Engineer",
         "location": "Remote, US",
         "workplace_type": "Remote",
-        "description": "Own CI/CD pipelines, observability, and production reliability.",
+        "description": ("Own CI/CD pipelines, observability, and production reliability."),
         "application_url": "https://boards.greenhouse.io/cloudflare/jobs/seed-002",
         "status": "new",
         "match_score": 74,
@@ -51,7 +59,9 @@ SAMPLE_JOBS = [
         "title": "Software Engineer, Developer Platform",
         "location": "New York, NY",
         "workplace_type": "Hybrid",
-        "description": "Work on developer tooling, GitHub Actions integrations, and deployment pipelines.",
+        "description": (
+            "Work on developer tooling, GitHub Actions integrations, and deployment pipelines."
+        ),
         "application_url": "https://jobs.lever.co/vercel/seed-003",
         "status": "new",
         "match_score": 81,
@@ -69,9 +79,11 @@ def run() -> None:
         db.commit()
 
         for job_data in SAMPLE_JOBS:
-            exists = db.query(Job).filter_by(
-                source=job_data["source"], external_job_id=job_data["external_job_id"]
-            ).first()
+            exists = (
+                db.query(Job)
+                .filter_by(source=job_data["source"], external_job_id=job_data["external_job_id"])
+                .first()
+            )
             if not exists:
                 db.add(Job(**job_data, posted_at=datetime.utcnow()))
         db.commit()
