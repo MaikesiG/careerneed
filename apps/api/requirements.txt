@@ -7,3 +7,4 @@ sqlalchemy>=2.0
 psycopg[binary]
 alembic
 python-dotenv
+httpx==0.28.1

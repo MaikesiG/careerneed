@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
 from app.models import Company, Job
+from app.connectors.greenhouse import sync_greenhouse_jobs
 from app.schemas import (
     CompanyCreate,
     CompanyOut,
@@ -101,3 +102,8 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
     db.commit()
     db.refresh(company)
     return company
+
+@app.post("/connectors/greenhouse/sync")
+def sync_greenhouse(board_token: str, company_name: str, db: Session = Depends(get_db)):
+    result = sync_greenhouse_jobs(db, board_token, company_name)
+    return result
