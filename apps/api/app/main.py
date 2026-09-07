@@ -1,11 +1,11 @@
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.connectors.greenhouse import sync_greenhouse_jobs
+from app.connectors.greenhouse import sync_all_greenhouse_companies, sync_greenhouse_jobs
 from app.database import Base, engine, get_db
 from app.models import Company, Job
 from app.schemas import (
@@ -37,8 +37,11 @@ def health() -> dict[str, str]:
 
 @app.get("/jobs", response_model=list[JobOut], tags=["jobs"])
 def list_jobs(
+    response: Response,
     status: str | None = Query(default=None),
     location: str | None = Query(default=None),
+    limit: int = Query(default=500, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[Job]:
     stmt = select(Job).order_by(Job.first_seen_at.desc())
@@ -46,6 +49,11 @@ def list_jobs(
         stmt = stmt.where(Job.status == status)
     if location:
         stmt = stmt.where(Job.location.ilike(f"%{location}%"))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    response.headers["X-Total-Count"] = str(total)
+
+    stmt = stmt.limit(limit).offset(offset)
     return list(db.scalars(stmt))
 
 
@@ -108,3 +116,9 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
 def sync_greenhouse(board_token: str, company_name: str, db: Session = Depends(get_db)):
     result = sync_greenhouse_jobs(db, board_token, company_name)
     return result
+
+
+@app.post("/connectors/greenhouse/sync-all")
+def sync_all_greenhouse(db: Session = Depends(get_db)):
+    results = sync_all_greenhouse_companies(db)
+    return {"companies_synced": len(results), "results": results}

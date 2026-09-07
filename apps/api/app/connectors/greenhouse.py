@@ -158,7 +158,7 @@ def sync_greenhouse_jobs(db: Session, board_token: str, company_name: str) -> di
             skipped += 1
             continue
 
-        location = (raw.get("location") or {}).get("name", "Remote")
+        location = (raw.get("location") or {}).get("name", "Remote")[:500]
         title = raw.get("title", "Untitled")
         description = raw.get("content", "")
 
@@ -182,3 +182,27 @@ def sync_greenhouse_jobs(db: Session, board_token: str, company_name: str) -> di
 
     db.commit()
     return {"fetched": len(raw_jobs), "created": created, "skipped": skipped}
+
+
+def sync_all_greenhouse_companies(db: Session) -> list[dict]:
+    companies = db.scalars(
+        select(Company).where(Company.source_type == "greenhouse", Company.active)
+    ).all()
+
+    results = []
+    for company in companies:
+        if not company.board_token:
+            results.append(
+                {
+                    "company": company.name,
+                    "error": "no board_token configured",
+                }
+            )
+            continue
+        try:
+            result = sync_greenhouse_jobs(db, company.board_token, company.name)
+            results.append({"company": company.name, **result})
+        except ValueError as exc:
+            results.append({"company": company.name, "error": str(exc)})
+
+    return results

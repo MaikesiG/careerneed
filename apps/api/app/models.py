@@ -38,7 +38,7 @@ class Job(Base):
     source_type: Mapped[str] = mapped_column(String(50), nullable=False, default="company_ats")
     external_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
     workplace_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     application_url: Mapped[str] = mapped_column(String(1000), nullable=False)
