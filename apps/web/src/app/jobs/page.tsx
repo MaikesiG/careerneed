@@ -23,12 +23,21 @@ type Category = {
 };
 
 const CATEGORIES: Category[] = [
-  { label: "MLOps / AI Infrastructure", keywords: ["mlops", "ml infrastructure", "ai infrastructure", "ml platform", "ai platform"] },
-  { label: "Hardware / Distributed Systems", keywords: ["kernel", "gpu", "tpu", "compiler", "distributed training", "cluster", "cuda"] },
+  {
+    label: "MLOps / AI Infrastructure",
+    keywords: ["mlops", "ml infrastructure", "ai infrastructure", "ml platform", "ai platform"],
+  },
+  {
+    label: "Hardware / Distributed Systems",
+    keywords: ["kernel", "gpu", "tpu", "compiler", "distributed training", "cluster", "cuda"],
+  },
   { label: "Site Reliability Engineer", keywords: ["site reliability", "sre"] },
   { label: "Platform Engineer", keywords: ["platform engineer", "infrastructure engineer"] },
   { label: "Software Engineer", keywords: ["software engineer", "backend engineer"] },
-  { label: "AI Agent Engineer", keywords: ["ai agent", "agent engineer", "llm", "prompt engineering"] },
+  {
+    label: "AI Agent Engineer",
+    keywords: ["ai agent", "agent engineer", "llm", "prompt engineering"],
+  },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,6 +53,8 @@ export default function JobsDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -99,6 +110,7 @@ export default function JobsDashboard() {
   }, [jobs, search, selectedCategories]);
 
   async function updateStatus(jobId: string, status: string) {
+    setActionError(null);
     try {
       const response = await fetch(`${apiUrl}/jobs/${jobId}/status`, {
         method: "PATCH",
@@ -110,6 +122,24 @@ export default function JobsDashboard() {
       setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: updated.status } : j)));
     } catch (err) {
       console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
+
+  async function deleteJob(jobId: string) {
+    setActionError(null);
+    setPendingDeleteId(jobId);
+    try {
+      const response = await fetch(`${apiUrl}/jobs/${jobId}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`Failed to delete job: ${response.status}`);
+      }
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } catch (err) {
+      console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to delete job");
+    } finally {
+      setPendingDeleteId(null);
     }
   }
 
@@ -166,6 +196,12 @@ export default function JobsDashboard() {
           </p>
         )}
 
+        {actionError && (
+          <p className="mt-6 rounded-lg border border-rose-800 bg-rose-950/40 p-4 text-rose-400">
+            {actionError}
+          </p>
+        )}
+
         <div className="mt-6 space-y-3">
           {filteredJobs.map((job) => (
             <div
@@ -210,6 +246,13 @@ export default function JobsDashboard() {
                     {STATUS_LABELS[status]}
                   </button>
                 ))}
+                <button
+                  onClick={() => deleteJob(job.id)}
+                  disabled={pendingDeleteId === job.id}
+                  className="ml-auto rounded-lg border border-rose-800 bg-rose-950/30 px-3 py-1.5 text-sm text-rose-400 transition hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pendingDeleteId === job.id ? "Deleting…" : "Delete"}
+                </button>
               </div>
             </div>
           ))}
