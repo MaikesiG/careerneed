@@ -125,7 +125,7 @@ LLMProvider = Literal["openai", "anthropic"]
 
 
 class LLMCredentialCreate(BaseModel):
-    provider: LLMProvider
+    provider: Literal["openai", "groq", "openrouter"]
     api_key: str
 
 

@@ -67,9 +67,11 @@ def _regex_extract(raw_text: str) -> str | None:
 
 
 def _get_byok_credential(db: Session, user_id: uuid.UUID) -> LLMCredential | None:
+    """Return the user's BYOK credential for any supported provider."""
     return db.scalar(
         select(LLMCredential).where(
-            LLMCredential.user_id == user_id, LLMCredential.provider == "openai"
+            LLMCredential.user_id == user_id,
+            LLMCredential.provider.in_(PROVIDER_CONFIGS.keys()),
         )
     )
 
@@ -136,9 +138,10 @@ def extract_skills(db: Session, user_id: uuid.UUID, raw_text: str) -> str | None
     if mode == "byok":
         credential = _get_byok_credential(db, user_id)
         api_key = decrypt_secret(credential.encrypted_api_key)
-        base_url = None
-        model = PROVIDER_CONFIGS["openai"]["model"]
-        provider_label = "byok_openai"
+        config = PROVIDER_CONFIGS.get(credential.provider, PROVIDER_CONFIGS["openai"])
+        base_url = config["base_url"]
+        model = config["model"]
+        provider_label = f"byok_{credential.provider}"
     else:
         provider = _get_active_provider()
         if not provider["api_key"]:
