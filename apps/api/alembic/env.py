@@ -8,7 +8,7 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.getcwd())
 
 from app.database import Base
-from app.models import Company, Job  # noqa: F401  (ensures models are registered)
+from app.models import Company, Job, Resume  # noqa: F401  (ensures models are registered)
 
 config = context.config
 

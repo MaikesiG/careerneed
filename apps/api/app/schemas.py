@@ -63,3 +63,78 @@ class CompanyOut(BaseModel):
     source_type: str
     priority: str
     active: bool
+
+
+ResumeStatus = Literal["saved", "applied", "interviewing", "offer", "rejected", "withdrawn"]
+
+
+class ResumeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    filename: str
+    skills: str | None
+    label: str | None
+    is_default: bool
+    archived_at: datetime | None
+    source: str | None
+    uploaded_at: datetime
+
+
+class ResumeDetail(ResumeOut):
+    raw_text: str
+
+
+class ResumeUpdate(BaseModel):
+    label: str | None = None
+    is_default: bool | None = None
+    archived_at: datetime | None = None
+
+
+ApplicationStatus = Literal["saved", "applied", "interviewing", "offer", "rejected", "withdrawn"]
+
+
+class ApplicationCreate(BaseModel):
+    job_id: uuid.UUID
+    resume_id: uuid.UUID | None = None
+    status: ApplicationStatus = "saved"
+    notes: str | None = None
+
+
+class ApplicationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    job_id: uuid.UUID
+    resume_id: uuid.UUID | None
+    status: str
+    applied_at: datetime | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApplicationUpdate(BaseModel):
+    status: ApplicationStatus | None = None
+    resume_id: uuid.UUID | None = None
+    applied_at: datetime | None = None
+    notes: str | None = None
+
+
+LLMProvider = Literal["openai", "anthropic"]
+
+
+class LLMCredentialCreate(BaseModel):
+    provider: LLMProvider
+    api_key: str
+
+
+class LLMCredentialOut(BaseModel):
+    provider: str
+    masked_key: str
+    updated_at: datetime
+
+
+class ExtractionModeOut(BaseModel):
+    mode: Literal["byok", "platform", "basic"]
+    free_calls_remaining: int | None
