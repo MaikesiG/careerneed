@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Job = {
@@ -21,6 +21,26 @@ type Job = {
 type Category = {
   id: string;
   label: string;
+};
+
+type ApplicationStatus =
+  | "saved"
+  | "applied"
+  | "interviewing"
+  | "offer"
+  | "rejected"
+  | "withdrawn";
+
+type ApplicationState = {
+  id: string;
+  job_id: string;
+  resume_id: string | null;
+  status: ApplicationStatus;
+  applied_at: string | null;
+};
+
+type ApplicationStateResponse = {
+  states: Record<string, ApplicationState>;
 };
 
 type JobFilters = {
@@ -49,13 +69,6 @@ const CATEGORIES: Category[] = [
   { id: "software", label: "Software Engineer" },
   { id: "ai-agent", label: "AI Agent Engineer" },
 ];
-
-const STATUS_LABELS: Record<string, string> = {
-  new: "New",
-  saved: "Saved",
-  applied: "Applied",
-  dismissed: "Dismissed",
-};
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -133,6 +146,50 @@ function scoreBadgeClass(score: number | null): string {
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
+function trackingBadgeClass(status: ApplicationStatus): string {
+  if (status === "applied") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "saved") {
+    return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  }
+
+  if (status === "withdrawn" || status === "rejected") {
+    return "border-slate-200 bg-slate-50 text-slate-600";
+  }
+
+  if (status === "offer") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  return "border-sky-200 bg-sky-50 text-sky-700";
+}
+
+function trackingLabel(status: ApplicationStatus): string {
+  if (status === "saved") {
+    return "Saved";
+  }
+
+  if (status === "applied") {
+    return "Applied";
+  }
+
+  if (status === "interviewing") {
+    return "Interviewing";
+  }
+
+  if (status === "offer") {
+    return "Offer";
+  }
+
+  if (status === "rejected") {
+    return "Rejected";
+  }
+
+  return "Not interested";
+}
+
 function getErrorMessage(body: unknown, fallback: string): string {
   if (
     typeof body === "object" &&
@@ -177,15 +234,84 @@ export default function JobsClient({
   const searchParams = useSearchParams();
 
   const [searchInput, setSearchInput] = useState(initialFilters.q);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [applicationStates, setApplicationStates] = useState<
+    Record<string, ApplicationState>
+  >({});
+  const [isLoadingStates, setIsLoadingStates] = useState(true);
+  const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const jobIds = useMemo(
+    () => initialJobs.map((job) => job.id),
+    [initialJobs],
+  );
+
   const firstJobNumber = totalJobs === 0 ? 0 : (initialPage - 1) * pageSize + 1;
   const lastJobNumber = Math.min(initialPage * pageSize, totalJobs);
   const visiblePages = getVisiblePages(initialPage, totalPages);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadApplicationStates() {
+      if (jobIds.length === 0) {
+        if (!isCancelled) {
+          setApplicationStates({});
+          setIsLoadingStates(false);
+        }
+        return;
+      }
+
+      setIsLoadingStates(true);
+
+      try {
+        const params = new URLSearchParams();
+
+        jobIds.forEach((jobId) => {
+          params.append("job_id", jobId);
+        });
+
+        const response = await fetch(
+          `${API_URL}/applications/me/job-states?${params.toString()}`,
+          {
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            await readError(response, "Unable to load application tracking states."),
+          );
+        }
+
+        const data = (await response.json()) as ApplicationStateResponse;
+
+        if (!isCancelled) {
+          setApplicationStates(data.states);
+        }
+      } catch (caughtError) {
+        if (!isCancelled) {
+          setError(
+            caughtError instanceof Error
+              ? caughtError.message
+              : "Unable to load application tracking states.",
+          );
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingStates(false);
+        }
+      }
+    }
+
+    void loadApplicationStates();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [jobIds]);
 
   function clearFeedback() {
     setError(null);
@@ -287,17 +413,22 @@ export default function JobsClient({
     setIsRefreshing(true);
 
     router.refresh();
-    setNotice("Job list refreshed.");
-    setIsRefreshing(false);
+
+    window.setTimeout(() => {
+      setIsRefreshing(false);
+    }, 300);
   }
 
-  async function updateStatus(jobId: string, status: string) {
+  async function updateApplicationStatus(
+    jobId: string,
+    status: ApplicationStatus,
+  ) {
     clearFeedback();
-    setUpdatingStatusId(jobId);
+    setUpdatingJobId(jobId);
 
     try {
-      const response = await fetch(`${API_URL}/jobs/${jobId}/status`, {
-        method: "PATCH",
+      const response = await fetch(`${API_URL}/applications/by-job/${jobId}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -305,58 +436,60 @@ export default function JobsClient({
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to update job status."));
+        throw new Error(
+          await readError(response, "Unable to update application tracking."),
+        );
       }
 
-      setNotice(`Job marked as ${STATUS_LABELS[status] ?? status}.`);
-      router.refresh();
+      const updated = (await response.json()) as ApplicationState;
+
+      setApplicationStates((previous) => ({
+        ...previous,
+        [jobId]: updated,
+      }));
+
+      setNotice(`Job marked as ${trackingLabel(updated.status)}.`);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Unable to update job status.",
+          : "Unable to update application tracking.",
       );
     } finally {
-      setUpdatingStatusId(null);
+      setUpdatingJobId(null);
     }
   }
 
-  async function deleteJob(job: Job) {
-    const confirmed = window.confirm(
-      `Delete "${job.title}" at ${job.company_name} from the local jobs database? This cannot be undone.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
+  async function removeApplicationTracking(jobId: string) {
     clearFeedback();
-    setPendingDeleteId(job.id);
+    setUpdatingJobId(jobId);
 
     try {
-      const response = await fetch(`${API_URL}/jobs/${job.id}`, {
+      const response = await fetch(`${API_URL}/applications/by-job/${jobId}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to delete job."));
+        throw new Error(
+          await readError(response, "Unable to remove application tracking."),
+        );
       }
 
-      setNotice("Job deleted from the local database.");
+      setApplicationStates((previous) => {
+        const next = { ...previous };
+        delete next[jobId];
+        return next;
+      });
 
-      if (initialJobs.length === 1 && initialPage > 1) {
-        goToPage(initialPage - 1);
-      } else {
-        router.refresh();
-      }
+      setNotice("Personal job tracking removed.");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Unable to delete job.",
+          : "Unable to remove application tracking.",
       );
     } finally {
-      setPendingDeleteId(null);
+      setUpdatingJobId(null);
     }
   }
 
@@ -554,8 +687,8 @@ export default function JobsClient({
           ) : (
             <div className="grid gap-4">
               {initialJobs.map((job) => {
-                const isDeleting = pendingDeleteId === job.id;
-                const isUpdating = updatingStatusId === job.id;
+                const applicationState = applicationStates[job.id];
+                const isUpdating = updatingJobId === job.id;
 
                 return (
                   <article
@@ -582,6 +715,16 @@ export default function JobsClient({
                           >
                             Match: {job.match_score ?? "—"}
                           </span>
+
+                          {applicationState ? (
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${trackingBadgeClass(
+                                applicationState.status,
+                              )}`}
+                            >
+                              {trackingLabel(applicationState.status)}
+                            </span>
+                          ) : null}
                         </div>
 
                         <p className="mt-2 text-sm font-medium text-slate-700">
@@ -604,9 +747,15 @@ export default function JobsClient({
                             <dd className="mt-1">{formatDate(job.posted_at)}</dd>
                           </div>
                         </dl>
+
+                        {applicationState?.applied_at ? (
+                          <p className="mt-3 text-sm text-slate-500">
+                            Applied {formatDate(applicationState.applied_at)}
+                          </p>
+                        ) : null}
                       </div>
 
-                      <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-72 lg:justify-end">
+                      <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-80 lg:justify-end">
                         <a
                           className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
                           href={job.application_url}
@@ -616,32 +765,61 @@ export default function JobsClient({
                           View posting
                         </a>
 
-                        {["saved", "applied", "dismissed"].map((status) => (
-                          <button
-                            className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                              job.status === status
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                            }`}
-                            disabled={isDeleting || isUpdating}
-                            key={status}
-                            onClick={() => void updateStatus(job.id, status)}
-                            type="button"
-                          >
-                            {isUpdating && job.status !== status
-                              ? "Updating..."
-                              : STATUS_LABELS[status]}
-                          </button>
-                        ))}
-
                         <button
-                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isDeleting || isUpdating}
-                          onClick={() => void deleteJob(job)}
+                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            applicationState?.status === "saved"
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                          }`}
+                          disabled={isLoadingStates || isUpdating}
+                          onClick={() =>
+                            void updateApplicationStatus(job.id, "saved")
+                          }
                           type="button"
                         >
-                          {isDeleting ? "Deleting..." : "Delete"}
+                          {isUpdating ? "Updating..." : "Save"}
                         </button>
+
+                        <button
+                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            applicationState?.status === "applied"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                          }`}
+                          disabled={isLoadingStates || isUpdating}
+                          onClick={() =>
+                            void updateApplicationStatus(job.id, "applied")
+                          }
+                          type="button"
+                        >
+                          {isUpdating ? "Updating..." : "Mark applied"}
+                        </button>
+
+                        <button
+                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            applicationState?.status === "withdrawn"
+                              ? "border-slate-300 bg-slate-100 text-slate-700"
+                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                          }`}
+                          disabled={isLoadingStates || isUpdating}
+                          onClick={() =>
+                            void updateApplicationStatus(job.id, "withdrawn")
+                          }
+                          type="button"
+                        >
+                          {isUpdating ? "Updating..." : "Not interested"}
+                        </button>
+
+                        {applicationState ? (
+                          <button
+                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isLoadingStates || isUpdating}
+                            onClick={() => void removeApplicationTracking(job.id)}
+                            type="button"
+                          >
+                            {isUpdating ? "Updating..." : "Remove tracking"}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </article>
