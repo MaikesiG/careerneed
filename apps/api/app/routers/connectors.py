@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.connectors.ashby import sync_all_ashby_companies, sync_ashby_jobs
 from app.connectors.greenhouse import sync_all_greenhouse_companies, sync_greenhouse_jobs
 from app.connectors.lever import sync_all_lever_companies, sync_lever_jobs
 from app.database import get_db
@@ -9,7 +10,11 @@ router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 
 @router.post("/greenhouse/sync")
-def sync_greenhouse(board_token: str, company_name: str, db: Session = Depends(get_db)):
+def sync_greenhouse(
+    board_token: str,
+    company_name: str,
+    db: Session = Depends(get_db),
+):
     try:
         return sync_greenhouse_jobs(db, board_token, company_name)
     except ValueError as exc:
@@ -23,7 +28,11 @@ def sync_all_greenhouse(db: Session = Depends(get_db)):
 
 
 @router.post("/lever/sync")
-def sync_lever(company_slug: str, company_name: str, db: Session = Depends(get_db)):
+def sync_lever(
+    company_slug: str,
+    company_name: str,
+    db: Session = Depends(get_db),
+):
     try:
         return sync_lever_jobs(db, company_slug, company_name)
     except ValueError as exc:
@@ -33,4 +42,22 @@ def sync_lever(company_slug: str, company_name: str, db: Session = Depends(get_d
 @router.post("/lever/sync-all")
 def sync_all_lever(db: Session = Depends(get_db)):
     results = sync_all_lever_companies(db)
+    return {"companies_synced": len(results), "results": results}
+
+
+@router.post("/ashby/sync")
+def sync_ashby(
+    board_token: str,
+    company_name: str,
+    db: Session = Depends(get_db),
+):
+    try:
+        return sync_ashby_jobs(db, board_token, company_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/ashby/sync-all")
+def sync_all_ashby(db: Session = Depends(get_db)):
+    results = sync_all_ashby_companies(db)
     return {"companies_synced": len(results), "results": results}

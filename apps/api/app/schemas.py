@@ -49,7 +49,7 @@ class JobStatusUpdate(BaseModel):
 
 class CompanyCreate(BaseModel):
     name: str
-    source_type: Literal["greenhouse", "lever", "custom", "manual"]
+    source_type: Literal["ashby", "greenhouse", "lever", "custom", "manual"]
     board_token: str | None = None
     careers_url: str | None = None
     priority: Literal["high", "medium", "low"] = "medium"

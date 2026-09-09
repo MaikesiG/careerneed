@@ -22,6 +22,14 @@ class User(Base):
 class Company(Base):
     __tablename__ = "companies"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "source_type",
+            "board_token",
+            name="uq_companies_source_type_board_token",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -92,6 +100,14 @@ class Resume(Base):
 
 class Application(Base):
     __tablename__ = "applications"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "job_id",
+            name="uq_applications_user_job",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

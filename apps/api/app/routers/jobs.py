@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.connectors.scoring import calculate_match_score
@@ -15,23 +15,92 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("", response_model=list[JobOut])
 def list_jobs(
     response: Response,
-    status: str | None = Query(default=None),
-    location: str | None = Query(default=None),
-    limit: int = Query(default=500, le=1000),
+    q: str | None = Query(default=None, max_length=200),
+    source_type: str | None = Query(default=None, max_length=50),
+    workplace_type: str | None = Query(default=None, max_length=50),
+    category: list[str] | None = Query(default=None),
+    status: str | None = Query(default=None, max_length=50),
+    limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[Job]:
-    stmt = select(Job).order_by(Job.first_seen_at.desc())
-    if status:
-        stmt = stmt.where(Job.status == status)
-    if location:
-        stmt = stmt.where(Job.location.ilike(f"%{location}%"))
+    statement = select(Job)
 
-    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    if status and status.strip():
+        statement = statement.where(Job.status == status.strip().lower())
+
+    if source_type and source_type.strip():
+        statement = statement.where(Job.source == source_type.strip().lower())
+
+    if workplace_type and workplace_type.strip():
+        statement = statement.where(
+            func.lower(func.coalesce(Job.workplace_type, "")) == workplace_type.strip().lower()
+        )
+
+    if q and q.strip():
+        search_term = f"%{q.strip()}%"
+        statement = statement.where(
+            or_(
+                Job.title.ilike(search_term),
+                Job.company_name.ilike(search_term),
+                Job.location.ilike(search_term),
+            )
+        )
+
+    category_keywords: dict[str, list[str]] = {
+        "mlops": [
+            "mlops",
+            "ml infrastructure",
+            "ai infrastructure",
+            "ml platform",
+            "ai platform",
+        ],
+        "hardware": [
+            "kernel",
+            "gpu",
+            "tpu",
+            "compiler",
+            "distributed training",
+            "cluster",
+            "cuda",
+        ],
+        "sre": ["site reliability", "sre"],
+        "platform": ["platform engineer", "infrastructure engineer"],
+        "software": ["software engineer", "backend engineer"],
+        "ai-agent": ["ai agent", "agent engineer", "llm", "prompt engineering"],
+    }
+
+    selected_categories = [
+        item.strip().lower()
+        for item in (category or [])
+        if item and item.strip().lower() in category_keywords
+    ]
+
+    if selected_categories:
+        category_conditions = []
+
+        for category_id in selected_categories:
+            for keyword in category_keywords[category_id]:
+                search_term = f"%{keyword}%"
+                category_conditions.append(
+                    or_(
+                        Job.title.ilike(search_term),
+                        Job.company_name.ilike(search_term),
+                    )
+                )
+
+        statement = statement.where(or_(*category_conditions))
+
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+
+    jobs = db.scalars(
+        statement.order_by(Job.first_seen_at.desc()).offset(offset).limit(limit)
+    ).all()
+
     response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str((total + limit - 1) // limit)
 
-    stmt = stmt.limit(limit).offset(offset)
-    return list(db.scalars(stmt))
+    return jobs
 
 
 @router.get("/{job_id}", response_model=JobDetail)
