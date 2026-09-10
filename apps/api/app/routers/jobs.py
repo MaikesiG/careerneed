@@ -16,6 +16,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def list_jobs(
     response: Response,
     q: str | None = Query(default=None, max_length=200),
+    source: str | None = Query(default=None, max_length=50),
     source_type: str | None = Query(default=None, max_length=50),
     workplace_type: str | None = Query(default=None, max_length=50),
     category: list[str] | None = Query(default=None),
@@ -29,8 +30,10 @@ def list_jobs(
     if status and status.strip():
         statement = statement.where(Job.status == status.strip().lower())
 
-    if source_type and source_type.strip():
-        statement = statement.where(Job.source == source_type.strip().lower())
+    provider = (source or source_type or "").strip().lower()
+
+    if provider:
+        statement = statement.where(Job.source == provider)
 
     if workplace_type and workplace_type.strip():
         statement = statement.where(

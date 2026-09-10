@@ -1,13 +1,21 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Application, Job, Resume
-from app.schemas import ApplicationCreate, ApplicationOut, ApplicationUpdate
+from app.schemas import (
+    ApplicationByJobUpdate,
+    ApplicationCreate,
+    ApplicationJobState,
+    ApplicationJobStateMap,
+    ApplicationOut,
+    ApplicationUpdate,
+    ApplicationWithJobOut,
+)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -16,22 +24,154 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 INITIAL_USER_ID = uuid.UUID("363a7386-c17c-43ab-ad6c-9a60ff52492a")
 
 
-@router.get("", response_model=list[ApplicationOut])
+@router.get("", response_model=list[ApplicationWithJobOut])
 def list_applications(
-    status: str | None = Query(default=None),
-    job_id: uuid.UUID | None = Query(default=None),
+    response: Response,
+    status: str | None = Query(default=None, max_length=50),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-) -> list[Application]:
-    stmt = (
-        select(Application)
+) -> list[dict[str, object]]:
+    statement = (
+        select(Application, Job)
+        .join(Job, Job.id == Application.job_id)
         .where(Application.user_id == INITIAL_USER_ID)
-        .order_by(Application.created_at.desc())
     )
-    if status:
-        stmt = stmt.where(Application.status == status)
-    if job_id:
-        stmt = stmt.where(Application.job_id == job_id)
-    return list(db.scalars(stmt))
+
+    if status and status.strip():
+        statement = statement.where(Application.status == status.strip().lower())
+
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+
+    rows = db.execute(
+        statement.order_by(
+            Application.applied_at.desc().nullslast(),
+            Application.updated_at.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str((total + limit - 1) // limit)
+
+    return [
+        {
+            "id": application.id,
+            "job_id": application.job_id,
+            "resume_id": application.resume_id,
+            "status": application.status,
+            "applied_at": application.applied_at,
+            "notes": application.notes,
+            "created_at": application.created_at,
+            "updated_at": application.updated_at,
+            "job": {
+                "id": job.id,
+                "company_name": job.company_name,
+                "source": job.source,
+                "title": job.title,
+                "location": job.location,
+                "workplace_type": job.workplace_type,
+                "application_url": job.application_url,
+            },
+        }
+        for application, job in rows
+    ]
+
+
+@router.get("/me/job-states", response_model=ApplicationJobStateMap)
+def get_my_job_states(
+    job_id: list[uuid.UUID] = Query(default=[]),
+    db: Session = Depends(get_db),
+) -> ApplicationJobStateMap:
+    if not job_id:
+        return ApplicationJobStateMap(states={})
+
+    applications = list(
+        db.scalars(
+            select(Application).where(
+                Application.user_id == INITIAL_USER_ID,
+                Application.job_id.in_(job_id),
+            )
+        )
+    )
+
+    states = {
+        str(application.job_id): ApplicationJobState(
+            id=application.id,
+            job_id=application.job_id,
+            resume_id=application.resume_id,
+            status=application.status,
+            applied_at=application.applied_at,
+        )
+        for application in applications
+    }
+
+    return ApplicationJobStateMap(states=states)
+
+
+@router.put("/by-job/{job_id}", response_model=ApplicationOut)
+def upsert_application_for_job(
+    job_id: uuid.UUID,
+    payload: ApplicationByJobUpdate,
+    db: Session = Depends(get_db),
+) -> Application:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if payload.resume_id is not None:
+        resume = db.get(Resume, payload.resume_id)
+        if resume is None or resume.user_id != INITIAL_USER_ID:
+            raise HTTPException(status_code=404, detail="Resume not found")
+
+    application = db.scalar(
+        select(Application).where(
+            Application.user_id == INITIAL_USER_ID,
+            Application.job_id == job_id,
+        )
+    )
+
+    if application is None:
+        application = Application(
+            user_id=INITIAL_USER_ID,
+            job_id=job_id,
+            resume_id=payload.resume_id,
+            status=payload.status,
+            applied_at=datetime.utcnow() if payload.status == "applied" else None,
+            notes=payload.notes,
+        )
+        db.add(application)
+    else:
+        application.status = payload.status
+        application.resume_id = payload.resume_id
+        application.notes = payload.notes
+
+        if payload.status == "applied" and application.applied_at is None:
+            application.applied_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+@router.delete("/by-job/{job_id}", status_code=204)
+def delete_application_for_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> None:
+    application = db.scalar(
+        select(Application).where(
+            Application.user_id == INITIAL_USER_ID,
+            Application.job_id == job_id,
+        )
+    )
+
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    db.delete(application)
+    db.commit()
 
 
 @router.get("/{application_id}", response_model=ApplicationOut)

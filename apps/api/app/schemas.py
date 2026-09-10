@@ -65,9 +65,6 @@ class CompanyOut(BaseModel):
     active: bool
 
 
-ResumeStatus = Literal["saved", "applied", "interviewing", "offer", "rejected", "withdrawn"]
-
-
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,7 +88,14 @@ class ResumeUpdate(BaseModel):
     archived_at: datetime | None = None
 
 
-ApplicationStatus = Literal["saved", "applied", "interviewing", "offer", "rejected", "withdrawn"]
+ApplicationStatus = Literal[
+    "saved",
+    "applied",
+    "interviewing",
+    "offer",
+    "rejected",
+    "withdrawn",
+]
 
 
 class ApplicationCreate(BaseModel):
@@ -107,11 +111,27 @@ class ApplicationOut(BaseModel):
     id: uuid.UUID
     job_id: uuid.UUID
     resume_id: uuid.UUID | None
-    status: str
+    status: ApplicationStatus
     applied_at: datetime | None
     notes: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ApplicationJobSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_name: str
+    source: str
+    title: str
+    location: str | None
+    workplace_type: str | None
+    application_url: str
+
+
+class ApplicationWithJobOut(ApplicationOut):
+    job: ApplicationJobSummary
 
 
 class ApplicationUpdate(BaseModel):
@@ -121,7 +141,25 @@ class ApplicationUpdate(BaseModel):
     notes: str | None = None
 
 
-LLMProvider = Literal["openai", "anthropic"]
+class ApplicationByJobUpdate(BaseModel):
+    status: ApplicationStatus
+    resume_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class ApplicationJobState(BaseModel):
+    id: uuid.UUID
+    job_id: uuid.UUID
+    resume_id: uuid.UUID | None
+    status: ApplicationStatus
+    applied_at: datetime | None
+
+
+class ApplicationJobStateMap(BaseModel):
+    states: dict[str, ApplicationJobState]
+
+
+LLMProvider = Literal["openai", "groq", "anthropic"]
 
 
 class LLMCredentialCreate(BaseModel):

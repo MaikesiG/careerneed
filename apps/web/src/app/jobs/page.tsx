@@ -9,7 +9,6 @@ type Job = {
   location: string | null;
   workplace_type: string | null;
   application_url: string;
-  status: string;
   match_score: number | null;
   posted_at: string | null;
   first_seen_at: string;
@@ -18,7 +17,7 @@ type Job = {
 type SearchParams = {
   page?: string | string[];
   q?: string | string[];
-  source_type?: string | string[];
+  source?: string | string[];
   workplace_type?: string | string[];
   category?: string | string[];
 };
@@ -65,10 +64,10 @@ async function getJobs(
   page: number,
   filters: {
     q: string;
-    sourceType: string;
+    source: string;
     workplaceType: string;
     categories: string[];
-  },
+  }
 ): Promise<JobsResponse> {
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
@@ -79,8 +78,8 @@ async function getJobs(
     params.set("q", filters.q);
   }
 
-  if (filters.sourceType) {
-    params.set("source_type", filters.sourceType);
+  if (filters.source) {
+    params.set("source", filters.source);
   }
 
   if (filters.workplaceType) {
@@ -116,13 +115,13 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   const requestedPage = getPageNumber(resolvedSearchParams.page);
   const q = getSingleValue(resolvedSearchParams.q).trim();
-  const sourceType = getSingleValue(resolvedSearchParams.source_type).trim();
+  const source = getSingleValue(resolvedSearchParams.source).trim();
   const workplaceType = getSingleValue(resolvedSearchParams.workplace_type).trim();
   const categories = getMultipleValues(resolvedSearchParams.category);
 
   const { jobs, total } = await getJobs(requestedPage, {
     q,
-    sourceType,
+    source,
     workplaceType,
     categories,
   });
@@ -135,7 +134,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
       initialFilters={{
         categories,
         q,
-        sourceType,
+        source,
         workplaceType,
       }}
       initialJobs={jobs}

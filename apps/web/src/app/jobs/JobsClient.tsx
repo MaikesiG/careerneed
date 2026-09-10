@@ -12,7 +12,6 @@ type Job = {
   location: string | null;
   workplace_type: string | null;
   application_url: string;
-  status: string;
   match_score: number | null;
   posted_at: string | null;
   first_seen_at: string;
@@ -23,13 +22,7 @@ type Category = {
   label: string;
 };
 
-type ApplicationStatus =
-  | "saved"
-  | "applied"
-  | "interviewing"
-  | "offer"
-  | "rejected"
-  | "withdrawn";
+type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
 type ApplicationState = {
   id: string;
@@ -155,15 +148,15 @@ function trackingBadgeClass(status: ApplicationStatus): string {
     return "border-indigo-200 bg-indigo-50 text-indigo-700";
   }
 
-  if (status === "withdrawn" || status === "rejected") {
-    return "border-slate-200 bg-slate-50 text-slate-600";
-  }
-
   if (status === "offer") {
     return "border-amber-200 bg-amber-50 text-amber-800";
   }
 
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  if (status === "interviewing") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
 function trackingLabel(status: ApplicationStatus): string {
@@ -215,10 +208,7 @@ function getVisiblePages(currentPage: number, totalPages: number): number[] {
   const firstPage = Math.max(1, currentPage - 2);
   const lastPage = Math.min(totalPages, currentPage + 2);
 
-  return Array.from(
-    { length: lastPage - firstPage + 1 },
-    (_, index) => firstPage + index,
-  );
+  return Array.from({ length: lastPage - firstPage + 1 }, (_, index) => firstPage + index);
 }
 
 export default function JobsClient({
@@ -234,33 +224,26 @@ export default function JobsClient({
   const searchParams = useSearchParams();
 
   const [searchInput, setSearchInput] = useState(initialFilters.q);
-  const [applicationStates, setApplicationStates] = useState<
-    Record<string, ApplicationState>
-  >({});
+  const [applicationStates, setApplicationStates] = useState<Record<string, ApplicationState>>({});
   const [isLoadingStates, setIsLoadingStates] = useState(true);
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const jobIds = useMemo(
-    () => initialJobs.map((job) => job.id),
-    [initialJobs],
-  );
+  const jobIds = useMemo(() => initialJobs.map((job) => job.id), [initialJobs]);
 
   const firstJobNumber = totalJobs === 0 ? 0 : (initialPage - 1) * pageSize + 1;
   const lastJobNumber = Math.min(initialPage * pageSize, totalJobs);
   const visiblePages = getVisiblePages(initialPage, totalPages);
 
   useEffect(() => {
-    let isCancelled = false;
+    const controller = new AbortController();
 
     async function loadApplicationStates() {
       if (jobIds.length === 0) {
-        if (!isCancelled) {
-          setApplicationStates({});
-          setIsLoadingStates(false);
-        }
+        setApplicationStates({});
+        setIsLoadingStates(false);
         return;
       }
 
@@ -273,34 +256,29 @@ export default function JobsClient({
           params.append("job_id", jobId);
         });
 
-        const response = await fetch(
-          `${API_URL}/applications/me/job-states?${params.toString()}`,
-          {
-            cache: "no-store",
-          },
-        );
+        const response = await fetch(`${API_URL}/applications/me/job-states?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
-          throw new Error(
-            await readError(response, "Unable to load application tracking states."),
-          );
+          throw new Error(await readError(response, "Unable to load application tracking states."));
         }
 
         const data = (await response.json()) as ApplicationStateResponse;
-
-        if (!isCancelled) {
-          setApplicationStates(data.states);
-        }
+        setApplicationStates(data.states);
       } catch (caughtError) {
-        if (!isCancelled) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError.message
-              : "Unable to load application tracking states.",
-          );
+        if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+          return;
         }
+
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Unable to load application tracking states."
+        );
       } finally {
-        if (!isCancelled) {
+        if (!controller.signal.aborted) {
           setIsLoadingStates(false);
         }
       }
@@ -309,7 +287,7 @@ export default function JobsClient({
     void loadApplicationStates();
 
     return () => {
-      isCancelled = true;
+      controller.abort();
     };
   }, [jobIds]);
 
@@ -411,7 +389,6 @@ export default function JobsClient({
   function refreshJobs() {
     clearFeedback();
     setIsRefreshing(true);
-
     router.refresh();
 
     window.setTimeout(() => {
@@ -419,10 +396,7 @@ export default function JobsClient({
     }, 300);
   }
 
-  async function updateApplicationStatus(
-    jobId: string,
-    status: ApplicationStatus,
-  ) {
+  async function updateApplicationStatus(jobId: string, status: ApplicationStatus) {
     clearFeedback();
     setUpdatingJobId(jobId);
 
@@ -436,9 +410,7 @@ export default function JobsClient({
       });
 
       if (!response.ok) {
-        throw new Error(
-          await readError(response, "Unable to update application tracking."),
-        );
+        throw new Error(await readError(response, "Unable to update application tracking."));
       }
 
       const updated = (await response.json()) as ApplicationState;
@@ -453,7 +425,7 @@ export default function JobsClient({
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Unable to update application tracking.",
+          : "Unable to update application tracking."
       );
     } finally {
       setUpdatingJobId(null);
@@ -470,9 +442,7 @@ export default function JobsClient({
       });
 
       if (!response.ok) {
-        throw new Error(
-          await readError(response, "Unable to remove application tracking."),
-        );
+        throw new Error(await readError(response, "Unable to remove application tracking."));
       }
 
       setApplicationStates((previous) => {
@@ -486,7 +456,7 @@ export default function JobsClient({
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Unable to remove application tracking.",
+          : "Unable to remove application tracking."
       );
     } finally {
       setUpdatingJobId(null);
@@ -498,15 +468,12 @@ export default function JobsClient({
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600">
+            <p className="text-sm font-semibold tracking-[0.2em] text-indigo-600 uppercase">
               CareerNeed
             </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Job dashboard
-            </h1>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Job dashboard</h1>
             <p className="mt-3 max-w-3xl text-slate-600">
-              Search and filter jobs across all synced Ashby, Greenhouse, and Lever
-              company sources.
+              Search and filter jobs across all synced Ashby, Greenhouse, and Lever company sources.
             </p>
           </div>
 
@@ -560,8 +527,7 @@ export default function JobsClient({
               <div>
                 <h2 className="text-lg font-semibold">Find relevant roles</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Showing {firstJobNumber}–{lastJobNumber} of {totalJobs} matching
-                  jobs.
+                  Showing {firstJobNumber}–{lastJobNumber} of {totalJobs} matching jobs.
                 </p>
               </div>
 
@@ -578,10 +544,9 @@ export default function JobsClient({
                 </button>
               )}
             </div>
-
             <form className="flex gap-2" onSubmit={handleSearch}>
               <input
-                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search title, company, or location"
                 type="search"
@@ -598,41 +563,69 @@ export default function JobsClient({
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Provider
-                <select
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  onChange={(event) =>
-                    navigateWithFilters({
-                      page: 1,
-                      source: event.target.value,
-                    })
-                  }
-                  value={initialFilters.source}
-                >
-                  <option value="">All providers</option>
-                  <option value="ashby">Ashby</option>
-                  <option value="greenhouse">Greenhouse</option>
-                  <option value="lever">Lever</option>
-                  <option value="manual">Manual</option>
-                </select>
+                <div className="relative">
+                  <select
+                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    onChange={(event) =>
+                      navigateWithFilters({
+                        page: 1,
+                        source: event.target.value,
+                      })
+                    }
+                    value={initialFilters.source}
+                  >
+                    <option value="">All providers</option>
+                    <option value="ashby">Ashby</option>
+                    <option value="greenhouse">Greenhouse</option>
+                    <option value="lever">Lever</option>
+                    <option value="manual">Manual</option>
+                  </select>
+
+                  <svg
+                    className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-slate-500"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
               </label>
 
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Workplace type
-                <select
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  onChange={(event) =>
-                    navigateWithFilters({
-                      page: 1,
-                      workplaceType: event.target.value,
-                    })
-                  }
-                  value={initialFilters.workplaceType}
-                >
-                  <option value="">All workplace types</option>
-                  <option value="remote">Remote</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="onsite">On-site</option>
-                </select>
+                <div className="relative">
+                  <select
+                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    onChange={(event) =>
+                      navigateWithFilters({
+                        page: 1,
+                        workplaceType: event.target.value,
+                      })
+                    }
+                    value={initialFilters.workplaceType}
+                  >
+                    <option value="">All workplace types</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">On-site</option>
+                  </select>
+
+                  <svg
+                    className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-slate-500"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06l-4.25-4.51a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
               </label>
             </div>
 
@@ -671,17 +664,14 @@ export default function JobsClient({
               </p>
             </div>
 
-            <p className="text-sm text-slate-500">
-              Results are filtered and paginated by the API.
-            </p>
+            <p className="text-sm text-slate-500">Results are filtered and paginated by the API.</p>
           </div>
 
           {totalJobs === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
               <h3 className="text-lg font-semibold">No jobs match these filters</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Try removing a filter, changing your search, or sync another company
-                source.
+                Try removing a filter, changing your search, or sync another company source.
               </p>
             </div>
           ) : (
@@ -702,7 +692,7 @@ export default function JobsClient({
 
                           <span
                             className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${sourceBadgeClass(
-                              job.source,
+                              job.source
                             )}`}
                           >
                             {providerLabel(job.source)}
@@ -710,7 +700,7 @@ export default function JobsClient({
 
                           <span
                             className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${scoreBadgeClass(
-                              job.match_score,
+                              job.match_score
                             )}`}
                           >
                             Match: {job.match_score ?? "—"}
@@ -719,7 +709,7 @@ export default function JobsClient({
                           {applicationState ? (
                             <span
                               className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${trackingBadgeClass(
-                                applicationState.status,
+                                applicationState.status
                               )}`}
                             >
                               {trackingLabel(applicationState.status)}
@@ -738,9 +728,7 @@ export default function JobsClient({
                           </div>
                           <div>
                             <dt className="font-medium text-slate-700">Work type</dt>
-                            <dd className="mt-1">
-                              {job.workplace_type ?? "Not specified"}
-                            </dd>
+                            <dd className="mt-1">{job.workplace_type ?? "Not specified"}</dd>
                           </div>
                           <div>
                             <dt className="font-medium text-slate-700">Posted</dt>
@@ -772,9 +760,7 @@ export default function JobsClient({
                               : "border-slate-300 text-slate-700 hover:bg-slate-50"
                           }`}
                           disabled={isLoadingStates || isUpdating}
-                          onClick={() =>
-                            void updateApplicationStatus(job.id, "saved")
-                          }
+                          onClick={() => void updateApplicationStatus(job.id, "saved")}
                           type="button"
                         >
                           {isUpdating ? "Updating..." : "Save"}
@@ -787,9 +773,7 @@ export default function JobsClient({
                               : "border-slate-300 text-slate-700 hover:bg-slate-50"
                           }`}
                           disabled={isLoadingStates || isUpdating}
-                          onClick={() =>
-                            void updateApplicationStatus(job.id, "applied")
-                          }
+                          onClick={() => void updateApplicationStatus(job.id, "applied")}
                           type="button"
                         >
                           {isUpdating ? "Updating..." : "Mark applied"}
@@ -802,9 +786,7 @@ export default function JobsClient({
                               : "border-slate-300 text-slate-700 hover:bg-slate-50"
                           }`}
                           disabled={isLoadingStates || isUpdating}
-                          onClick={() =>
-                            void updateApplicationStatus(job.id, "withdrawn")
-                          }
+                          onClick={() => void updateApplicationStatus(job.id, "withdrawn")}
                           type="button"
                         >
                           {isUpdating ? "Updating..." : "Not interested"}
