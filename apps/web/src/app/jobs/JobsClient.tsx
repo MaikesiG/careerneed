@@ -17,11 +17,6 @@ type Job = {
   first_seen_at: string;
 };
 
-type Category = {
-  id: string;
-  label: string;
-};
-
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
 type ApplicationState = {
@@ -36,11 +31,24 @@ type ApplicationStateResponse = {
   states: Record<string, ApplicationState>;
 };
 
+type KeywordGroup = {
+  id: string;
+  label: string;
+  keywords: string[];
+  enabled: boolean;
+};
+
+type DateRange = "all" | "yesterday" | "week" | "month";
+
 type JobFilters = {
   q: string;
-  source: string;
-  workplaceType: string;
-  categories: string[];
+  sources: string[];
+  workplaceTypes: string[];
+  minMatchScore: number | null;
+  dateRange: DateRange;
+  keywordGroups: KeywordGroup[];
+  sort: string;
+  sortDirection: string;
 };
 
 type JobsClientProps = {
@@ -54,13 +62,38 @@ type JobsClientProps = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const CATEGORIES: Category[] = [
-  { id: "mlops", label: "MLOps / AI Infrastructure" },
-  { id: "hardware", label: "Hardware / Distributed Systems" },
-  { id: "sre", label: "Site Reliability Engineer" },
-  { id: "platform", label: "Platform Engineer" },
-  { id: "software", label: "Software Engineer" },
-  { id: "ai-agent", label: "AI Agent Engineer" },
+const SORT_OPTIONS = [
+  { value: "match_score", label: "Best match" },
+  { value: "recent", label: "Most recent" },
+];
+
+const DEFAULT_SORT = "match_score";
+const DEFAULT_SORT_DIRECTION = "desc";
+
+const MATCH_SCORE_OPTIONS = [
+  { value: null, label: "All scores" },
+  { value: 50, label: "50+" },
+  { value: 75, label: "75+" },
+  { value: 90, label: "90+" },
+];
+const PROVIDER_OPTIONS = [
+  { value: "ashby", label: "Ashby" },
+  { value: "greenhouse", label: "Greenhouse" },
+  { value: "lever", label: "Lever" },
+  { value: "manual", label: "Manual" },
+];
+
+const WORKPLACE_OPTIONS = [
+  { value: "remote", label: "Remote" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "onsite", label: "On-site" },
+];
+
+const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: "all", label: "All time" },
+  { value: "yesterday", label: "Since yesterday" },
+  { value: "week", label: "Past week" },
+  { value: "month", label: "Past month" },
 ];
 
 function formatDate(value: string | null): string {
@@ -211,6 +244,18 @@ function getVisiblePages(currentPage: number, totalPages: number): number[] {
   return Array.from({ length: lastPage - firstPage + 1 }, (_, index) => firstPage + index);
 }
 
+function encodeKeywordGroup(group: KeywordGroup): string {
+  const enabledFlag = group.enabled ? "1" : "0";
+  const encodedLabel = encodeURIComponent(group.label);
+  const encodedKeywords = group.keywords.map((keyword) => encodeURIComponent(keyword)).join(",");
+
+  return `${enabledFlag}::${group.id}::${encodedLabel}::${encodedKeywords}`;
+}
+
+function createKeywordGroupId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
 export default function JobsClient({
   initialFilters,
   initialJobs,
@@ -230,6 +275,11 @@ export default function JobsClient({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const [keywordGroups, setKeywordGroups] = useState<KeywordGroup[]>(initialFilters.keywordGroups);
+  const [newGroupLabel, setNewGroupLabel] = useState("");
+  const [newGroupKeywords, setNewGroupKeywords] = useState("");
+  const [suggestions, setSuggestions] = useState<{ value: string; label: string }[]>([]);
 
   const jobIds = useMemo(() => initialJobs.map((job) => job.id), [initialJobs]);
 
@@ -291,6 +341,40 @@ export default function JobsClient({
     };
   }, [jobIds]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const lastToken = newGroupKeywords.split(",").pop()?.trim() ?? "";
+
+    const timeoutId = window.setTimeout(() => {
+      async function loadSuggestions() {
+        try {
+          const response = await fetch(
+            `${API_URL}/jobs/keyword-suggestions?q=${encodeURIComponent(lastToken)}`,
+            { signal: controller.signal }
+          );
+
+          if (response.ok) {
+            const data = (await response.json()) as {
+              suggestions: { value: string; label: string }[];
+            };
+            setSuggestions(data.suggestions);
+          }
+        } catch (caughtError) {
+          if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+            return;
+          }
+        }
+      }
+
+      void loadSuggestions();
+    }, 300);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [newGroupKeywords]);
+
   function clearFeedback() {
     setError(null);
     setNotice(null);
@@ -299,17 +383,26 @@ export default function JobsClient({
   function navigateWithFilters(next: {
     page?: number;
     q?: string;
-    source?: string;
-    workplaceType?: string;
-    categories?: string[];
+    sources?: string[];
+    workplaceTypes?: string[];
+    minMatchScore?: number | null;
+    dateRange?: DateRange;
+    sort?: string;
+    sortDirection?: string;
+    keywordGroups?: KeywordGroup[];
   }) {
     const params = new URLSearchParams(searchParams.toString());
 
     const page = next.page ?? 1;
     const q = next.q ?? initialFilters.q;
-    const source = next.source ?? initialFilters.source;
-    const workplaceType = next.workplaceType ?? initialFilters.workplaceType;
-    const categories = next.categories ?? initialFilters.categories;
+    const sources = next.sources ?? initialFilters.sources;
+    const workplaceTypes = next.workplaceTypes ?? initialFilters.workplaceTypes;
+    const minMatchScore =
+      next.minMatchScore !== undefined ? next.minMatchScore : initialFilters.minMatchScore;
+    const dateRange = next.dateRange ?? initialFilters.dateRange;
+    const sort = next.sort ?? initialFilters.sort;
+    const sortDirection = next.sortDirection ?? initialFilters.sortDirection;
+    const groups = next.keywordGroups ?? keywordGroups;
 
     if (page <= 1) {
       params.delete("page");
@@ -323,21 +416,34 @@ export default function JobsClient({
       params.delete("q");
     }
 
-    if (source) {
-      params.set("source", source);
+    params.delete("source");
+    sources.forEach((source) => {
+      params.append("source", source);
+    });
+
+    params.delete("workplace_type");
+    workplaceTypes.forEach((workplaceType) => {
+      params.append("workplace_type", workplaceType);
+    });
+
+    if (minMatchScore === null) {
+      params.delete("min_match_score");
     } else {
-      params.delete("source");
+      params.set("min_match_score", String(minMatchScore));
     }
 
-    if (workplaceType) {
-      params.set("workplace_type", workplaceType);
+    if (dateRange === "all") {
+      params.delete("date_range");
     } else {
-      params.delete("workplace_type");
+      params.set("date_range", dateRange);
     }
 
-    params.delete("category");
-    categories.forEach((category) => {
-      params.append("category", category);
+    params.set("sort", sort);
+    params.set("sort_direction", sortDirection);
+
+    params.delete("kw");
+    groups.forEach((group) => {
+      params.append("kw", encodeKeywordGroup(group));
     });
 
     const query = params.toString();
@@ -353,26 +459,176 @@ export default function JobsClient({
     });
   }
 
-  function toggleCategory(categoryId: string) {
-    const nextCategories = initialFilters.categories.includes(categoryId)
-      ? initialFilters.categories.filter((id) => id !== categoryId)
-      : [...initialFilters.categories, categoryId];
+  function normalizeKeywordSet(keywords: string[]): Set<string> {
+    return new Set(keywords.map((keyword) => keyword.trim().toLowerCase()).filter(Boolean));
+  }
 
+  function getOverlapRatio(setA: Set<string>, setB: Set<string>): number {
+    if (setA.size === 0 || setB.size === 0) {
+      return 0;
+    }
+
+    let intersectionCount = 0;
+
+    setA.forEach((keyword) => {
+      if (setB.has(keyword)) {
+        intersectionCount += 1;
+      }
+    });
+
+    return intersectionCount / Math.min(setA.size, setB.size);
+  }
+
+  function addKeywordGroup() {
+    clearFeedback();
+
+    const label = newGroupLabel.trim();
+    const keywords = Array.from(
+      new Set(
+        newGroupKeywords
+          .split(",")
+          .map((keyword) => keyword.trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (!label || keywords.length === 0) {
+      setError("Enter a direction name and at least one keyword.");
+      return;
+    }
+
+    const newKeywordSet = normalizeKeywordSet(keywords);
+
+    const exactDuplicate = keywordGroups.find((group) => {
+      const existingSet = normalizeKeywordSet(group.keywords);
+
+      return (
+        existingSet.size === newKeywordSet.size &&
+        [...existingSet].every((keyword) => newKeywordSet.has(keyword))
+      );
+    });
+
+    if (exactDuplicate) {
+      setError(`This exact keyword combination already exists as "${exactDuplicate.label}".`);
+      return;
+    }
+
+    const overlappingGroup = keywordGroups.find((group) => {
+      const existingSet = normalizeKeywordSet(group.keywords);
+
+      return getOverlapRatio(newKeywordSet, existingSet) >= 0.7;
+    });
+
+    if (overlappingGroup) {
+      const confirmed = window.confirm(
+        `"${label}" overlaps heavily with your existing direction "${overlappingGroup.label}". Add it anyway?`
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const nextGroups = [
+      ...keywordGroups,
+      {
+        id: createKeywordGroupId(),
+        label,
+        keywords,
+        enabled: true,
+      },
+    ];
+
+    setKeywordGroups(nextGroups);
+    setNewGroupLabel("");
+    setNewGroupKeywords("");
     navigateWithFilters({
       page: 1,
-      categories: nextCategories,
+      keywordGroups: nextGroups,
     });
   }
 
+  function toggleKeywordGroup(groupId: string) {
+    const nextGroups = keywordGroups.map((group) =>
+      group.id === groupId ? { ...group, enabled: !group.enabled } : group
+    );
+
+    setKeywordGroups(nextGroups);
+    navigateWithFilters({
+      page: 1,
+      keywordGroups: nextGroups,
+    });
+  }
+
+  function removeKeywordGroup(groupId: string) {
+    const nextGroups = keywordGroups.filter((group) => group.id !== groupId);
+
+    setKeywordGroups(nextGroups);
+    navigateWithFilters({
+      page: 1,
+      keywordGroups: nextGroups,
+    });
+  }
+
+  function toggleMultiValue(values: string[], value: string): string[] {
+    return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+  }
+
+  function toggleProvider(provider: string) {
+    navigateWithFilters({
+      page: 1,
+      sources: toggleMultiValue(initialFilters.sources, provider),
+    });
+  }
+
+  function toggleWorkplaceType(workplaceType: string) {
+    navigateWithFilters({
+      page: 1,
+      workplaceTypes: toggleMultiValue(initialFilters.workplaceTypes, workplaceType),
+    });
+  }
+
+  function updateMinMatchScore(minMatchScore: number | null) {
+    navigateWithFilters({
+      page: 1,
+      minMatchScore,
+    });
+  }
+
+  function updateDateRange(dateRange: DateRange) {
+    navigateWithFilters({
+      page: 1,
+      dateRange,
+    });
+  }
+
+  function updateSort(sort: string, sortDirection: string) {
+    navigateWithFilters({
+      page: 1,
+      sort,
+      sortDirection,
+    });
+  }
+
+  function toggleSortDirection() {
+    updateSort(initialFilters.sort, initialFilters.sortDirection === "desc" ? "asc" : "desc");
+  }
+
   function clearFilters() {
+    clearFeedback();
     setSearchInput("");
+    setKeywordGroups([]);
 
     navigateWithFilters({
       page: 1,
       q: "",
-      source: "",
-      workplaceType: "",
-      categories: [],
+      sources: [],
+      workplaceTypes: [],
+      minMatchScore: null,
+      dateRange: "all",
+      sort: DEFAULT_SORT,
+      sortDirection: DEFAULT_SORT_DIRECTION,
+      keywordGroups: [],
     });
   }
 
@@ -381,9 +637,7 @@ export default function JobsClient({
       return;
     }
 
-    navigateWithFilters({
-      page,
-    });
+    navigateWithFilters({ page });
   }
 
   function refreshJobs() {
@@ -532,9 +786,11 @@ export default function JobsClient({
               </div>
 
               {(initialFilters.q ||
-                initialFilters.source ||
-                initialFilters.workplaceType ||
-                initialFilters.categories.length > 0) && (
+                initialFilters.sources.length > 0 ||
+                initialFilters.workplaceTypes.length > 0 ||
+                initialFilters.minMatchScore !== null ||
+                initialFilters.dateRange !== "all" ||
+                keywordGroups.length > 0) && (
                 <button
                   className="text-sm font-semibold text-indigo-700 hover:text-indigo-900"
                   onClick={clearFilters}
@@ -544,112 +800,208 @@ export default function JobsClient({
                 </button>
               )}
             </div>
+
             <form className="flex gap-2" onSubmit={handleSearch}>
               <input
-                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search title, company, or location"
                 type="search"
                 value={searchInput}
               />
               <button
-                className="h-11 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                className="h-10 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700"
                 type="submit"
               >
                 Search
               </button>
             </form>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 lg:grid-cols-2">
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">Match score</legend>
+
+                <div className="flex flex-wrap gap-2">
+                  {MATCH_SCORE_OPTIONS.map((option) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      key={option.label}
+                    >
+                      <input
+                        checked={initialFilters.minMatchScore === option.value}
+                        className="h-4 w-4 accent-indigo-600"
+                        name="min-match-score"
+                        onChange={() => updateMinMatchScore(option.value)}
+                        type="radio"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Provider
-                <div className="relative">
+                Sort results
+                <div className="flex h-10 gap-2">
                   <select
-                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="h-10 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     onChange={(event) =>
-                      navigateWithFilters({
-                        page: 1,
-                        source: event.target.value,
-                      })
+                      updateSort(event.target.value, initialFilters.sortDirection)
                     }
-                    value={initialFilters.source}
+                    value={initialFilters.sort}
                   >
-                    <option value="">All providers</option>
-                    <option value="ashby">Ashby</option>
-                    <option value="greenhouse">Greenhouse</option>
-                    <option value="lever">Lever</option>
-                    <option value="manual">Manual</option>
+                    {SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
 
-                  <svg
-                    className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-slate-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
+                  <button
+                    aria-label={
+                      initialFilters.sortDirection === "desc"
+                        ? "Switch to ascending order"
+                        : "Switch to descending order"
+                    }
+                    className="h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    onClick={toggleSortDirection}
+                    type="button"
                   >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                    {initialFilters.sortDirection === "desc" ? "↓ Desc" : "↑ Asc"}
+                  </button>
                 </div>
               </label>
 
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Workplace type
-                <div className="relative">
-                  <select
-                    className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    onChange={(event) =>
-                      navigateWithFilters({
-                        page: 1,
-                        workplaceType: event.target.value,
-                      })
-                    }
-                    value={initialFilters.workplaceType}
-                  >
-                    <option value="">All workplace types</option>
-                    <option value="remote">Remote</option>
-                    <option value="hybrid">Hybrid</option>
-                    <option value="onsite">On-site</option>
-                  </select>
-
-                  <svg
-                    className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-slate-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06l-4.25-4.51a.75.75 0 01.02-1.06z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">Providers</legend>
+                <div className="flex flex-wrap gap-2">
+                  {PROVIDER_OPTIONS.map((option) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      key={option.value}
+                    >
+                      <input
+                        checked={initialFilters.sources.includes(option.value)}
+                        className="h-4 w-4 accent-indigo-600"
+                        onChange={() => toggleProvider(option.value)}
+                        type="checkbox"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
                 </div>
-              </label>
+              </fieldset>
+
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium text-slate-700">Workplace type</legend>
+                <div className="flex flex-wrap gap-2">
+                  {WORKPLACE_OPTIONS.map((option) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      key={option.value}
+                    >
+                      <input
+                        checked={initialFilters.workplaceTypes.includes(option.value)}
+                        className="h-4 w-4 accent-indigo-600"
+                        onChange={() => toggleWorkplaceType(option.value)}
+                        type="checkbox"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="lg:col-span-2">
+                <legend className="mb-2 text-sm font-medium text-slate-700">Added or posted</legend>
+                <div className="flex flex-wrap gap-2">
+                  {DATE_RANGE_OPTIONS.map((option) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      key={option.value}
+                    >
+                      <input
+                        checked={initialFilters.dateRange === option.value}
+                        className="h-4 w-4 accent-indigo-600"
+                        name="date-range"
+                        onChange={() => updateDateRange(option.value)}
+                        type="radio"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </div>
 
             <div>
-              <p className="mb-2 text-sm font-medium text-slate-700">Role category</p>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((category) => {
-                  const isActive = initialFilters.categories.includes(category.id);
+              <p className="mb-2 text-sm font-medium text-slate-700">Search directions</p>
 
-                  return (
+              <div className="flex flex-wrap gap-2">
+                {keywordGroups.map((group) => (
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                      group.enabled
+                        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                        : "border-slate-300 bg-white text-slate-500"
+                    }`}
+                    key={group.id}
+                  >
                     <button
-                      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                        isActive
-                          ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                      key={category.id}
-                      onClick={() => toggleCategory(category.id)}
+                      aria-pressed={group.enabled}
+                      onClick={() => toggleKeywordGroup(group.id)}
+                      title={group.keywords.join(", ")}
                       type="button"
                     >
-                      {category.label}
+                      {group.label}
                     </button>
-                  );
-                })}
+                    <button
+                      aria-label={`Remove ${group.label}`}
+                      className="text-slate-400 hover:text-red-600"
+                      onClick={() => removeKeywordGroup(group.id)}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+
+                {keywordGroups.length === 0 ? (
+                  <p className="text-sm text-slate-500">No search directions yet. Add one below.</p>
+                ) : null}
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  onChange={(event) => setNewGroupLabel(event.target.value)}
+                  placeholder="Direction name, e.g. MLOps"
+                  type="text"
+                  value={newGroupLabel}
+                />
+
+                <input
+                  className="h-10 min-w-0 flex-[2] rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  list="keyword-suggestions"
+                  onChange={(event) => setNewGroupKeywords(event.target.value)}
+                  placeholder="Keywords, comma separated: mlops, ml platform"
+                  type="text"
+                  value={newGroupKeywords}
+                />
+
+                <datalist id="keyword-suggestions">
+                  {suggestions.map((suggestion) => (
+                    <option key={suggestion.value} value={suggestion.value} />
+                  ))}
+                </datalist>
+
+                <button
+                  className="h-10 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                  onClick={addKeywordGroup}
+                  type="button"
+                >
+                  Add direction
+                </button>
               </div>
             </div>
           </div>
@@ -664,7 +1016,9 @@ export default function JobsClient({
               </p>
             </div>
 
-            <p className="text-sm text-slate-500">Results are filtered and paginated by the API.</p>
+            <p className="text-sm text-slate-500">
+              Results are filtered, sorted, and paginated by the API.
+            </p>
           </div>
 
           {totalJobs === 0 ? (

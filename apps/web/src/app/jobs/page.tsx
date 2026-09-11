@@ -14,12 +14,18 @@ type Job = {
   first_seen_at: string;
 };
 
+type DateRange = "all" | "yesterday" | "week" | "month";
+
 type SearchParams = {
   page?: string | string[];
   q?: string | string[];
   source?: string | string[];
   workplace_type?: string | string[];
-  category?: string | string[];
+  min_match_score?: string | string[];
+  date_range?: string | string[];
+  kw?: string | string[];
+  sort?: string | string[];
+  sort_direction?: string | string[];
 };
 
 type JobsPageProps = {
@@ -31,8 +37,17 @@ type JobsResponse = {
   total: number;
 };
 
+type KeywordGroup = {
+  id: string;
+  label: string;
+  keywords: string[];
+  enabled: boolean;
+};
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const PAGE_SIZE = 20;
+const DEFAULT_SORT = "match_score";
+const DEFAULT_SORT_DIRECTION = "desc";
 
 function getSingleValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) {
@@ -60,34 +75,115 @@ function getPageNumber(value: string | string[] | undefined): number {
   return parsedValue;
 }
 
+function parseDateRange(value: string): DateRange {
+  if (value === "yesterday" || value === "week" || value === "month") {
+    return value;
+  }
+
+  return "all";
+}
+
+function parseMinMatchScore(value: string): number | null {
+  const parsedValue = Number.parseInt(value, 10);
+
+  if (parsedValue === 50 || parsedValue === 75 || parsedValue === 90) {
+    return parsedValue;
+  }
+
+  return null;
+}
+
+function parseSort(value: string): string {
+  if (value === "recent" || value === "match_score") {
+    return value;
+  }
+
+  return DEFAULT_SORT;
+}
+
+function parseSortDirection(value: string): string {
+  if (value === "asc" || value === "desc") {
+    return value;
+  }
+
+  return DEFAULT_SORT_DIRECTION;
+}
+
+function parseKeywordGroups(rawGroups: string[]): KeywordGroup[] {
+  return rawGroups
+    .map((rawGroup) => {
+      const [enabledFlag, id, encodedLabel, keywordsPart] = rawGroup.split("::");
+
+      if (!id || !encodedLabel) {
+        return null;
+      }
+
+      try {
+        const keywords = (keywordsPart ?? "")
+          .split(",")
+          .map((keyword) => keyword.trim())
+          .filter(Boolean)
+          .map((keyword) => decodeURIComponent(keyword));
+
+        if (keywords.length === 0) {
+          return null;
+        }
+
+        return {
+          id,
+          label: decodeURIComponent(encodedLabel),
+          keywords,
+          enabled: enabledFlag !== "0",
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((group): group is KeywordGroup => group !== null);
+}
+
 async function getJobs(
   page: number,
   filters: {
     q: string;
-    source: string;
-    workplaceType: string;
-    categories: string[];
+    sources: string[];
+    workplaceTypes: string[];
+    minMatchScore: number | null;
+    dateRange: DateRange;
+    activeKeywords: string[];
+    sort: string;
+    sortDirection: string;
   }
 ): Promise<JobsResponse> {
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
     offset: String((page - 1) * PAGE_SIZE),
+    sort: filters.sort,
+    sort_direction: filters.sortDirection,
   });
 
   if (filters.q) {
     params.set("q", filters.q);
   }
 
-  if (filters.source) {
-    params.set("source", filters.source);
+  filters.sources.forEach((source) => {
+    params.append("source", source);
+  });
+
+  filters.workplaceTypes.forEach((workplaceType) => {
+    params.append("workplace_type", workplaceType);
+  });
+
+  if (filters.minMatchScore !== null) {
+    params.set("min_match_score", String(filters.minMatchScore));
   }
 
-  if (filters.workplaceType) {
-    params.set("workplace_type", filters.workplaceType);
+  if (filters.dateRange !== "all") {
+    params.set("date_range", filters.dateRange);
   }
 
-  filters.categories.forEach((category) => {
-    params.append("category", category);
+  filters.activeKeywords.forEach((keyword) => {
+    params.append("keywords", keyword);
   });
 
   try {
@@ -115,15 +211,52 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   const requestedPage = getPageNumber(resolvedSearchParams.page);
   const q = getSingleValue(resolvedSearchParams.q).trim();
-  const source = getSingleValue(resolvedSearchParams.source).trim();
-  const workplaceType = getSingleValue(resolvedSearchParams.workplace_type).trim();
-  const categories = getMultipleValues(resolvedSearchParams.category);
+
+  const sources = Array.from(
+    new Set(
+      getMultipleValues(resolvedSearchParams.source)
+        .map((source) => source.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const workplaceTypes = Array.from(
+    new Set(
+      getMultipleValues(resolvedSearchParams.workplace_type)
+        .map((workplaceType) => workplaceType.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const minMatchScore = parseMinMatchScore(
+    getSingleValue(resolvedSearchParams.min_match_score).trim()
+  );
+
+  const dateRange = parseDateRange(
+    getSingleValue(resolvedSearchParams.date_range).trim().toLowerCase()
+  );
+
+  const sort = parseSort(getSingleValue(resolvedSearchParams.sort).trim().toLowerCase());
+
+  const sortDirection = parseSortDirection(
+    getSingleValue(resolvedSearchParams.sort_direction).trim().toLowerCase()
+  );
+
+  const keywordGroups = parseKeywordGroups(getMultipleValues(resolvedSearchParams.kw));
+
+  const activeKeywords = keywordGroups
+    .filter((group) => group.enabled)
+    .flatMap((group) => group.keywords);
 
   const { jobs, total } = await getJobs(requestedPage, {
     q,
-    source,
-    workplaceType,
-    categories,
+    sources,
+    workplaceTypes,
+    minMatchScore,
+    dateRange,
+    activeKeywords,
+    sort,
+    sortDirection,
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -132,10 +265,14 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   return (
     <JobsClient
       initialFilters={{
-        categories,
         q,
-        source,
-        workplaceType,
+        sources,
+        workplaceTypes,
+        minMatchScore,
+        dateRange,
+        keywordGroups,
+        sort,
+        sortDirection,
       }}
       initialJobs={jobs}
       initialPage={page}
