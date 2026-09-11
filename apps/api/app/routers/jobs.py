@@ -7,10 +7,23 @@ from sqlalchemy.orm import Session
 
 from app.connectors.scoring import calculate_match_score
 from app.database import get_db
-from app.models import Job
+from app.models import Application, Job
 from app.schemas import JobDetail, JobManualCreate, JobOut, JobStatusUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+# TODO: replace with real authenticated user once auth is implemented.
+INITIAL_USER_ID = uuid.UUID("363a7386-c17c-43ab-ad6c-9a60ff52492a")
+
+ALLOWED_APPLICATION_STATUSES = {
+    "saved",
+    "applied",
+    "interviewing",
+    "offer",
+    "rejected",
+    "withdrawn",
+}
 
 SORT_COLUMNS = {
     "recent": func.coalesce(Job.posted_at, Job.first_seen_at),
@@ -62,6 +75,7 @@ def list_jobs(
     category: list[str] | None = Query(default=None),
     keywords: list[str] = Query(default=[]),
     status: str | None = Query(default=None, max_length=50),
+    application_status: list[str] = Query(default=[]),
     min_match_score: int | None = Query(default=None, ge=0, le=100),
     date_range: str = Query(default="all", pattern="^(all|yesterday|week|month)$"),
     sort: str = Query(default="match_score", pattern="^(recent|match_score)$"),
@@ -71,6 +85,34 @@ def list_jobs(
     db: Session = Depends(get_db),
 ) -> list[Job]:
     statement = select(Job)
+
+    requested_application_statuses = {
+        value.strip().lower()
+        for value in application_status
+        if value and value.strip()
+    }
+
+    invalid_application_statuses = (
+        requested_application_statuses - ALLOWED_APPLICATION_STATUSES
+    )
+
+    if invalid_application_statuses:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Invalid application status: "
+                + ", ".join(sorted(invalid_application_statuses))
+            ),
+        )
+
+    if requested_application_statuses:
+        statement = statement.join(
+            Application,
+            Application.job_id == Job.id,
+        ).where(
+            Application.user_id == INITIAL_USER_ID,
+            Application.status.in_(requested_application_statuses),
+        )
 
     if status and status.strip():
         statement = statement.where(Job.status == status.strip().lower())

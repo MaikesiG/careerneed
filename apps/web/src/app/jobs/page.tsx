@@ -16,11 +16,23 @@ type Job = {
 
 type DateRange = "all" | "yesterday" | "week" | "month";
 
+type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
+
+const APPLICATION_STATUSES: ApplicationStatus[] = [
+  "saved",
+  "applied",
+  "interviewing",
+  "offer",
+  "rejected",
+  "withdrawn",
+];
+
 type SearchParams = {
   page?: string | string[];
   q?: string | string[];
   source?: string | string[];
   workplace_type?: string | string[];
+  application_status?: string | string[];
   min_match_score?: string | string[];
   date_range?: string | string[];
   kw?: string | string[];
@@ -93,6 +105,20 @@ function parseMinMatchScore(value: string): number | null {
   return null;
 }
 
+function parseApplicationStatuses(values: string[]): ApplicationStatus[] {
+  const validStatuses = new Set<ApplicationStatus>(APPLICATION_STATUSES);
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value.trim().toLowerCase())
+        .filter((value): value is ApplicationStatus =>
+          validStatuses.has(value as ApplicationStatus)
+        )
+    )
+  );
+}
+
 function parseSort(value: string): string {
   if (value === "recent" || value === "match_score") {
     return value;
@@ -148,6 +174,7 @@ async function getJobs(
     q: string;
     sources: string[];
     workplaceTypes: string[];
+    applicationStatuses: ApplicationStatus[];
     minMatchScore: number | null;
     dateRange: DateRange;
     activeKeywords: string[];
@@ -172,6 +199,10 @@ async function getJobs(
 
   filters.workplaceTypes.forEach((workplaceType) => {
     params.append("workplace_type", workplaceType);
+  });
+
+  filters.applicationStatuses.forEach((status) => {
+    params.append("application_status", status);
   });
 
   if (filters.minMatchScore !== null) {
@@ -228,6 +259,10 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     )
   );
 
+  const applicationStatuses = parseApplicationStatuses(
+    getMultipleValues(resolvedSearchParams.application_status)
+  );
+
   const minMatchScore = parseMinMatchScore(
     getSingleValue(resolvedSearchParams.min_match_score).trim()
   );
@@ -252,6 +287,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     q,
     sources,
     workplaceTypes,
+    applicationStatuses,
     minMatchScore,
     dateRange,
     activeKeywords,
@@ -268,6 +304,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
         q,
         sources,
         workplaceTypes,
+        applicationStatuses,
         minMatchScore,
         dateRange,
         keywordGroups,

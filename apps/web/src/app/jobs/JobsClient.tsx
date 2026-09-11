@@ -44,6 +44,7 @@ type JobFilters = {
   q: string;
   sources: string[];
   workplaceTypes: string[];
+  applicationStatuses: ApplicationStatus[];
   minMatchScore: number | null;
   dateRange: DateRange;
   keywordGroups: KeywordGroup[];
@@ -94,6 +95,18 @@ const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: "yesterday", label: "Since yesterday" },
   { value: "week", label: "Past week" },
   { value: "month", label: "Past month" },
+];
+
+const APPLICATION_STATUS_OPTIONS: {
+  value: ApplicationStatus;
+  label: string;
+}[] = [
+  { value: "saved", label: "Saved" },
+  { value: "applied", label: "Applied" },
+  { value: "interviewing", label: "Interviewing" },
+  { value: "offer", label: "Offer" },
+  { value: "rejected", label: "Rejected" },
+  { value: "withdrawn", label: "Not interested" },
 ];
 
 function formatDate(value: string | null): string {
@@ -385,6 +398,7 @@ export default function JobsClient({
     q?: string;
     sources?: string[];
     workplaceTypes?: string[];
+    applicationStatuses?: ApplicationStatus[];
     minMatchScore?: number | null;
     dateRange?: DateRange;
     sort?: string;
@@ -397,6 +411,7 @@ export default function JobsClient({
     const q = next.q ?? initialFilters.q;
     const sources = next.sources ?? initialFilters.sources;
     const workplaceTypes = next.workplaceTypes ?? initialFilters.workplaceTypes;
+    const applicationStatuses = next.applicationStatuses ?? initialFilters.applicationStatuses;
     const minMatchScore =
       next.minMatchScore !== undefined ? next.minMatchScore : initialFilters.minMatchScore;
     const dateRange = next.dateRange ?? initialFilters.dateRange;
@@ -424,6 +439,11 @@ export default function JobsClient({
     params.delete("workplace_type");
     workplaceTypes.forEach((workplaceType) => {
       params.append("workplace_type", workplaceType);
+    });
+
+    params.delete("application_status");
+    applicationStatuses.forEach((status) => {
+      params.append("application_status", status);
     });
 
     if (minMatchScore === null) {
@@ -588,6 +608,16 @@ export default function JobsClient({
     });
   }
 
+  function toggleApplicationStatus(status: ApplicationStatus) {
+    navigateWithFilters({
+      page: 1,
+      applicationStatuses: toggleMultiValue(
+        initialFilters.applicationStatuses,
+        status
+      ) as ApplicationStatus[],
+    });
+  }
+
   function updateMinMatchScore(minMatchScore: number | null) {
     navigateWithFilters({
       page: 1,
@@ -624,6 +654,7 @@ export default function JobsClient({
       q: "",
       sources: [],
       workplaceTypes: [],
+      applicationStatuses: [],
       minMatchScore: null,
       dateRange: "all",
       sort: DEFAULT_SORT,
@@ -788,6 +819,7 @@ export default function JobsClient({
               {(initialFilters.q ||
                 initialFilters.sources.length > 0 ||
                 initialFilters.workplaceTypes.length > 0 ||
+                initialFilters.applicationStatuses.length > 0 ||
                 initialFilters.minMatchScore !== null ||
                 initialFilters.dateRange !== "all" ||
                 keywordGroups.length > 0) && (
@@ -904,6 +936,28 @@ export default function JobsClient({
                         checked={initialFilters.workplaceTypes.includes(option.value)}
                         className="h-4 w-4 accent-indigo-600"
                         onChange={() => toggleWorkplaceType(option.value)}
+                        type="checkbox"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="lg:col-span-2">
+                <legend className="mb-2 text-sm font-medium text-slate-700">
+                  My tracking status
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {APPLICATION_STATUS_OPTIONS.map((option) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      key={option.value}
+                    >
+                      <input
+                        checked={initialFilters.applicationStatuses.includes(option.value)}
+                        className="h-4 w-4 accent-indigo-600"
+                        onChange={() => toggleApplicationStatus(option.value)}
                         type="checkbox"
                       />
                       {option.label}
