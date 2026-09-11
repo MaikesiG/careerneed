@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
@@ -11,17 +12,61 @@ from app.schemas import JobDetail, JobManualCreate, JobOut, JobStatusUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
+SORT_COLUMNS = {
+    "recent": func.coalesce(Job.posted_at, Job.first_seen_at),
+    "match_score": Job.match_score,
+}
+
+CURATED_KEYWORDS = [
+    "mlops",
+    "ml infrastructure",
+    "ai infrastructure",
+    "ml platform",
+    "ai platform",
+    "kernel",
+    "gpu",
+    "tpu",
+    "compiler",
+    "distributed training",
+    "cluster",
+    "cuda",
+    "site reliability",
+    "sre",
+    "platform engineer",
+    "infrastructure engineer",
+    "software engineer",
+    "backend engineer",
+    "frontend engineer",
+    "full stack engineer",
+    "ai agent",
+    "agent engineer",
+    "llm",
+    "prompt engineering",
+    "data engineer",
+    "data scientist",
+    "security engineer",
+    "devops",
+    "product manager",
+    "engineering manager",
+    "solutions architect",
+]
+
 
 @router.get("", response_model=list[JobOut])
 def list_jobs(
     response: Response,
     q: str | None = Query(default=None, max_length=200),
-    source: str | None = Query(default=None, max_length=50),
+    source: list[str] = Query(default=[]),
     source_type: str | None = Query(default=None, max_length=50),
-    workplace_type: str | None = Query(default=None, max_length=50),
+    workplace_type: list[str] = Query(default=[]),
     category: list[str] | None = Query(default=None),
+    keywords: list[str] = Query(default=[]),
     status: str | None = Query(default=None, max_length=50),
-    limit: int = Query(default=20, ge=1, le=100),
+    min_match_score: int | None = Query(default=None, ge=0, le=100),
+    date_range: str = Query(default="all", pattern="^(all|yesterday|week|month)$"),
+    sort: str = Query(default="match_score", pattern="^(recent|match_score)$"),
+    sort_direction: str = Query(default="desc", pattern="^(asc|desc)$"),
+    limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[Job]:
@@ -30,14 +75,19 @@ def list_jobs(
     if status and status.strip():
         statement = statement.where(Job.status == status.strip().lower())
 
-    provider = (source or source_type or "").strip().lower()
+    providers = {value.strip().lower() for value in source if value and value.strip()}
 
-    if provider:
-        statement = statement.where(Job.source == provider)
+    if source_type and source_type.strip():
+        providers.add(source_type.strip().lower())
 
-    if workplace_type and workplace_type.strip():
+    if providers:
+        statement = statement.where(func.lower(Job.source).in_(providers))
+
+    workplace_types = {value.strip().lower() for value in workplace_type if value and value.strip()}
+
+    if workplace_types:
         statement = statement.where(
-            func.lower(func.coalesce(Job.workplace_type, "")) == workplace_type.strip().lower()
+            func.lower(func.coalesce(Job.workplace_type, "")).in_(workplace_types)
         )
 
     if q and q.strip():
@@ -46,11 +96,13 @@ def list_jobs(
             or_(
                 Job.title.ilike(search_term),
                 Job.company_name.ilike(search_term),
-                Job.location.ilike(search_term),
+                func.coalesce(Job.location, "").ilike(search_term),
             )
         )
 
-    category_keywords: dict[str, list[str]] = {
+    cleaned_keywords = [keyword.strip() for keyword in keywords if keyword and keyword.strip()]
+
+    legacy_category_keywords: dict[str, list[str]] = {
         "mlops": [
             "mlops",
             "ml infrastructure",
@@ -76,34 +128,71 @@ def list_jobs(
     selected_categories = [
         item.strip().lower()
         for item in (category or [])
-        if item and item.strip().lower() in category_keywords
+        if item and item.strip().lower() in legacy_category_keywords
     ]
 
-    if selected_categories:
-        category_conditions = []
+    for category_id in selected_categories:
+        cleaned_keywords.extend(legacy_category_keywords[category_id])
 
-        for category_id in selected_categories:
-            for keyword in category_keywords[category_id]:
-                search_term = f"%{keyword}%"
-                category_conditions.append(
-                    or_(
-                        Job.title.ilike(search_term),
-                        Job.company_name.ilike(search_term),
-                    )
-                )
+    if cleaned_keywords:
+        keyword_conditions = [
+            or_(
+                Job.title.ilike(f"%{keyword}%"),
+                Job.company_name.ilike(f"%{keyword}%"),
+                func.coalesce(Job.description, "").ilike(f"%{keyword}%"),
+            )
+            for keyword in cleaned_keywords
+        ]
+        statement = statement.where(or_(*keyword_conditions))
 
-        statement = statement.where(or_(*category_conditions))
+    if min_match_score is not None:
+        statement = statement.where(func.coalesce(Job.match_score, 0) >= min_match_score)
+
+    effective_date = func.coalesce(Job.posted_at, Job.first_seen_at)
+    now = datetime.utcnow()
+
+    date_range_start = {
+        "yesterday": now - timedelta(days=1),
+        "week": now - timedelta(days=7),
+        "month": now - timedelta(days=30),
+    }
+
+    if date_range in date_range_start:
+        statement = statement.where(effective_date >= date_range_start[date_range])
 
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 
+    sort_column = SORT_COLUMNS[sort]
+    order_clause = (
+        sort_column.asc().nullslast() if sort_direction == "asc" else sort_column.desc().nullslast()
+    )
+
     jobs = db.scalars(
-        statement.order_by(Job.first_seen_at.desc()).offset(offset).limit(limit)
+        statement.order_by(order_clause, Job.first_seen_at.desc()).offset(offset).limit(limit)
     ).all()
 
     response.headers["X-Total-Count"] = str(total)
     response.headers["X-Total-Pages"] = str((total + limit - 1) // limit)
 
     return jobs
+
+
+@router.get("/keyword-suggestions")
+def get_keyword_suggestions(
+    q: str = Query(default="", max_length=100),
+) -> dict[str, list[dict[str, str]]]:
+    query = q.strip().lower()
+
+    if not query:
+        matches = CURATED_KEYWORDS[:10]
+    else:
+        matches = [keyword for keyword in CURATED_KEYWORDS if query in keyword][:10]
+
+    return {
+        "suggestions": [
+            {"value": keyword, "label": keyword.title(), "source": "curated"} for keyword in matches
+        ]
+    }
 
 
 @router.get("/{job_id}", response_model=JobDetail)
