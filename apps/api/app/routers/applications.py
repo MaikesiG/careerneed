@@ -103,6 +103,7 @@ def get_my_job_states(
             resume_id=application.resume_id,
             status=application.status,
             applied_at=application.applied_at,
+            notes=application.notes,
         )
         for application in applications
     }
@@ -120,7 +121,9 @@ def upsert_application_for_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if payload.resume_id is not None:
+    update_fields = payload.model_fields_set
+
+    if "resume_id" in update_fields and payload.resume_id is not None:
         resume = db.get(Resume, payload.resume_id)
         if resume is None or resume.user_id != INITIAL_USER_ID:
             raise HTTPException(status_code=404, detail="Resume not found")
@@ -144,8 +147,11 @@ def upsert_application_for_job(
         db.add(application)
     else:
         application.status = payload.status
-        application.resume_id = payload.resume_id
-        application.notes = payload.notes
+
+        if "resume_id" in update_fields:
+            application.resume_id = payload.resume_id
+        if "notes" in update_fields:
+            application.notes = payload.notes
 
         if payload.status == "applied" and application.applied_at is None:
             application.applied_at = datetime.utcnow()

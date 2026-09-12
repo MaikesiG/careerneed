@@ -153,6 +153,7 @@ class ApplicationJobState(BaseModel):
     resume_id: uuid.UUID | None
     status: ApplicationStatus
     applied_at: datetime | None
+    notes: str | None
 
 
 class ApplicationJobStateMap(BaseModel):

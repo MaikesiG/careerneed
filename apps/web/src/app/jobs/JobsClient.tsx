@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Job = {
@@ -25,6 +26,14 @@ type ApplicationState = {
   resume_id: string | null;
   status: ApplicationStatus;
   applied_at: string | null;
+  notes: string | null;
+};
+
+type Resume = {
+  id: string;
+  filename: string;
+  label: string | null;
+  is_default: boolean;
 };
 
 type ApplicationStateResponse = {
@@ -296,7 +305,11 @@ export default function JobsClient({
   const [searchInput, setSearchInput] = useState(initialFilters.q);
   const [applicationStates, setApplicationStates] = useState<Record<string, ApplicationState>>({});
   const [isLoadingStates, setIsLoadingStates] = useState(true);
+  const [resumes, setResumes] = useState<Resume[]>([]);
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [draftNotes, setDraftNotes] = useState("");
+  const [draftResumeId, setDraftResumeId] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -365,6 +378,35 @@ export default function JobsClient({
       controller.abort();
     };
   }, [jobIds]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadResumes() {
+      try {
+        const response = await fetch(`${API_URL}/resumes`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readError(response, "Unable to load resumes."));
+        }
+
+        setResumes((await response.json()) as Resume[]);
+      } catch (caughtError) {
+        if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+          return;
+        }
+
+        setError(caughtError instanceof Error ? caughtError.message : "Unable to load resumes.");
+      }
+    }
+
+    void loadResumes();
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -693,7 +735,11 @@ export default function JobsClient({
     }, 300);
   }
 
-  async function updateApplicationStatus(jobId: string, status: ApplicationStatus) {
+  async function updateApplicationStatus(
+    jobId: string,
+    status: ApplicationStatus,
+    details?: { notes?: string; resumeId?: string | null }
+  ) {
     clearFeedback();
     setUpdatingJobId(jobId);
 
@@ -703,7 +749,11 @@ export default function JobsClient({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          ...(details?.notes !== undefined ? { notes: details.notes } : {}),
+          ...(details?.resumeId !== undefined ? { resume_id: details.resumeId } : {}),
+        }),
       });
 
       if (!response.ok) {
@@ -718,6 +768,7 @@ export default function JobsClient({
       }));
 
       setNotice(`Job marked as ${trackingLabel(updated.status)}.`);
+      setEditingJobId(null);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -727,6 +778,20 @@ export default function JobsClient({
     } finally {
       setUpdatingJobId(null);
     }
+  }
+
+  function openApplicationDetails(jobId: string) {
+    const applicationState = applicationStates[jobId];
+    setEditingJobId(jobId);
+    setDraftNotes(applicationState?.notes ?? "");
+    setDraftResumeId(applicationState?.resume_id ?? "");
+  }
+
+  function saveApplicationDetails(jobId: string) {
+    void updateApplicationStatus(jobId, applicationStates[jobId]?.status ?? "saved", {
+      notes: draftNotes.trim() || null,
+      resumeId: draftResumeId || null,
+    });
   }
 
   async function removeApplicationTracking(jobId: string) {
@@ -774,14 +839,22 @@ export default function JobsClient({
             </p>
           </div>
 
-          <button
-            className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isRefreshing}
-            onClick={refreshJobs}
-            type="button"
-          >
-            {isRefreshing ? "Refreshing..." : "Refresh jobs"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className="h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              href="/applications"
+            >
+              My applications
+            </Link>
+            <button
+              className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isRefreshing}
+              onClick={refreshJobs}
+              type="button"
+            >
+              {isRefreshing ? "Refreshing..." : "Refresh jobs"}
+            </button>
+          </div>
         </header>
 
         {error ? (
@@ -1177,43 +1250,38 @@ export default function JobsClient({
                           View posting
                         </a>
 
-                        <button
-                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                            applicationState?.status === "saved"
-                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                          }`}
+                        <label className="sr-only" htmlFor={`application-status-${job.id}`}>
+                          Tracking status for {job.title}
+                        </label>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isLoadingStates || isUpdating}
-                          onClick={() => void updateApplicationStatus(job.id, "saved")}
-                          type="button"
+                          id={`application-status-${job.id}`}
+                          onChange={(event) => {
+                            const status = event.target.value as ApplicationStatus;
+                            if (status) {
+                              void updateApplicationStatus(job.id, status);
+                            }
+                          }}
+                          value={applicationState?.status ?? ""}
                         >
-                          {isUpdating ? "Updating..." : "Save"}
-                        </button>
+                          <option disabled value="">
+                            {isUpdating ? "Updating..." : "Track job"}
+                          </option>
+                          {APPLICATION_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
 
                         <button
-                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                            applicationState?.status === "applied"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                          }`}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isLoadingStates || isUpdating}
-                          onClick={() => void updateApplicationStatus(job.id, "applied")}
+                          onClick={() => openApplicationDetails(job.id)}
                           type="button"
                         >
-                          {isUpdating ? "Updating..." : "Mark applied"}
-                        </button>
-
-                        <button
-                          className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                            applicationState?.status === "withdrawn"
-                              ? "border-slate-300 bg-slate-100 text-slate-700"
-                              : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                          }`}
-                          disabled={isLoadingStates || isUpdating}
-                          onClick={() => void updateApplicationStatus(job.id, "withdrawn")}
-                          type="button"
-                        >
-                          {isUpdating ? "Updating..." : "Not interested"}
+                          Details
                         </button>
 
                         {applicationState ? (
@@ -1228,6 +1296,55 @@ export default function JobsClient({
                         ) : null}
                       </div>
                     </div>
+
+                    {editingJobId === job.id ? (
+                      <div className="mt-5 grid gap-3 border-t border-slate-200 pt-5 sm:grid-cols-2">
+                        <label className="grid gap-2 text-sm font-medium text-slate-700">
+                          Resume version
+                          <select
+                            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal"
+                            onChange={(event) => setDraftResumeId(event.target.value)}
+                            value={draftResumeId}
+                          >
+                            <option value="">No resume linked</option>
+                            {resumes.map((resume) => (
+                              <option key={resume.id} value={resume.id}>
+                                {resume.label ?? resume.filename}
+                                {resume.is_default ? " (Default)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="grid gap-2 text-sm font-medium text-slate-700 sm:row-span-2">
+                          Notes
+                          <textarea
+                            className="min-h-24 rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                            onChange={(event) => setDraftNotes(event.target.value)}
+                            placeholder="Add context, contacts, or next steps"
+                            value={draftNotes}
+                          />
+                        </label>
+
+                        <div className="flex flex-wrap items-end gap-2">
+                          <button
+                            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isUpdating}
+                            onClick={() => saveApplicationDetails(job.id)}
+                            type="button"
+                          >
+                            Save details
+                          </button>
+                          <button
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            onClick={() => setEditingJobId(null)}
+                            type="button"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}

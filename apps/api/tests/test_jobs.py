@@ -179,6 +179,33 @@ def test_list_jobs_matches_historical_workplace_type_variants(
     assert str(distributed_job.id) in remote_job_ids
 
 
+def test_application_by_job_update_preserves_notes_when_only_status_changes(
+    client: TestClient, db_session: Session
+) -> None:
+    ensure_initial_user(db_session)
+    job = create_job(db_session, title="Application details job")
+
+    created_response = client.put(
+        f"/applications/by-job/{job.id}",
+        json={"status": "saved", "notes": "Ask Casey for a referral."},
+    )
+    updated_response = client.put(
+        f"/applications/by-job/{job.id}",
+        json={"status": "interviewing"},
+    )
+    state_response = client.get(
+        "/applications/me/job-states",
+        params={"job_id": str(job.id)},
+    )
+
+    assert created_response.status_code == 200
+    assert updated_response.status_code == 200
+    assert updated_response.json()["status"] == "interviewing"
+    assert updated_response.json()["notes"] == "Ask Casey for a referral."
+    assert state_response.status_code == 200
+    assert state_response.json()["states"][str(job.id)]["notes"] == "Ask Casey for a referral."
+
+
 def test_list_jobs_filters_tracking_status_for_initial_user_only(
     client: TestClient, db_session: Session
 ) -> None:
