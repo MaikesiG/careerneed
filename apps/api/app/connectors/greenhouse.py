@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.connectors.scoring import calculate_match_score
 from app.models import Company, Job
+from app.normalization import normalize_workplace_type
 
 GREENHOUSE_API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
@@ -71,7 +72,7 @@ def sync_greenhouse_jobs(db: Session, board_token: str, company_name: str) -> di
             external_job_id=external_job_id,
             title=title,
             location=location,
-            workplace_type="Unknown",
+            workplace_type=normalize_workplace_type(None),
             description=description,
             application_url=application_url,
             source_url=f"https://job-boards.greenhouse.io/{board_token}",

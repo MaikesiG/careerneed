@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.connectors.scoring import calculate_match_score
 from app.database import get_db
 from app.models import Application, Job
+from app.normalization import normalize_workplace_type, workplace_type_filter_values
 from app.schemas import JobDetail, JobManualCreate, JobOut, JobStatusUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -87,21 +88,16 @@ def list_jobs(
     statement = select(Job)
 
     requested_application_statuses = {
-        value.strip().lower()
-        for value in application_status
-        if value and value.strip()
+        value.strip().lower() for value in application_status if value and value.strip()
     }
 
-    invalid_application_statuses = (
-        requested_application_statuses - ALLOWED_APPLICATION_STATUSES
-    )
+    invalid_application_statuses = requested_application_statuses - ALLOWED_APPLICATION_STATUSES
 
     if invalid_application_statuses:
         raise HTTPException(
             status_code=422,
             detail=(
-                "Invalid application status: "
-                + ", ".join(sorted(invalid_application_statuses))
+                "Invalid application status: " + ", ".join(sorted(invalid_application_statuses))
             ),
         )
 
@@ -128,9 +124,18 @@ def list_jobs(
     workplace_types = {value.strip().lower() for value in workplace_type if value and value.strip()}
 
     if workplace_types:
-        statement = statement.where(
-            func.lower(func.coalesce(Job.workplace_type, "")).in_(workplace_types)
+        historical_workplace_types = set().union(
+            *(workplace_type_filter_values(value) for value in workplace_types)
         )
+        compact_workplace_type = func.lower(
+            func.regexp_replace(
+                func.lower(func.coalesce(Job.workplace_type, "")),
+                "[^a-z]",
+                "",
+                "g",
+            )
+        )
+        statement = statement.where(compact_workplace_type.in_(historical_workplace_types))
 
     if q and q.strip():
         search_term = f"%{q.strip()}%"
@@ -266,7 +271,7 @@ def create_manual_job(payload: JobManualCreate, db: Session = Depends(get_db)) -
         source_type="manual_user_entry",
         title=payload.title,
         location=payload.location,
-        workplace_type=payload.workplace_type,
+        workplace_type=normalize_workplace_type(payload.workplace_type),
         description=payload.description,
         application_url=payload.application_url,
         source_url=payload.source_url,

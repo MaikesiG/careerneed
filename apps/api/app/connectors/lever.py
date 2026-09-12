@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.connectors.scoring import calculate_match_score
 from app.models import Company, Job
+from app.normalization import normalize_workplace_type
 
 LEVER_API_BASE = "https://api.lever.co/v0/postings"
 
@@ -68,7 +69,7 @@ def sync_lever_jobs(db: Session, company_slug: str, company_name: str) -> dict:
         location = (categories.get("location") or "Remote")[:500]
         title = raw.get("text", "Untitled")
         description = raw.get("descriptionPlain") or raw.get("description") or ""
-        workplace_type = raw.get("workplaceType") or "Unknown"
+        workplace_type = normalize_workplace_type(raw.get("workplaceType"))
 
         posted_at = None
         created_at_ms = raw.get("createdAt")

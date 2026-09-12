@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.connectors.scoring import calculate_match_score
 from app.models import Company, Job
+from app.normalization import normalize_workplace_type
 
 ASHBY_API_BASE = "https://api.ashbyhq.com/posting-api/job-board"
 
@@ -28,9 +29,7 @@ def fetch_ashby_jobs(board_token: str) -> list[dict]:
             f"uses Ashby and that its public job board name is correct."
         ) from exc
     except httpx.RequestError as exc:
-        raise ValueError(
-            f"Could not reach Ashby for board_token='{board_token}': {exc}"
-        ) from exc
+        raise ValueError(f"Could not reach Ashby for board_token='{board_token}': {exc}") from exc
 
     data = response.json()
     jobs = data.get("jobs")
@@ -134,9 +133,9 @@ def sync_ashby_jobs(db: Session, board_token: str, company_name: str) -> dict:
         if not isinstance(description, str):
             description = ""
 
-        workplace_type = raw_job.get("workplaceType")
-        if not isinstance(workplace_type, str) or not workplace_type:
-            workplace_type = "Remote" if raw_job.get("isRemote") else "Unknown"
+        workplace_type = normalize_workplace_type(
+            raw_job.get("workplaceType"), is_remote=raw_job.get("isRemote") is True
+        )
 
         job = Job(
             company_id=company.id,

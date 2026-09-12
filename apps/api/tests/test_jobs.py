@@ -33,14 +33,16 @@ def client(db_session: Session) -> TestClient:
         yield test_client
 
 
-def create_job(db_session: Session, *, title: str) -> Job:
+def create_job(db_session: Session, *, title: str, workplace_type: str = "unknown") -> Job:
     job = Job(
         company_name="Regression Test Co.",
         source="manual",
         source_type="manual_user_entry",
         external_job_id=str(uuid.uuid4()),
         title=title,
+        workplace_type=workplace_type,
         application_url="https://example.com/apply",
+        match_score=100,
     )
     db_session.add(job)
     db_session.flush()
@@ -155,6 +157,26 @@ def test_list_jobs_rejects_invalid_application_status(client: TestClient) -> Non
     response = client.get("/jobs", params={"application_status": "not-a-real-status"})
 
     assert response.status_code == 422
+
+
+def test_list_jobs_matches_historical_workplace_type_variants(
+    client: TestClient, db_session: Session
+) -> None:
+    onsite_job = create_job(db_session, title="Historical onsite role", workplace_type="OnSite")
+    distributed_job = create_job(
+        db_session, title="Historical distributed role", workplace_type="Distributed"
+    )
+
+    onsite_response = client.get("/jobs", params={"workplace_type": "onsite"})
+    remote_response = client.get("/jobs", params={"workplace_type": "remote"})
+
+    onsite_job_ids = {job["id"] for job in onsite_response.json()}
+    remote_job_ids = {job["id"] for job in remote_response.json()}
+
+    assert onsite_response.status_code == 200
+    assert remote_response.status_code == 200
+    assert str(onsite_job.id) in onsite_job_ids
+    assert str(distributed_job.id) in remote_job_ids
 
 
 def test_list_jobs_filters_tracking_status_for_initial_user_only(

@@ -125,6 +125,18 @@ function formatDate(value: string | null): string {
   }).format(parsedDate);
 }
 
+function formatWorkplaceType(value: string | null): string {
+  if (!value || value === "unknown") {
+    return "Not specified";
+  }
+
+  if (value === "onsite") {
+    return "On-site";
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function providerLabel(source: string): string {
   const normalizedSource = source.trim().toLowerCase();
 
@@ -1136,11 +1148,15 @@ export default function JobsClient({
                           </div>
                           <div>
                             <dt className="font-medium text-slate-700">Work type</dt>
-                            <dd className="mt-1">{job.workplace_type ?? "Not specified"}</dd>
+                            <dd className="mt-1">{formatWorkplaceType(job.workplace_type)}</dd>
                           </div>
                           <div>
-                            <dt className="font-medium text-slate-700">Posted</dt>
-                            <dd className="mt-1">{formatDate(job.posted_at)}</dd>
+                            <dt className="font-medium text-slate-700">
+                              {job.posted_at ? "Posted" : "Added or posted"}
+                            </dt>
+                            <dd className="mt-1">
+                              {formatDate(job.posted_at ?? job.first_seen_at)}
+                            </dd>
                           </div>
                         </dl>
 
