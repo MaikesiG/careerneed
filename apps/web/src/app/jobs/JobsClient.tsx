@@ -789,7 +789,7 @@ export default function JobsClient({
 
   function saveApplicationDetails(jobId: string) {
     void updateApplicationStatus(jobId, applicationStates[jobId]?.status ?? "saved", {
-      notes: draftNotes.trim() || null,
+      notes: draftNotes.trim() || undefined,
       resumeId: draftResumeId || null,
     });
   }

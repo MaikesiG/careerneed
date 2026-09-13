@@ -165,14 +165,23 @@ export default async function ApplicationsPage({
                       </p>
                     ) : null}
                   </div>
-                  <a
-                    className="h-fit rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                    href={application.job.application_url}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    View posting
-                  </a>
+                  <div className="flex h-fit shrink-0 flex-wrap gap-2">
+                    <Link
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      href={`/applications/${application.id}`}
+                    >
+                      View details
+                    </Link>
+
+                    <a
+                      className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                      href={application.job.application_url}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      View posting
+                    </a>
+                  </div>
                 </div>
                 <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-4 text-sm text-slate-500">
                   {application.applied_at ? (
