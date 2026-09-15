@@ -14,3 +14,4 @@ pdfplumber==0.11.10
 python-multipart
 cryptography
 openai
+argon2-cffi

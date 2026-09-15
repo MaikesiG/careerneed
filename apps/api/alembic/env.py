@@ -8,7 +8,7 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.getcwd())
 
 from app.database import Base
-from app.models import ApplicationContact, Company, Job, Resume  # noqa: F401
+from app.models import ApplicationContact, Company, Job, Resume, User, UserSession  # noqa: F401
 
 config = context.config
 
