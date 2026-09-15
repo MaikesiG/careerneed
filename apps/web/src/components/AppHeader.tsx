@@ -28,11 +28,11 @@ export default function AppHeader() {
   const pathname = usePathname() ?? "/";
 
   return (
-    <header className="border-b border-border bg-card/95 backdrop-blur">
+    <header className="border-border bg-card/95 border-b backdrop-blur">
       <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="shrink-0 text-lg font-bold tracking-tight text-foreground transition hover:text-primary"
+          className="text-foreground hover:text-primary shrink-0 text-lg font-bold tracking-tight transition"
         >
           CareerNeed
         </Link>

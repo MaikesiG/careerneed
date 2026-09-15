@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 import uuid
 
 import pytest
@@ -330,3 +331,114 @@ def test_list_jobs_filters_by_location_query(
     assert combined_response.status_code == 200
     combined_titles = {job["title"] for job in combined_response.json()}
     assert "Remote role" in combined_titles
+
+def test_dashboard_summary_returns_expected_shape(
+    client: TestClient,
+) -> None:
+    response = client.get("/dashboard/summary")
+
+    assert response.status_code == 200
+
+    summary = response.json()
+    expected_keys = {
+        "follow_ups_due_today",
+        "follow_ups_overdue",
+        "applications_saved",
+        "applications_applied",
+        "applications_interviewing",
+        "active_applications",
+    }
+
+    assert set(summary) == expected_keys
+    assert all(isinstance(summary[key], int) and summary[key] >= 0 for key in expected_keys)
+    assert summary["active_applications"] == (
+        summary["applications_applied"] + summary["applications_interviewing"]
+    )
+
+
+def test_dashboard_summary_counts_added_records_and_excludes_other_users(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    before_response = client.get("/dashboard/summary")
+    assert before_response.status_code == 200
+    before = before_response.json()
+
+    ensure_initial_user(db_session)
+
+    other_user = User(id=uuid.uuid4(), email="other-dashboard-user@example.test")
+    db_session.add(other_user)
+    db_session.flush()
+
+    today = date.today()
+
+    saved_job = create_job(db_session, title="Dashboard saved role")
+    applied_job = create_job(db_session, title="Dashboard applied role")
+    interviewing_job = create_job(db_session, title="Dashboard interviewing role")
+    offer_job = create_job(db_session, title="Dashboard offer role")
+    rejected_job = create_job(db_session, title="Dashboard rejected role")
+    withdrawn_job = create_job(db_session, title="Dashboard withdrawn role")
+    future_follow_up_job = create_job(db_session, title="Dashboard future follow-up role")
+    other_user_job = create_job(db_session, title="Other user dashboard role")
+
+    db_session.add_all(
+        [
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=saved_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=applied_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=interviewing_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=1),
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=offer_job.id,
+                status="offer",
+                follow_up_on=today - timedelta(days=3),
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=rejected_job.id,
+                status="rejected",
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=withdrawn_job.id,
+                status="withdrawn",
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=future_follow_up_job.id,
+                status="saved",
+                follow_up_on=today + timedelta(days=1),
+            ),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    after_response = client.get("/dashboard/summary")
+    assert after_response.status_code == 200
+    after = after_response.json()
+
+    assert after["follow_ups_due_today"] == before["follow_ups_due_today"] + 1
+    assert after["follow_ups_overdue"] == before["follow_ups_overdue"] + 2
+    assert after["applications_saved"] == before["applications_saved"] + 2
+    assert after["applications_applied"] == before["applications_applied"] + 1
+    assert after["applications_interviewing"] == before["applications_interviewing"] + 1
+    assert after["active_applications"] == before["active_applications"] + 2

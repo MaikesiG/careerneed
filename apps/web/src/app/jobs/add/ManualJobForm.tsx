@@ -94,7 +94,7 @@ export default function ManualJobForm() {
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 sm:grid-cols-2">
-        <label className="block text-sm font-medium text-foreground">
+        <label className="text-foreground block text-sm font-medium">
           Company name <span className="text-cyan-400">*</span>
           <input
             className={fieldClassName}
@@ -108,7 +108,7 @@ export default function ManualJobForm() {
           />
         </label>
 
-        <label className="block text-sm font-medium text-foreground">
+        <label className="text-foreground block text-sm font-medium">
           Job title <span className="text-cyan-400">*</span>
           <input
             className={fieldClassName}
@@ -122,7 +122,7 @@ export default function ManualJobForm() {
         </label>
       </div>
 
-      <label className="block text-sm font-medium text-foreground">
+      <label className="text-foreground block text-sm font-medium">
         Application URL <span className="text-cyan-400">*</span>
         <input
           className={fieldClassName}
@@ -133,13 +133,13 @@ export default function ManualJobForm() {
           placeholder="https://company.com/careers/job-id"
           required
         />
-        <span className="mt-2 block text-xs font-normal text-muted-foreground">
+        <span className="text-muted-foreground mt-2 block text-xs font-normal">
           The link you would use to apply for this role.
         </span>
       </label>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <label className="block text-sm font-medium text-foreground">
+        <label className="text-foreground block text-sm font-medium">
           Location
           <input
             className={fieldClassName}
@@ -151,7 +151,7 @@ export default function ManualJobForm() {
           />
         </label>
 
-        <label className="block text-sm font-medium text-foreground">
+        <label className="text-foreground block text-sm font-medium">
           Workplace type
           <select
             className={fieldClassName}
@@ -167,7 +167,7 @@ export default function ManualJobForm() {
         </label>
       </div>
 
-      <label className="block text-sm font-medium text-foreground">
+      <label className="text-foreground block text-sm font-medium">
         Job description
         <textarea
           className={fieldClassName}
@@ -179,7 +179,7 @@ export default function ManualJobForm() {
         />
       </label>
 
-      <label className="block text-sm font-medium text-foreground">
+      <label className="text-foreground block text-sm font-medium">
         Source URL
         <input
           className={fieldClassName}
@@ -189,14 +189,14 @@ export default function ManualJobForm() {
           onChange={(event) => updateValue("source_url", event.target.value)}
           placeholder="https://linkedin.com/jobs/view/..."
         />
-        <span className="mt-2 block text-xs font-normal text-muted-foreground">
+        <span className="text-muted-foreground mt-2 block text-xs font-normal">
           Optional: where you originally found the role.
         </span>
       </label>
 
       {error && (
         <div
-          className="rounded-lg border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
+          className="border-error-border bg-error-background text-destructive rounded-lg border px-4 py-3 text-sm"
           role="alert"
         >
           {error}
@@ -205,7 +205,7 @@ export default function ManualJobForm() {
 
       <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
         <button
-          className="rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           onClick={() => router.push("/jobs")}
           disabled={isSubmitting}
@@ -213,7 +213,7 @@ export default function ManualJobForm() {
           Cancel
         </button>
         <button
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="bg-primary text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={isSubmitting}
         >

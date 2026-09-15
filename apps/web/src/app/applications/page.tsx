@@ -166,21 +166,21 @@ export default async function ApplicationsPage({
   const applications = await getApplications(selectedStatus, selectedFollowUp);
 
   return (
-    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
+    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
+            <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
               CareerNeed
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">My applications</h1>
-            <p className="mt-3 max-w-2xl text-muted-foreground">
+            <p className="text-muted-foreground mt-3 max-w-2xl">
               Track every role you saved or applied to. Results are ordered by most recently
               updated.
             </p>
           </div>
           <Link
-            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2 text-sm font-semibold transition"
             href="/jobs"
           >
             Browse jobs
@@ -228,12 +228,12 @@ export default async function ApplicationsPage({
           ))}
         </nav>
 
-        <p className="mb-4 text-sm text-muted-foreground">{applications.length} tracked jobs</p>
+        <p className="text-muted-foreground mb-4 text-sm">{applications.length} tracked jobs</p>
 
         {applications.length === 0 ? (
-          <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-center shadow-sm">
+          <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
             <h2 className="text-lg font-semibold">No tracked jobs here yet</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-2 text-sm">
               Choose a tracking status from any job card to start your workflow.
             </p>
           </section>
@@ -244,7 +244,7 @@ export default async function ApplicationsPage({
 
               return (
                 <article
-                  className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+                  className="border-border bg-card rounded-2xl border p-5 shadow-sm"
                   key={application.id}
                 >
                   <div className="flex flex-col justify-between gap-4 sm:flex-row">
@@ -266,28 +266,28 @@ export default async function ApplicationsPage({
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-2 text-sm font-medium text-foreground">
+                      <p className="text-foreground mt-2 text-sm font-medium">
                         {application.job.company_name}
                       </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <p className="text-muted-foreground mt-1 text-sm">
                         {application.job.location ?? "Location not specified"}
                       </p>
                       {application.notes ? (
-                        <p className="mt-3 text-sm whitespace-pre-wrap text-muted-foreground">
+                        <p className="text-muted-foreground mt-3 text-sm whitespace-pre-wrap">
                           {application.notes}
                         </p>
                       ) : null}
                     </div>
                     <div className="flex h-fit shrink-0 flex-wrap gap-2">
                       <Link
-                        className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                        className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                         href={`/applications/${application.id}`}
                       >
                         View details
                       </Link>
 
                       <a
-                        className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                        className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                         href={application.job.application_url}
                         rel="noopener noreferrer"
                         target="_blank"
@@ -296,7 +296,7 @@ export default async function ApplicationsPage({
                       </a>
                     </div>
                   </div>
-                  <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-4 text-sm text-muted-foreground">
+                  <footer className="border-border text-muted-foreground mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t pt-4 text-sm">
                     {application.applied_at ? (
                       <span>Applied {formatDate(application.applied_at)}</span>
                     ) : null}

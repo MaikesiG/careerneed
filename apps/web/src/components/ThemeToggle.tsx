@@ -29,7 +29,7 @@ export default function ThemeToggle() {
 
   return (
     <div
-      className="inline-flex rounded-lg border border-border bg-card p-1 shadow-sm"
+      className="border-border bg-card inline-flex rounded-lg border p-1 shadow-sm"
       aria-label="Color theme"
       role="group"
     >

@@ -835,36 +835,36 @@ export default function JobsClient({
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
+    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
+            <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
               CareerNeed
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Job dashboard</h1>
-            <p className="mt-3 max-w-3xl text-muted-foreground">
+            <p className="text-muted-foreground mt-3 max-w-3xl">
               Search and filter jobs across all synced Ashby, Greenhouse, and Lever company sources.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Link
-              className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+              className="bg-primary text-primary-foreground inline-flex h-10 items-center rounded-lg px-4 text-sm font-semibold transition hover:opacity-90"
               href="/jobs/add"
             >
               + Add a job
             </Link>
 
             <Link
-              className="inline-flex h-10 items-center rounded-lg border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-muted"
+              className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-4 text-sm font-semibold transition"
               href="/applications"
             >
               My applications
             </Link>
 
             <button
-              className="h-10 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isRefreshing}
               onClick={refreshJobs}
               type="button"
@@ -876,13 +876,13 @@ export default function JobsClient({
 
         {error ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
+            className="border-error-border bg-error-background text-destructive mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
             role="alert"
           >
             <p>{error}</p>
             <button
               aria-label="Dismiss error"
-              className="shrink-0 font-semibold text-destructive hover:opacity-80"
+              className="text-destructive shrink-0 font-semibold hover:opacity-80"
               onClick={() => setError(null)}
               type="button"
             >
@@ -893,13 +893,13 @@ export default function JobsClient({
 
         {notice ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
+            className="border-success-border bg-success-background text-success mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
             role="status"
           >
             <p>{notice}</p>
             <button
               aria-label="Dismiss notification"
-              className="shrink-0 font-semibold text-success hover:opacity-80"
+              className="text-success shrink-0 font-semibold hover:opacity-80"
               onClick={() => setNotice(null)}
               type="button"
             >
@@ -908,12 +908,12 @@ export default function JobsClient({
           </div>
         ) : null}
 
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <section className="border-border bg-card rounded-2xl border p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div>
                 <h2 className="text-lg font-semibold">Find relevant roles</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-1 text-sm">
                   Showing {firstJobNumber}–{lastJobNumber} of {totalJobs} matching jobs.
                 </p>
               </div>
@@ -927,7 +927,7 @@ export default function JobsClient({
                 initialFilters.dateRange !== "all" ||
                 keywordGroups.length > 0) && (
                 <button
-                  className="text-sm font-semibold text-primary hover:opacity-80"
+                  className="text-primary text-sm font-semibold hover:opacity-80"
                   onClick={clearFilters}
                   type="button"
                 >
@@ -945,7 +945,7 @@ export default function JobsClient({
               </label>
 
               <input
-                className="h-10 min-w-0 rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="border-border focus:border-primary focus:ring-primary/20 h-10 min-w-0 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
                 id="job-search"
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search title or company"
@@ -958,7 +958,7 @@ export default function JobsClient({
               </label>
 
               <input
-                className="h-10 min-w-0 rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="border-border focus:border-primary focus:ring-primary/20 h-10 min-w-0 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
                 id="location-search"
                 onChange={(event) => setLocationInput(event.target.value)}
                 placeholder="Country, state, province, or city"
@@ -967,7 +967,7 @@ export default function JobsClient({
               />
 
               <button
-                className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+                className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold transition hover:opacity-90"
                 type="submit"
               >
                 Search
@@ -976,17 +976,17 @@ export default function JobsClient({
 
             <div className="grid gap-5 lg:grid-cols-2">
               <fieldset>
-                <legend className="mb-2 text-sm font-medium text-foreground">Match score</legend>
+                <legend className="text-foreground mb-2 text-sm font-medium">Match score</legend>
 
                 <div className="flex flex-wrap gap-2">
                   {MATCH_SCORE_OPTIONS.map((option) => (
                     <label
-                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted"
+                      className="border-border bg-background text-foreground hover:bg-muted flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition"
                       key={option.label}
                     >
                       <input
                         checked={initialFilters.minMatchScore === option.value}
-                        className="h-4 w-4 accent-primary"
+                        className="accent-primary h-4 w-4"
                         name="min-match-score"
                         onChange={() => updateMinMatchScore(option.value)}
                         type="radio"
@@ -997,11 +997,11 @@ export default function JobsClient({
                 </div>
               </fieldset>
 
-              <label className="grid gap-2 text-sm font-medium text-foreground">
+              <label className="text-foreground grid gap-2 text-sm font-medium">
                 Sort results
                 <div className="flex h-10 gap-2">
                   <select
-                    className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="border-border bg-background focus:border-primary focus:ring-primary/20 h-10 flex-1 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
                     onChange={(event) =>
                       updateSort(event.target.value, initialFilters.sortDirection)
                     }
@@ -1020,7 +1020,7 @@ export default function JobsClient({
                         ? "Switch to ascending order"
                         : "Switch to descending order"
                     }
-                    className="h-10 shrink-0 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+                    className="border-border bg-background text-foreground hover:bg-muted h-10 shrink-0 rounded-lg border px-3 text-sm font-semibold transition"
                     onClick={toggleSortDirection}
                     type="button"
                   >
@@ -1030,16 +1030,16 @@ export default function JobsClient({
               </label>
 
               <fieldset>
-                <legend className="mb-2 text-sm font-medium text-foreground">Providers</legend>
+                <legend className="text-foreground mb-2 text-sm font-medium">Providers</legend>
                 <div className="flex flex-wrap gap-2">
                   {PROVIDER_OPTIONS.map((option) => (
                     <label
-                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted"
+                      className="border-border bg-background text-foreground hover:bg-muted flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition"
                       key={option.value}
                     >
                       <input
                         checked={initialFilters.sources.includes(option.value)}
-                        className="h-4 w-4 accent-primary"
+                        className="accent-primary h-4 w-4"
                         onChange={() => toggleProvider(option.value)}
                         type="checkbox"
                       />
@@ -1050,16 +1050,16 @@ export default function JobsClient({
               </fieldset>
 
               <fieldset>
-                <legend className="mb-2 text-sm font-medium text-foreground">Workplace type</legend>
+                <legend className="text-foreground mb-2 text-sm font-medium">Workplace type</legend>
                 <div className="flex flex-wrap gap-2">
                   {WORKPLACE_OPTIONS.map((option) => (
                     <label
-                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted"
+                      className="border-border bg-background text-foreground hover:bg-muted flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition"
                       key={option.value}
                     >
                       <input
                         checked={initialFilters.workplaceTypes.includes(option.value)}
-                        className="h-4 w-4 accent-primary"
+                        className="accent-primary h-4 w-4"
                         onChange={() => toggleWorkplaceType(option.value)}
                         type="checkbox"
                       />
@@ -1070,18 +1070,18 @@ export default function JobsClient({
               </fieldset>
 
               <fieldset className="lg:col-span-2">
-                <legend className="mb-2 text-sm font-medium text-foreground">
+                <legend className="text-foreground mb-2 text-sm font-medium">
                   My tracking status
                 </legend>
                 <div className="flex flex-wrap gap-2">
                   {APPLICATION_STATUS_OPTIONS.map((option) => (
                     <label
-                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted"
+                      className="border-border bg-background text-foreground hover:bg-muted flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition"
                       key={option.value}
                     >
                       <input
                         checked={initialFilters.applicationStatuses.includes(option.value)}
-                        className="h-4 w-4 accent-primary"
+                        className="accent-primary h-4 w-4"
                         onChange={() => toggleApplicationStatus(option.value)}
                         type="checkbox"
                       />
@@ -1092,16 +1092,18 @@ export default function JobsClient({
               </fieldset>
 
               <fieldset className="lg:col-span-2">
-                <legend className="mb-2 text-sm font-medium text-foreground">Added or posted</legend>
+                <legend className="text-foreground mb-2 text-sm font-medium">
+                  Added or posted
+                </legend>
                 <div className="flex flex-wrap gap-2">
                   {DATE_RANGE_OPTIONS.map((option) => (
                     <label
-                      className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted"
+                      className="border-border bg-background text-foreground hover:bg-muted flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition"
                       key={option.value}
                     >
                       <input
                         checked={initialFilters.dateRange === option.value}
-                        className="h-4 w-4 accent-primary"
+                        className="accent-primary h-4 w-4"
                         name="date-range"
                         onChange={() => updateDateRange(option.value)}
                         type="radio"
@@ -1114,7 +1116,7 @@ export default function JobsClient({
             </div>
 
             <div>
-              <p className="mb-2 text-sm font-medium text-foreground">Search directions</p>
+              <p className="text-foreground mb-2 text-sm font-medium">Search directions</p>
 
               <div className="flex flex-wrap gap-2">
                 {keywordGroups.map((group) => (
@@ -1146,13 +1148,15 @@ export default function JobsClient({
                 ))}
 
                 {keywordGroups.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No search directions yet. Add one below.</p>
+                  <p className="text-muted-foreground text-sm">
+                    No search directions yet. Add one below.
+                  </p>
                 ) : null}
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <input
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-border px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="border-border focus:border-primary focus:ring-primary/20 h-10 min-w-0 flex-1 rounded-lg border px-3 text-sm outline-none focus:ring-2"
                   onChange={(event) => setNewGroupLabel(event.target.value)}
                   placeholder="Direction name, e.g. MLOps"
                   type="text"
@@ -1160,7 +1164,7 @@ export default function JobsClient({
                 />
 
                 <input
-                  className="h-10 min-w-0 flex-[2] rounded-lg border border-border px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="border-border focus:border-primary focus:ring-primary/20 h-10 min-w-0 flex-[2] rounded-lg border px-3 text-sm outline-none focus:ring-2"
                   list="keyword-suggestions"
                   onChange={(event) => setNewGroupKeywords(event.target.value)}
                   placeholder="Keywords, comma separated: mlops, ml platform"
@@ -1175,7 +1179,7 @@ export default function JobsClient({
                 </datalist>
 
                 <button
-                  className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+                  className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold transition hover:opacity-90"
                   onClick={addKeywordGroup}
                   type="button"
                 >
@@ -1190,20 +1194,20 @@ export default function JobsClient({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold">Jobs</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Page {initialPage} of {totalPages}
               </p>
             </div>
 
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Results are filtered, sorted, and paginated by the API.
             </p>
           </div>
 
           {totalJobs === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center shadow-sm">
+            <div className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
               <h3 className="text-lg font-semibold">No jobs match these filters</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="text-muted-foreground mt-2 text-sm">
                 Try removing a filter, changing your search, or sync another company source.
               </p>
             </div>
@@ -1215,7 +1219,7 @@ export default function JobsClient({
 
                 return (
                   <article
-                    className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+                    className="border-border bg-card rounded-2xl border p-5 shadow-sm"
                     key={job.id}
                   >
                     <div className="flex flex-col justify-between gap-5 lg:flex-row">
@@ -1250,21 +1254,21 @@ export default function JobsClient({
                           ) : null}
                         </div>
 
-                        <p className="mt-2 text-sm font-medium text-foreground">
+                        <p className="text-foreground mt-2 text-sm font-medium">
                           {job.company_name}
                         </p>
 
-                        <dl className="mt-4 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+                        <dl className="text-muted-foreground mt-4 grid gap-3 text-sm sm:grid-cols-3">
                           <div>
-                            <dt className="font-medium text-foreground">Location</dt>
+                            <dt className="text-foreground font-medium">Location</dt>
                             <dd className="mt-1">{job.location ?? "Not specified"}</dd>
                           </div>
                           <div>
-                            <dt className="font-medium text-foreground">Work type</dt>
+                            <dt className="text-foreground font-medium">Work type</dt>
                             <dd className="mt-1">{formatWorkplaceType(job.workplace_type)}</dd>
                           </div>
                           <div>
-                            <dt className="font-medium text-foreground">
+                            <dt className="text-foreground font-medium">
                               {job.posted_at ? "Posted" : "Added or posted"}
                             </dt>
                             <dd className="mt-1">
@@ -1274,7 +1278,7 @@ export default function JobsClient({
                         </dl>
 
                         {applicationState?.applied_at ? (
-                          <p className="mt-3 text-sm text-muted-foreground">
+                          <p className="text-muted-foreground mt-3 text-sm">
                             Applied {formatDate(applicationState.applied_at)}
                           </p>
                         ) : null}
@@ -1282,7 +1286,7 @@ export default function JobsClient({
 
                       <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-80 lg:justify-end">
                         <a
-                          className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                           href={job.application_url}
                           rel="noopener noreferrer"
                           target="_blank"
@@ -1294,7 +1298,7 @@ export default function JobsClient({
                           Tracking status for {job.title}
                         </label>
                         <select
-                          className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isLoadingStates || isUpdating}
                           id={`application-status-${job.id}`}
                           onChange={(event) => {
@@ -1316,7 +1320,7 @@ export default function JobsClient({
                         </select>
 
                         <button
-                          className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                          className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isLoadingStates || isUpdating}
                           onClick={() => openApplicationDetails(job.id)}
                           type="button"
@@ -1326,7 +1330,7 @@ export default function JobsClient({
 
                         {applicationState ? (
                           <button
-                            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition hover:bg-destructive/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isLoadingStates || isUpdating}
                             onClick={() => void removeApplicationTracking(job.id)}
                             type="button"
@@ -1338,11 +1342,11 @@ export default function JobsClient({
                     </div>
 
                     {editingJobId === job.id ? (
-                      <div className="mt-5 grid gap-3 border-t border-border pt-5 sm:grid-cols-2">
-                        <label className="grid gap-2 text-sm font-medium text-foreground">
+                      <div className="border-border mt-5 grid gap-3 border-t pt-5 sm:grid-cols-2">
+                        <label className="text-foreground grid gap-2 text-sm font-medium">
                           Resume version
                           <select
-                            className="h-10 rounded-lg border border-border bg-background px-3 text-sm font-normal"
+                            className="border-border bg-background h-10 rounded-lg border px-3 text-sm font-normal"
                             onChange={(event) => setDraftResumeId(event.target.value)}
                             value={draftResumeId}
                           >
@@ -1356,10 +1360,10 @@ export default function JobsClient({
                           </select>
                         </label>
 
-                        <label className="grid gap-2 text-sm font-medium text-foreground sm:row-span-2">
+                        <label className="text-foreground grid gap-2 text-sm font-medium sm:row-span-2">
                           Notes
                           <textarea
-                            className="min-h-24 rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 min-h-24 rounded-lg border px-3 py-2 text-sm font-normal outline-none focus:ring-2"
                             onChange={(event) => setDraftNotes(event.target.value)}
                             placeholder="Add context, contacts, or next steps"
                             value={draftNotes}
@@ -1368,7 +1372,7 @@ export default function JobsClient({
 
                         <div className="flex flex-wrap items-end gap-2">
                           <button
-                            className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isUpdating}
                             onClick={() => saveApplicationDetails(job.id)}
                             type="button"
@@ -1376,7 +1380,7 @@ export default function JobsClient({
                             Save details
                           </button>
                           <button
-                            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                             onClick={() => setEditingJobId(null)}
                             type="button"
                           >
@@ -1394,15 +1398,15 @@ export default function JobsClient({
           {totalPages > 1 ? (
             <nav
               aria-label="Job pagination"
-              className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm"
+              className="border-border bg-card mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 shadow-sm"
             >
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Showing {firstJobNumber}–{lastJobNumber} of {totalJobs} jobs
               </p>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-border text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={initialPage === 1}
                   onClick={() => goToPage(initialPage - 1)}
                   type="button"
@@ -1413,14 +1417,14 @@ export default function JobsClient({
                 {visiblePages[0] && visiblePages[0] > 1 ? (
                   <>
                     <button
-                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                      className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                       onClick={() => goToPage(1)}
                       type="button"
                     >
                       1
                     </button>
                     {visiblePages[0] > 2 ? (
-                      <span className="px-1 text-sm text-muted-foreground">…</span>
+                      <span className="text-muted-foreground px-1 text-sm">…</span>
                     ) : null}
                   </>
                 ) : null}
@@ -1444,10 +1448,10 @@ export default function JobsClient({
                 {visiblePages.at(-1) && visiblePages.at(-1)! < totalPages ? (
                   <>
                     {visiblePages.at(-1)! < totalPages - 1 ? (
-                      <span className="px-1 text-sm text-muted-foreground">…</span>
+                      <span className="text-muted-foreground px-1 text-sm">…</span>
                     ) : null}
                     <button
-                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+                      className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
                       onClick={() => goToPage(totalPages)}
                       type="button"
                     >
@@ -1457,7 +1461,7 @@ export default function JobsClient({
                 ) : null}
 
                 <button
-                  className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-border text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={initialPage === totalPages}
                   onClick={() => goToPage(initialPage + 1)}
                   type="button"

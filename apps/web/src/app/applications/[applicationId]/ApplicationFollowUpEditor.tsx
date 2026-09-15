@@ -93,7 +93,7 @@ export default function ApplicationFollowUpEditor({
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error ? (
         <div
-          className="rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
+          className="border-error-border bg-error-background text-destructive rounded-xl border px-4 py-3 text-sm"
           role="alert"
         >
           {error}
@@ -102,17 +102,17 @@ export default function ApplicationFollowUpEditor({
 
       {notice ? (
         <div
-          className="rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
+          className="border-success-border bg-success-background text-success rounded-xl border px-4 py-3 text-sm"
           role="status"
         >
           {notice}
         </div>
       ) : null}
 
-      <label className="grid gap-2 text-sm font-medium text-foreground">
+      <label className="text-foreground grid gap-2 text-sm font-medium">
         Follow-up date
         <input
-          className="h-10 max-w-xs rounded-lg border border-border bg-background px-3 text-sm text-foreground transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+          className="border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 h-10 max-w-xs rounded-lg border px-3 text-sm transition outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSaving}
           onChange={(event) => {
             setFollowUpOn(event.target.value);
@@ -125,7 +125,7 @@ export default function ApplicationFollowUpEditor({
 
       <div className="flex flex-wrap items-center gap-3">
         <button
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={isSaving || !hasChanges}
           type="submit"
         >
@@ -134,7 +134,7 @@ export default function ApplicationFollowUpEditor({
 
         {savedFollowUpOn ? (
           <button
-            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isSaving}
             onClick={() => {
               void saveFollowUp("");
@@ -145,7 +145,7 @@ export default function ApplicationFollowUpEditor({
           </button>
         ) : null}
 
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           {hasChanges ? "Unsaved changes" : "All changes saved"}
         </p>
       </div>

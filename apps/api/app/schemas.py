@@ -163,6 +163,15 @@ class ApplicationJobStateMap(BaseModel):
     states: dict[str, ApplicationJobState]
 
 
+class DashboardSummaryOut(BaseModel):
+    follow_ups_due_today: int
+    follow_ups_overdue: int
+    applications_saved: int
+    applications_applied: int
+    applications_interviewing: int
+    active_applications: int
+
+
 LLMProvider = Literal["openai", "groq", "anthropic"]
 
 

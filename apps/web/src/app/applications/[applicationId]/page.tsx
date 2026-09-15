@@ -126,19 +126,19 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
   const application = (await response.json()) as ApplicationDetail;
 
   return (
-    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
+    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <Link
-          className="inline-flex text-sm font-semibold text-primary transition hover:opacity-80"
+          className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
           href="/applications"
         >
           ← Back to applications
         </Link>
 
-        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
             <div className="min-w-0">
-              <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
+              <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
                 {application.job.company_name}
               </p>
 
@@ -164,7 +164,7 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
                 </span>
 
                 {application.job.workplace_type ? (
-                  <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  <span className="border-border bg-muted text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-semibold">
                     {application.job.workplace_type}
                   </span>
                 ) : null}
@@ -172,7 +172,7 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
             </div>
 
             <a
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+              className="border-border bg-card text-foreground hover:bg-muted inline-flex shrink-0 items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition"
               href={application.job.application_url}
               rel="noopener noreferrer"
               target="_blank"
@@ -181,29 +181,31 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
             </a>
           </div>
 
-          <dl className="mt-8 grid gap-4 border-t border-border pt-6 text-sm sm:grid-cols-3">
+          <dl className="border-border mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-3">
             <div>
-              <dt className="font-medium text-foreground">Location</dt>
-              <dd className="mt-1 text-muted-foreground">{application.job.location ?? "Not specified"}</dd>
+              <dt className="text-foreground font-medium">Location</dt>
+              <dd className="text-muted-foreground mt-1">
+                {application.job.location ?? "Not specified"}
+              </dd>
             </div>
 
             <div>
-              <dt className="font-medium text-foreground">Workplace type</dt>
-              <dd className="mt-1 text-muted-foreground">
+              <dt className="text-foreground font-medium">Workplace type</dt>
+              <dd className="text-muted-foreground mt-1">
                 {application.job.workplace_type ?? "Not specified"}
               </dd>
             </div>
 
             <div>
-              <dt className="font-medium text-foreground">Applied</dt>
-              <dd className="mt-1 text-muted-foreground">{formatDate(application.applied_at)}</dd>
+              <dt className="text-foreground font-medium">Applied</dt>
+              <dd className="text-muted-foreground mt-1">{formatDate(application.applied_at)}</dd>
             </div>
           </dl>
         </section>
 
-        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <h2 className="text-xl font-semibold">Follow-up</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-1 text-sm">
             Set a date so you know when to contact a recruiter or check on the application.
           </p>
 
@@ -215,9 +217,9 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
           </div>
         </section>
 
-        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <h2 className="text-xl font-semibold">Notes</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-1 text-sm">
             Keep recruiter messages, interview context, and follow-up details in one place.
           </p>
 
