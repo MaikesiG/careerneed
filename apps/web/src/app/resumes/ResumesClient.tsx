@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type Resume = {
   id: string;
@@ -19,11 +19,7 @@ type ResumeUpdate = {
   archived_at?: string | null;
 };
 
-type ResumesClientProps = {
-  initialResumes: Resume[];
-};
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -32,29 +28,8 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
-
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
-
-export default function ResumesClient({ initialResumes }: ResumesClientProps) {
-  const [resumes, setResumes] = useState<Resume[]>(initialResumes);
+export default function ResumesClient() {
+  const [resumes, setResumes] = useState<Resume[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -83,12 +58,12 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(`${API_URL}/resumes?include_archived=${includeArchived}`, {
+      const response = await apiFetch(`/resumes?include_archived=${includeArchived}`, {
         cache: "no-store",
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to load resumes."));
+        throw new Error(await getApiErrorMessage(response, "Unable to load resumes."));
       }
 
       setResumes((await response.json()) as Resume[]);
@@ -104,12 +79,45 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
     await loadResumes(showArchived);
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialResumes() {
+      try {
+        const response = await apiFetch("/resumes?include_archived=false", {
+          cache: "no-store",
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(await getApiErrorMessage(response, "Unable to load resumes."));
+        }
+
+        setResumes((await response.json()) as Resume[]);
+        setError(null);
+      } catch (caughtError) {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : "Unable to load resumes.");
+        }
+      }
+    }
+
+    void loadInitialResumes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function updateResume(resumeId: string, update: ResumeUpdate, successMessage: string) {
     setActiveActionId(resumeId);
     clearFeedback();
 
     try {
-      const response = await fetch(`${API_URL}/resumes/${resumeId}`, {
+      const response = await apiFetch(`/resumes/${resumeId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -118,7 +126,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to update resume."));
+        throw new Error(await getApiErrorMessage(response, "Unable to update resume."));
       }
 
       setNotice(successMessage);
@@ -156,13 +164,13 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
     formData.append("is_default", String(makeDefaultOnUpload));
 
     try {
-      const response = await fetch(`${API_URL}/resumes/upload`, {
+      const response = await apiFetch("/resumes/upload", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to upload resume."));
+        throw new Error(await getApiErrorMessage(response, "Unable to upload resume."));
       }
 
       setFile(null);
@@ -214,12 +222,12 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
     clearFeedback();
 
     try {
-      const response = await fetch(`${API_URL}/resumes/${resume.id}`, {
+      const response = await apiFetch(`/resumes/${resume.id}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to delete resume."));
+        throw new Error(await getApiErrorMessage(response, "Unable to delete resume."));
       }
 
       setNotice("Resume deleted.");

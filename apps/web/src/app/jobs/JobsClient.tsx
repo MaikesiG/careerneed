@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 type Job = {
   id: string;
@@ -71,7 +72,6 @@ type JobsClientProps = {
   totalPages: number;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const SORT_OPTIONS = [
   { value: "match_score", label: "Best match" },
@@ -342,7 +342,7 @@ export default function JobsClient({
           params.append("job_id", jobId);
         });
 
-        const response = await fetch(`${API_URL}/applications/me/job-states?${params.toString()}`, {
+        const response = await apiFetch(`/applications/me/job-states?${params.toString()}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -382,7 +382,7 @@ export default function JobsClient({
 
     async function loadResumes() {
       try {
-        const response = await fetch(`${API_URL}/resumes`, {
+        const response = await apiFetch("/resumes", {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -413,8 +413,8 @@ export default function JobsClient({
     const timeoutId = window.setTimeout(() => {
       async function loadSuggestions() {
         try {
-          const response = await fetch(
-            `${API_URL}/jobs/keyword-suggestions?q=${encodeURIComponent(lastToken)}`,
+          const response = await apiFetch(
+            `/jobs/keyword-suggestions?q=${encodeURIComponent(lastToken)}`,
             { signal: controller.signal }
           );
 
@@ -753,7 +753,7 @@ export default function JobsClient({
     setUpdatingJobId(jobId);
 
     try {
-      const response = await fetch(`${API_URL}/applications/by-job/${jobId}`, {
+      const response = await apiFetch(`/applications/by-job/${jobId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -808,7 +808,7 @@ export default function JobsClient({
     setUpdatingJobId(jobId);
 
     try {
-      const response = await fetch(`${API_URL}/applications/by-job/${jobId}`, {
+      const response = await apiFetch(`/applications/by-job/${jobId}`, {
         method: "DELETE",
       });
 
