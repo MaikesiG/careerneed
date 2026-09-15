@@ -1,71 +1,13 @@
 import Link from "next/link";
-
+import ApplicationViewTabs from "@/components/ApplicationViewTabs";
+import PipelineBoard, { type PipelineApplication } from "./PipelineBoard";
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
-type Application = {
-  id: string;
-  job_id: string;
-  resume_id: string | null;
+type ApplicationResponse = PipelineApplication & {
   status: ApplicationStatus;
-  applied_at: string | null;
-  notes: string | null;
-  follow_up_on: string | null;
-  created_at: string;
-  updated_at: string;
-  job: {
-    id: string;
-    company_name: string;
-    source: string;
-    title: string;
-    location: string | null;
-    workplace_type: string | null;
-    application_url: string;
-  };
-};
-
-type PipelineColumnKey = "saved" | "applied" | "interviewing" | "offer" | "closed";
-
-type PipelineColumn = {
-  key: PipelineColumnKey;
-  title: string;
-  description: string;
-  statuses: ApplicationStatus[];
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const PIPELINE_COLUMNS: PipelineColumn[] = [
-  {
-    key: "saved",
-    title: "Saved",
-    description: "Roles to review or apply for.",
-    statuses: ["saved"],
-  },
-  {
-    key: "applied",
-    title: "Applied",
-    description: "Submitted and awaiting a response.",
-    statuses: ["applied"],
-  },
-  {
-    key: "interviewing",
-    title: "Interviewing",
-    description: "Roles currently in the interview process.",
-    statuses: ["interviewing"],
-  },
-  {
-    key: "offer",
-    title: "Offer",
-    description: "Offers to review and decide on.",
-    statuses: ["offer"],
-  },
-  {
-    key: "closed",
-    title: "Closed",
-    description: "Rejected or withdrawn applications.",
-    statuses: ["rejected", "withdrawn"],
-  },
-];
 
 function isApplicationStatus(value: unknown): value is ApplicationStatus {
   return (
@@ -78,27 +20,32 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
   );
 }
 
-function isApplication(value: unknown): value is Application {
+function isApplication(value: unknown): value is ApplicationResponse {
   if (!value || typeof value !== "object") {
     return false;
   }
 
   const application = value as Record<string, unknown>;
-  const job = application.job as Record<string, unknown> | null;
+  const job = application.job;
+
+  if (!job || typeof job !== "object") {
+    return false;
+  }
+
+  const jobRecord = job as Record<string, unknown>;
 
   return (
     typeof application.id === "string" &&
     typeof application.job_id === "string" &&
     isApplicationStatus(application.status) &&
     (application.follow_up_on === null || typeof application.follow_up_on === "string") &&
-    Boolean(job) &&
-    typeof job?.id === "string" &&
-    typeof job?.company_name === "string" &&
-    typeof job?.title === "string"
+    typeof jobRecord.id === "string" &&
+    typeof jobRecord.company_name === "string" &&
+    typeof jobRecord.title === "string"
   );
 }
 
-async function getApplications(): Promise<Application[] | null> {
+async function getApplications(): Promise<PipelineApplication[] | null> {
   try {
     const response = await fetch(`${API_URL}/applications?limit=100`, {
       cache: "no-store",
@@ -109,39 +56,11 @@ async function getApplications(): Promise<Application[] | null> {
     }
 
     const data: unknown = await response.json();
+
     return Array.isArray(data) && data.every(isApplication) ? data : null;
   } catch {
     return null;
   }
-}
-
-function statusLabel(status: ApplicationStatus): string {
-  if (status === "saved") return "Saved";
-  if (status === "applied") return "Applied";
-  if (status === "interviewing") return "Interviewing";
-  if (status === "offer") return "Offer";
-  if (status === "rejected") return "Rejected";
-  return "Withdrawn";
-}
-
-function statusClass(status: ApplicationStatus): string {
-  if (status === "applied") {
-    return "border-success-border bg-success-background text-success";
-  }
-
-  if (status === "interviewing" || status === "saved") {
-    return "border-primary/30 bg-primary/10 text-primary";
-  }
-
-  if (status === "offer") {
-    return "border-warning-border bg-warning-background text-warning";
-  }
-
-  if (status === "rejected") {
-    return "border-error-border bg-error-background text-destructive";
-  }
-
-  return "border-border bg-muted text-muted-foreground";
 }
 
 function localDateKey(): string {
@@ -154,60 +73,20 @@ function localDateKey(): string {
   ].join("-");
 }
 
-function followUpLabel(value: string | null): {
-  label: string;
-  className: string;
-} | null {
-  if (!value) {
-    return null;
-  }
-
-  const today = localDateKey();
-
-  if (value === today) {
-    return {
-      label: "Follow up today",
-      className: "border-warning-border bg-warning-background text-warning",
-    };
-  }
-
-  if (value < today) {
-    return {
-      label: "Follow-up overdue",
-      className: "border-error-border bg-error-background text-destructive",
-    };
-  }
-
-  return {
-    label: `Follow up ${value}`,
-    className: "border-border bg-muted text-muted-foreground",
-  };
-}
-
 export default async function ApplicationsBoardPage() {
   const applications = await getApplications();
 
-  const applicationsByColumn: Record<PipelineColumnKey, Application[]> = {
-    saved: [],
-    applied: [],
-    interviewing: [],
-    offer: [],
-    closed: [],
-  };
-
-  if (applications) {
-    for (const application of applications) {
-      const column = PIPELINE_COLUMNS.find((candidate) =>
-        candidate.statuses.includes(application.status)
-      );
-
-      if (column) {
-        applicationsByColumn[column.key].push(application);
-      }
-    }
-  }
-
   const totalApplications = applications?.length ?? 0;
+  const activeApplications =
+    applications?.filter(
+      (application) => application.status === "applied" || application.status === "interviewing"
+    ).length ?? 0;
+
+  const today = localDateKey();
+  const attentionCount =
+    applications?.filter(
+      (application) => application.follow_up_on !== null && application.follow_up_on <= today
+    ).length ?? 0;
 
   return (
     <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
@@ -226,20 +105,7 @@ export default async function ApplicationsBoardPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="border-border bg-card text-foreground hover:bg-muted inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/applications"
-              className="bg-primary text-primary-foreground inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
-            >
-              List view
-            </Link>
-          </div>
+          <ApplicationViewTabs currentView="pipeline" />
         </header>
 
         {applications === null ? (
@@ -258,91 +124,42 @@ export default async function ApplicationsBoardPage() {
           </section>
         ) : (
           <>
-            <p className="text-muted-foreground mt-8 text-sm">
-              {totalApplications} tracked {totalApplications === 1 ? "job" : "jobs"}
-            </p>
-
             <section
-              className="mt-4 flex gap-4 overflow-x-auto pb-4"
-              aria-label="Application pipeline"
+              className="border-border bg-card mt-8 rounded-2xl border p-5 sm:p-6"
+              aria-label="Pipeline summary"
             >
-              {PIPELINE_COLUMNS.map((column) => {
-                const columnApplications = applicationsByColumn[column.key];
-
-                return (
-                  <section
-                    className="border-border bg-card w-72 shrink-0 rounded-2xl border p-4"
-                    key={column.key}
-                    aria-labelledby={`${column.key}-heading`}
+              <dl className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-muted-foreground text-sm">Tracked jobs</dt>
+                  <dd className="mt-1 text-2xl font-bold tracking-tight">{totalApplications}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-sm">Active applications</dt>
+                  <dd className="mt-1 text-2xl font-bold tracking-tight">{activeApplications}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-sm">Need attention</dt>
+                  <dd
+                    className={`mt-1 text-2xl font-bold tracking-tight ${
+                      attentionCount > 0 ? "text-destructive" : ""
+                    }`}
                   >
-                    <div className="border-border border-b pb-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h2 id={`${column.key}-heading`} className="text-lg font-semibold">
-                            {column.title}
-                          </h2>
-                          <p className="text-muted-foreground mt-1 text-sm leading-5">
-                            {column.description}
-                          </p>
-                        </div>
-                        <span className="bg-muted text-primary flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-semibold">
-                          {columnApplications.length}
-                        </span>
-                      </div>
-                    </div>
+                    {attentionCount}
+                  </dd>
+                </div>
+              </dl>
 
-                    {columnApplications.length === 0 ? (
-                      <p className="text-muted-foreground py-6 text-sm">No applications here.</p>
-                    ) : (
-                      <div className="mt-4 grid gap-3">
-                        {columnApplications.map((application) => {
-                          const followUp = followUpLabel(application.follow_up_on);
-
-                          return (
-                            <Link
-                              href={`/applications/${application.id}`}
-                              key={application.id}
-                              className="group border-border bg-background hover:border-primary/50 hover:bg-muted rounded-xl border p-4 transition"
-                            >
-                              <p className="text-primary text-xs font-semibold tracking-[0.14em] uppercase">
-                                {application.job.company_name}
-                              </p>
-                              <h3 className="group-hover:text-primary mt-1 line-clamp-2 text-sm font-semibold">
-                                {application.job.title}
-                              </h3>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <span
-                                  className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(
-                                    application.status
-                                  )}`}
-                                >
-                                  {statusLabel(application.status)}
-                                </span>
-
-                                {followUp ? (
-                                  <span
-                                    className={`rounded-full border px-2 py-1 text-xs font-semibold ${followUp.className}`}
-                                  >
-                                    {followUp.label}
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              {application.job.location ? (
-                                <p className="text-muted-foreground mt-3 truncate text-xs">
-                                  {application.job.location}
-                                </p>
-                              ) : null}
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
+              {attentionCount > 0 ? (
+                <Link
+                  href="/applications?follow_up=scheduled"
+                  className="text-primary mt-4 inline-flex text-sm font-semibold transition hover:opacity-80"
+                >
+                  Review follow-ups <span aria-hidden="true">&nbsp;→</span>
+                </Link>
+              ) : null}
             </section>
+
+            <PipelineBoard applications={applications} />
           </>
         )}
       </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
@@ -179,12 +180,16 @@ export default async function ApplicationsPage({
               updated.
             </p>
           </div>
-          <Link
-            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2 text-sm font-semibold transition"
-            href="/jobs"
-          >
-            Browse jobs
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <ApplicationViewTabs currentView="list" />
+
+            <Link
+              href="/jobs"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              Browse jobs
+            </Link>
+          </div>
         </header>
 
         <nav aria-label="Application status filters" className="mb-3 flex flex-wrap gap-2">
