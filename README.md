@@ -4,11 +4,13 @@ Careerneed is a privacy-aware career intelligence platform for technical profess
 
 ## Current scope
 
-- Next.js web shell with a Jobs Dashboard (search, status filters, save/apply/dismiss actions)
-- FastAPI API with job/company CRUD, keyword-based match scoring, and pagination
-- Two ATS connectors (Greenhouse, Lever) with batch sync across all configured companies
-- PostgreSQL via Docker Compose, schema managed with Alembic migrations
-- Automated tests (pytest) covering health, jobs CRUD, and status updates
+- Next.js workspace with Home, To Do, Jobs, Applications, Resumes, and Sources
+- Application tracking with status, notes, follow-up dates, and application contacts
+- FastAPI API with job, company, resume, application, and contact CRUD
+- Keyword-based deterministic match scoring and paginated job/application lists
+- Greenhouse, Lever, and Ashby public ATS connectors with batch sync across configured companies
+- PostgreSQL via Docker Compose, with schema changes managed by reviewed Alembic migrations
+- Manual API and browser verification for current application/contact workflows
 
 ## Prerequisites
 
@@ -51,7 +53,8 @@ Open http://localhost:3000.
 
 ```bash
 cd apps/api
-python -m pytest -v
+source .venv/bin/activate
+python -m pytest -q
 ```
 
 ## API overview
@@ -67,6 +70,20 @@ python -m pytest -v
 
 - `GET /companies` — list configured companies.
 - `POST /companies` — register a new company (`source_type`: `greenhouse`, `lever`, `custom`, or `manual`).
+
+### Applications and contacts
+
+- `GET /applications` — list the current user's tracked applications; supports status, follow-up, limit, and offset filters.
+- `GET /applications/{application_id}` — fetch one tracked application and its job summary.
+- `POST /applications` — create a tracked application for a job.
+- `PATCH /applications/{application_id}` — update application status, resume, applied date, notes, or follow-up date.
+- `DELETE /applications/{application_id}` — remove an application.
+- `GET /applications/{application_id}/contacts` — list contacts associated with an application.
+- `POST /applications/{application_id}/contacts` — add a recruiter, hiring manager, interviewer, referral, or other contact.
+- `PATCH /applications/{application_id}/contacts/{contact_id}` — update an application contact.
+- `DELETE /applications/{application_id}/contacts/{contact_id}` — delete an application contact.
+
+Contacts contain a required name and contact type, plus optional email, LinkedIn URL, and notes. Contact routes verify that the parent application belongs to the current development user. Full authentication is still a future milestone.
 
 ### Connectors
 
@@ -95,4 +112,4 @@ Every ingested job gets a `match_score` (0-100) from `app/connectors/scoring.py`
 
 ## Next milestone
 
-Extend to a third ATS connector (e.g. Workday or SmartRecruiters) or surface the `workplace_type` field (remote/hybrid/on-site, populated natively from Lever) in the web dashboard.
+Add automated API coverage for application contacts, then address Alembic schema-drift checks and replace the development-only fixed user ID with real authentication and per-user isolation.

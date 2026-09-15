@@ -112,6 +112,7 @@ Open Applications
 → view application status
 → add or update notes
 → set follow-up dates
+→ add, edit, or remove relevant contacts
 → identify due-today, overdue, and scheduled follow-up work
 ```
 
@@ -119,10 +120,11 @@ Open Applications
 
 ### 7.1 Home workspace
 
-The Home page must provide a clear starting point and links to the primary modules:
+The Home page provides a clear starting point and links to the primary modules:
 
 ```text
 Home
+To Do
 Resumes
 Jobs
 Applications
@@ -130,7 +132,7 @@ Add a job
 Sources
 ```
 
-Home V1 may use static workflow guidance. Real dashboard totals and task summaries are deferred until the core navigation and tracking flow are validated.
+The dedicated `/todo` workspace surfaces current dashboard summary and follow-up work when the API is available. Home remains a concise entry point for the daily job-search workflow.
 
 ### 7.2 Global navigation and visual consistency
 
@@ -139,6 +141,7 @@ All standard pages must include a shared application header with:
 ```text
 CareerNeed → Home
 Home
+To Do
 Resumes
 Jobs
 Applications
@@ -331,20 +334,23 @@ Requirements:
 - Status changes should be persisted and reflected across Jobs and Applications.
 - Status colors should be meaningful but not the sole indicator of state.
 
-### 7.11 Applications, notes, and follow-up
+### 7.11 Applications, contacts, notes, and follow-up
 
 Users can:
 
 - View tracked applications in an Applications page.
 - View an individual application detail page.
 - Add and edit notes.
+- Add, edit, and remove application contacts.
+- Store a contact name and type, with optional email, LinkedIn URL, and contact notes.
 - Set and clear follow-up dates.
 - Filter applications by status.
 - Filter or identify follow-ups that are due today, overdue, or scheduled.
 
 Requirements:
 
-- Notes and follow-up edits must persist.
+- Notes, follow-up edits, and contact edits must persist.
+- Contact operations must show useful loading, empty, success, and error feedback.
 - The UI must show useful success and error feedback.
 - Due-today and overdue labels must clearly distinguish urgency.
 - Future interview records are a separate feature and should not be forced into a single Notes field.
@@ -371,7 +377,7 @@ Requirements:
 
 V1.1 is selected after real daily use reveals the largest friction. Candidate items include:
 
-- Dashboard summary: active applications, due-today follow-ups, overdue follow-ups.
+- Dashboard summary refinements after daily-use feedback.
 - Improved manual job intake, including safe support for additional fields only when persisted.
 - Interview records with multiple interview rounds, date/time, interview type, contacts, notes, and outcome.
 - Resume selection/association per application.
@@ -468,7 +474,7 @@ Practical V1 acceptance criteria:
 - A user can add a valid manual job from `/jobs/add`.
 - A manual job appears in the unified Jobs pool and can be found using the manual source filter.
 - A user can save/update application progress and see it consistently.
-- A user can add notes and manage follow-up dates.
+- A user can add notes, manage follow-up dates, and manage contacts for an application.
 - Job filters and pagination remain usable after refresh/navigation.
 - The frontend passes `npm run lint` and `npm run build`.
 - The backend passes `python -m pytest -q`.

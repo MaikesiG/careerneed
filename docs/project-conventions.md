@@ -14,24 +14,24 @@ CareerNeed is a focused job-search workspace. It helps a user:
 2. Collect jobs from synced company sources and manual discovery.
 3. Search and filter a unified job pool.
 4. Save jobs and track application status.
-5. Record notes and follow-up dates.
+5. Record application contacts, notes, and follow-up dates.
 
 ### Current V1 scope
 
 V1 is English-only and focuses on a coherent daily job-search workflow:
 
-- Home workspace and global navigation.
+- Home workspace, To Do workspace, and global navigation.
 - Resume management.
 - Job discovery, search, filters, sorting, and pagination.
 - Manual job entry at `/jobs/add`.
 - Application tracking and status changes.
-- Application notes and follow-up dates.
+- Application contacts, notes, and follow-up dates.
 - Job source management.
 - Light, dark, and system theme choices.
 
 ### Deferred to V1.1
 
-- Dashboard counts and real task summary.
+- Dashboard refinements after regular daily use.
 - Manual job-entry refinements.
 - Interview records.
 - Resume-to-application association improvements.
@@ -81,7 +81,7 @@ Every route renders within the shared app shell.
 The global header must provide:
 
 - `CareerNeed` brand link to `/`.
-- Primary navigation links: Home, Resumes, Jobs, Applications, Sources.
+- Primary navigation links: Home, To Do, Resumes, Jobs, Applications, Sources.
 - Theme control: System, Light, Dark.
 
 Rules:
@@ -295,13 +295,14 @@ Rules:
 
 | Route                           | Purpose                                           |
 | ------------------------------- | ------------------------------------------------- |
-| `/`                             | Home workspace and module entry points            |
-| `/resumes`                      | Resume management                                 |
-| `/jobs`                         | Unified job search, filters, job tracking actions |
-| `/jobs/add`                     | Manual job entry                                  |
-| `/applications`                 | Application list, status and follow-up views      |
-| `/applications/[applicationId]` | Application detail, notes, and follow-up editing  |
-| `/sources`                      | Company/source management                         |
+| `/`                             | Home workspace and module entry points                       |
+| `/todo`                         | Daily follow-up and application work                          |
+| `/resumes`                      | Resume management                                            |
+| `/jobs`                         | Unified job search, filters, job tracking actions            |
+| `/jobs/add`                     | Manual job entry                                             |
+| `/applications`                 | Application list, status, and follow-up views                |
+| `/applications/[applicationId]` | Application detail, contacts, notes, and follow-up editing   |
+| `/sources`                      | Company/source management                                    |
 
 ### Route rules
 
@@ -402,6 +403,11 @@ GET    /applications/{application_id}
 PATCH  /applications/{application_id}
 DELETE /applications/{application_id}
 
+GET    /applications/{application_id}/contacts
+POST   /applications/{application_id}/contacts
+PATCH  /applications/{application_id}/contacts/{contact_id}
+DELETE /applications/{application_id}/contacts/{contact_id}
+
 GET    /resumes
 POST   /resumes
 GET    /sources
@@ -413,6 +419,8 @@ Rules:
 - Use a nested or action-like route only where it represents a clear creation mode or non-CRUD operation.
 - `POST /jobs/manual` is acceptable because it creates a Job from user-entered data while setting a known manual source type.
 - Do not create endpoints named after frontend components or pages.
+- Use nested routes for a resource that is meaningful only within an owned parent resource. Application contacts are scoped to `/applications/{application_id}/contacts`.
+- For nested update and delete routes, verify both parent ownership and that the child resource belongs to that exact parent.
 
 ### HTTP status codes
 
@@ -437,6 +445,8 @@ Rules:
 - Treat schema changes as API changes: update frontend types, tests, and relevant documentation in the same pull request/commit series.
 - Required fields must be truly required and validated.
 - Optional fields should explicitly document whether `null`, omitted values, and empty strings have different meanings.
+- PATCH handlers must apply only fields explicitly sent by the client. For nullable fields, an explicit `null` clears the stored value; an omitted field leaves it unchanged.
+- Application contact payloads use `name` and `contact_type` as required creation fields, with optional `email`, `linkedin_url`, and `notes`.
 
 ### Manual job contract
 
@@ -568,6 +578,17 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
+For database schema changes, also run:
+
+```bash
+cd apps/api
+source .venv/bin/activate
+alembic upgrade head
+alembic current
+```
+
+Autogenerated Alembic revisions are drafts, not approval to change the database. Before running `alembic upgrade head`, inspect the generated `upgrade()` and `downgrade()` functions. Remove unrelated operations and investigate unexpected destructive statements such as `drop_index`, `drop_table`, or data updates.
+
 Also verify the relevant endpoint manually or through a focused automated test:
 
 - Valid request succeeds with expected status and response shape.
@@ -627,6 +648,7 @@ cd ~/development/projects/careerneed
 git status
 git diff --stat
 git diff
+git diff --check
 ```
 
 Stage only intended files:
