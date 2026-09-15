@@ -94,6 +94,19 @@ def get_user_for_session_token(db: Session, token: str | None) -> User:
     return session.user
 
 
+def get_optional_current_user(
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if not session_token:
+        return None
+
+    try:
+        return get_user_for_session_token(db, session_token)
+    except HTTPException:
+        return None
+
+
 def get_current_user(
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     db: Session = Depends(get_db),

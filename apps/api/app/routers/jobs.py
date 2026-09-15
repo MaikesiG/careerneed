@@ -5,17 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_optional_current_user
 from app.connectors.scoring import calculate_match_score
 from app.database import get_db
-from app.models import Application, Job
+from app.models import Application, Job, User
 from app.normalization import normalize_workplace_type, workplace_type_filter_values
 from app.schemas import JobDetail, JobManualCreate, JobOut, JobStatusUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-
-# TODO: replace with real authenticated user once auth is implemented.
-INITIAL_USER_ID = uuid.UUID("363a7386-c17c-43ab-ad6c-9a60ff52492a")
 
 ALLOWED_APPLICATION_STATUSES = {
     "saved",
@@ -84,6 +82,7 @@ def list_jobs(
     sort_direction: str = Query(default="desc", pattern="^(asc|desc)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> list[Job]:
     statement = select(Job)
@@ -103,11 +102,14 @@ def list_jobs(
         )
 
     if requested_application_statuses:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
         statement = statement.join(
             Application,
             Application.job_id == Job.id,
         ).where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
             Application.status.in_(requested_application_statuses),
         )
 

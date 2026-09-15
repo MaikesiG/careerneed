@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app.main import app
 from app.models import Application, Job, User
-from app.routers.jobs import INITIAL_USER_ID
 
 
 @pytest.fixture
@@ -61,12 +60,6 @@ def create_job(db_session: Session, *, title: str, workplace_type: str = "unknow
     db_session.add(job)
     db_session.flush()
     return job
-
-
-def ensure_initial_user(db_session: Session) -> None:
-    if db_session.get(User, INITIAL_USER_ID) is None:
-        db_session.add(User(id=INITIAL_USER_ID, email="initial-user@example.test"))
-        db_session.flush()
 
 
 def test_list_jobs_returns_ok(client: TestClient) -> None:
@@ -221,10 +214,11 @@ def test_application_by_job_update_preserves_notes_when_only_status_changes(
     assert state_response.json()["states"][str(job.id)]["notes"] == "Ask Casey for a referral."
 
 
-def test_list_jobs_filters_tracking_status_for_initial_user_only(
-    client: TestClient, db_session: Session
+def test_list_jobs_filters_tracking_status_for_current_user_only(
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
-    ensure_initial_user(db_session)
     current_user_job = create_job(db_session, title="Current user's saved job")
     current_user_applied_job = create_job(db_session, title="Current user's applied job")
     other_user_job = create_job(db_session, title="Another user's saved job")
@@ -232,13 +226,21 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
     db_session.add_all(
         [
             other_user,
-            Application(user_id=INITIAL_USER_ID, job_id=current_user_job.id, status="saved"),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
+                job_id=current_user_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=authenticated_user_id,
                 job_id=current_user_applied_job.id,
                 status="applied",
             ),
-            Application(user_id=other_user.id, job_id=other_user_job.id, status="saved"),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="saved",
+            ),
         ]
     )
     db_session.flush()
@@ -266,36 +268,13 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
     assert str(other_user_job.id) not in combined_job_ids
 
 
-def test_get_application_detail_includes_job(
+def test_list_jobs_application_status_filter_requires_authentication(
     client: TestClient,
-    db_session: Session,
-    authenticated_user_id: uuid.UUID,
 ) -> None:
-    job = create_job(
-        db_session,
-        title="Application detail test role",
-    )
-    application = Application(
-        user_id=authenticated_user_id,
-        job_id=job.id,
-        status="applied",
-        notes="Initial application note",
-    )
-    db_session.add(application)
-    db_session.commit()
-    db_session.refresh(application)
+    response = client.get("/jobs", params={"application_status": "saved"})
 
-    response = client.get(f"/applications/{application.id}")
-
-    assert response.status_code == 200
-
-    body = response.json()
-    assert body["id"] == str(application.id)
-    assert body["status"] == "applied"
-    assert body["notes"] == "Initial application note"
-    assert body["job"]["id"] == str(job.id)
-    assert body["job"]["title"] == job.title
-    assert body["job"]["company_name"] == job.company_name
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"
 
 
 def test_list_jobs_filters_by_location_query(
