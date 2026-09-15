@@ -30,6 +30,18 @@ async function readError(response: Response, fallback: string): Promise<string> 
   }
 }
 
+function dateInputValue(daysFromToday: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 export default function ApplicationFollowUpEditor({
   applicationId,
   initialFollowUpOn,
@@ -41,6 +53,12 @@ export default function ApplicationFollowUpEditor({
   const [notice, setNotice] = useState<string | null>(null);
 
   const hasChanges = followUpOn !== savedFollowUpOn;
+
+  function scheduleFor(daysFromToday: number) {
+    setFollowUpOn(dateInputValue(daysFromToday));
+    setError(null);
+    setNotice(null);
+  }
 
   async function saveFollowUp(nextFollowUpOn: string) {
     setError(null);
@@ -82,7 +100,7 @@ export default function ApplicationFollowUpEditor({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!hasChanges) {
+    if (!hasChanges || isSaving) {
       return;
     }
 
@@ -116,12 +134,33 @@ export default function ApplicationFollowUpEditor({
           disabled={isSaving}
           onChange={(event) => {
             setFollowUpOn(event.target.value);
+            setError(null);
             setNotice(null);
           }}
           type="date"
           value={followUpOn}
         />
       </label>
+
+      <fieldset disabled={isSaving}>
+        <legend className="text-foreground text-sm font-medium">Quick schedule</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => scheduleFor(1)}
+            type="button"
+          >
+            Tomorrow
+          </button>
+          <button
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => scheduleFor(7)}
+            type="button"
+          >
+            Next week
+          </button>
+        </div>
+      </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
