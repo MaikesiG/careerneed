@@ -131,6 +131,35 @@ class Application(Base):
     user: Mapped["User"] = relationship(back_populates="applications")
     job: Mapped["Job"] = relationship(back_populates="applications")
     resume: Mapped["Resume | None"] = relationship(back_populates="applications")
+    contacts: Mapped[list["ApplicationContact"]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+    )
+
+
+class ApplicationContact(Base):
+    __tablename__ = "application_contacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_type: Mapped[str] = mapped_column(String(50), nullable=False, default="other")
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="contacts")
 
 
 class LLMCredential(Base):

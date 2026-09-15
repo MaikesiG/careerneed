@@ -1,575 +1,244 @@
 import Link from "next/link";
 
-type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
-
-type DashboardSummary = {
-  follow_ups_due_today: number;
-  follow_ups_overdue: number;
-  applications_saved: number;
-  applications_applied: number;
-  applications_interviewing: number;
-  active_applications: number;
-};
-
-type DashboardFollowUp = {
-  id: string;
-  job_id: string;
-  resume_id: string | null;
-  status: ApplicationStatus;
-  applied_at: string | null;
-  notes: string | null;
-  follow_up_on: string;
-  created_at: string;
-  updated_at: string;
-  job: {
-    id: string;
-    company_name: string;
-    source: string;
-    title: string;
-    location: string | null;
-    workplace_type: string | null;
-    application_url: string;
-  };
-};
-
-type DashboardFollowUpsResponse = {
-  items: DashboardFollowUp[];
-};
-
-type ExploreAction = {
-  title: string;
-  description: string;
-  href: string;
-};
-
-type TodayState = {
+type HomeDestination = {
   eyebrow: string;
   title: string;
   description: string;
-  primaryLabel: string;
-  primaryHref: string;
-  secondaryLabel: string | null;
-  secondaryHref: string | null;
-  className: string;
+  href: string;
+  label: string;
+  featured?: boolean;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const exploreActions: ExploreAction[] = [
+const destinations: HomeDestination[] = [
   {
-    title: "Browse jobs",
-    description: "Find your next opportunity.",
+    eyebrow: "Daily focus",
+    title: "To Do",
+    description: "See the follow-ups and applications that need your attention now.",
+    href: "/todo",
+    label: "Open To Do",
+    featured: true,
+  },
+  {
+    eyebrow: "Discover",
+    title: "Jobs",
+    description: "Browse, filter, and compare opportunities from your job pool.",
     href: "/jobs",
+    label: "Browse jobs",
   },
   {
+    eyebrow: "Track",
     title: "Applications",
-    description: "View every tracked role.",
+    description: "Keep each role, status, note, and follow-up in one place.",
     href: "/applications",
+    label: "View applications",
   },
   {
+    eyebrow: "Prepare",
     title: "Resumes",
-    description: "Manage your resume versions.",
+    description: "Manage the resume versions you use for different opportunities.",
     href: "/resumes",
+    label: "Manage resumes",
   },
   {
+    eyebrow: "Connect",
     title: "Sources",
-    description: "Manage companies and job boards.",
+    description: "Manage target companies and the job boards you sync from.",
     href: "/sources",
+    label: "Manage sources",
   },
 ];
 
-const quickStartSteps = [
-  "Add a resume so CareerNeed can evaluate job relevance.",
-  "Browse jobs and save roles you want to pursue.",
-  "Track applications and set a follow-up date.",
+const workflowSteps = [
+  {
+    number: "01",
+    title: "Discover",
+    description: "Browse relevant roles from your job pool.",
+  },
+  {
+    number: "02",
+    title: "Track",
+    description: "Save opportunities and keep each application organized.",
+  },
+  {
+    number: "03",
+    title: "Follow through",
+    description: "Handle follow-ups and move the pipeline forward.",
+  },
 ];
 
-function isApplicationStatus(value: unknown): value is ApplicationStatus {
+export default function Home() {
   return (
-    value === "saved" ||
-    value === "applied" ||
-    value === "interviewing" ||
-    value === "offer" ||
-    value === "rejected" ||
-    value === "withdrawn"
-  );
-}
+    <main className="bg-background text-foreground min-h-full overflow-hidden">
+      <section className="border-border relative isolate border-b">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,oklch(from_var(--primary)_l_c_h_/_0.22),transparent_38%),radial-gradient(circle_at_84%_38%,oklch(from_var(--primary)_l_c_h_/_0.16),transparent_32%)]"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:linear-gradient(to_bottom,black,transparent_88%)] [background-size:4rem_4rem] opacity-40"
+        />
 
-function isDashboardSummary(value: unknown): value is DashboardSummary {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const summary = value as Record<string, unknown>;
-  const keys: (keyof DashboardSummary)[] = [
-    "follow_ups_due_today",
-    "follow_ups_overdue",
-    "applications_saved",
-    "applications_applied",
-    "applications_interviewing",
-    "active_applications",
-  ];
-
-  return keys.every((key) => typeof summary[key] === "number" && summary[key] >= 0);
-}
-
-function isDashboardFollowUp(value: unknown): value is DashboardFollowUp {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const item = value as Record<string, unknown>;
-  const job = item.job as Record<string, unknown> | null;
-
-  return (
-    typeof item.id === "string" &&
-    typeof item.job_id === "string" &&
-    isApplicationStatus(item.status) &&
-    typeof item.follow_up_on === "string" &&
-    Boolean(job) &&
-    typeof job?.id === "string" &&
-    typeof job?.company_name === "string" &&
-    typeof job?.title === "string"
-  );
-}
-
-function isDashboardFollowUpsResponse(value: unknown): value is DashboardFollowUpsResponse {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const response = value as Record<string, unknown>;
-
-  return Array.isArray(response.items) && response.items.every(isDashboardFollowUp);
-}
-
-async function getDashboardSummary(): Promise<DashboardSummary | null> {
-  try {
-    const response = await fetch(`${API_URL}/dashboard/summary`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data: unknown = await response.json();
-    return isDashboardSummary(data) ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getDashboardFollowUps(): Promise<DashboardFollowUp[] | null> {
-  try {
-    const response = await fetch(`${API_URL}/dashboard/follow-ups?limit=6`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data: unknown = await response.json();
-
-    return isDashboardFollowUpsResponse(data) ? data.items : null;
-  } catch {
-    return null;
-  }
-}
-
-function statusLabel(status: ApplicationStatus): string {
-  if (status === "saved") return "Saved";
-  if (status === "applied") return "Applied";
-  if (status === "interviewing") return "Interviewing";
-  if (status === "offer") return "Offer";
-  if (status === "rejected") return "Rejected";
-  return "Withdrawn";
-}
-
-function localDateKey(): string {
-  const today = new Date();
-
-  return [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function followUpState(value: string): {
-  label: string;
-  textClassName: string;
-  badgeClassName: string;
-} {
-  const today = localDateKey();
-
-  if (value === today) {
-    return {
-      label: "Due today",
-      textClassName: "text-warning",
-      badgeClassName: "border-warning-border bg-warning-background text-warning",
-    };
-  }
-
-  const startOfToday = new Date(`${today}T00:00:00`);
-  const followUpDate = new Date(`${value}T00:00:00`);
-  const millisecondsPerDay = 24 * 60 * 60 * 1000;
-  const overdueDays = Math.max(
-    1,
-    Math.round((startOfToday.getTime() - followUpDate.getTime()) / millisecondsPerDay)
-  );
-
-  return {
-    label: `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
-    textClassName: "text-destructive",
-    badgeClassName: "border-error-border bg-error-background text-destructive",
-  };
-}
-
-function createTodayState(
-  summary: DashboardSummary,
-  nextFollowUp: DashboardFollowUp | null
-): TodayState {
-  if (summary.follow_ups_overdue > 0) {
-    return {
-      eyebrow: "Action needed",
-      title: `${summary.follow_ups_overdue} overdue follow-up${
-        summary.follow_ups_overdue === 1 ? "" : "s"
-      }`,
-      description:
-        summary.follow_ups_due_today > 0
-          ? `${summary.follow_ups_due_today} more follow-up${
-              summary.follow_ups_due_today === 1 ? "" : "s"
-            } ${summary.follow_ups_due_today === 1 ? "is" : "are"} due today.`
-          : "A quick check-in can keep your applications moving.",
-      primaryLabel: nextFollowUp ? "Open next follow-up" : "Review overdue follow-ups",
-      primaryHref: nextFollowUp
-        ? `/applications/${nextFollowUp.id}`
-        : "/applications?follow_up=overdue",
-      secondaryLabel: "Review all follow-ups",
-      secondaryHref: "/applications?follow_up=scheduled",
-      className: "border-error-border bg-error-background",
-    };
-  }
-
-  if (summary.follow_ups_due_today > 0) {
-    return {
-      eyebrow: "Today",
-      title: `${summary.follow_ups_due_today} follow-up${
-        summary.follow_ups_due_today === 1 ? "" : "s"
-      } due today`,
-      description: "A timely check-in can keep your application moving.",
-      primaryLabel: nextFollowUp ? "Open today’s follow-up" : "Review today’s follow-ups",
-      primaryHref: nextFollowUp
-        ? `/applications/${nextFollowUp.id}`
-        : "/applications?follow_up=today",
-      secondaryLabel: "View all follow-ups",
-      secondaryHref: "/applications?follow_up=scheduled",
-      className: "border-warning-border bg-warning-background",
-    };
-  }
-
-  if (summary.active_applications > 0) {
-    return {
-      eyebrow: "Today",
-      title: "You’re caught up",
-      description: `${summary.active_applications} active application${
-        summary.active_applications === 1 ? "" : "s"
-      } ${summary.active_applications === 1 ? "is" : "are"} currently in progress.`,
-      primaryLabel: "Open pipeline",
-      primaryHref: "/applications/board",
-      secondaryLabel: "View all applications",
-      secondaryHref: "/applications",
-      className: "border-primary/30 bg-primary/10",
-    };
-  }
-
-  return {
-    eyebrow: "Get started",
-    title: "Start your search",
-    description: "Browse roles, save promising opportunities, and track your first application.",
-    primaryLabel: "Browse jobs",
-    primaryHref: "/jobs",
-    secondaryLabel: "Manage resumes",
-    secondaryHref: "/resumes",
-    className: "border-primary/30 bg-primary/10",
-  };
-}
-
-export default async function Home() {
-  const [summary, followUps] = await Promise.all([getDashboardSummary(), getDashboardFollowUps()]);
-
-  const dashboardAvailable = summary !== null && followUps !== null;
-  const visibleFollowUps = followUps?.slice(0, 3) ?? [];
-  const nextFollowUp = visibleFollowUps[0] ?? null;
-  const nextFollowUpState = nextFollowUp ? followUpState(nextFollowUp.follow_up_on) : null;
-
-  const todayState = summary ? createTodayState(summary, nextFollowUp) : null;
-
-  const showQuickStart =
-    summary !== null &&
-    summary.applications_saved === 0 &&
-    summary.applications_applied === 0 &&
-    summary.applications_interviewing === 0;
-
-  return (
-    <main className="min-h-full bg-background px-4 py-8 text-foreground sm:px-6 sm:py-12 lg:px-8">
-      <section className="mx-auto max-w-5xl">
-        <header className="flex flex-col justify-between gap-5 border-b border-border pb-8 sm:flex-row sm:items-start">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">
-              CareerNeed
+        <div className="mx-auto grid min-h-[34rem] max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:py-24">
+          <div className="max-w-2xl">
+            <p className="text-primary text-sm font-semibold tracking-[0.22em] uppercase">
+              CareerNeed workspace
             </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Your job-search workspace
+
+            <h1 className="mt-5 text-5xl font-bold tracking-[-0.05em] sm:text-6xl lg:text-7xl">
+              Turn every opportunity into your next move.
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Focus on the next action, keep your applications moving, and see your progress at a
-              glance.
+
+            <p className="text-muted-foreground mt-6 max-w-xl text-lg leading-8 sm:text-xl">
+              Find the right roles, keep every application moving, and never lose the next follow-up
+              that matters.
             </p>
-          </div>
 
-          <Link
-            href="/jobs/add"
-            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            Add a job
-          </Link>
-        </header>
-
-        {dashboardAvailable && summary && followUps && todayState ? (
-          <>
-            <section
-              className={`mt-8 rounded-2xl border p-6 sm:p-8 ${todayState.className}`}
-              aria-labelledby="today-heading"
-            >
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">
-                {todayState.eyebrow}
-              </p>
-              <h2 id="today-heading" className="mt-2 text-2xl font-semibold sm:text-3xl">
-                {todayState.title}
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                {todayState.description}
-              </p>
-
-              {nextFollowUp && nextFollowUpState ? (
-                <Link
-                  href={`/applications/${nextFollowUp.id}`}
-                  className="mt-5 block max-w-2xl rounded-xl border border-primary/20 bg-background/50 p-4 transition hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                    Next action
-                  </p>
-                  <p className="mt-2 text-base font-semibold">
-                    Follow up with {nextFollowUp.job.company_name}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {nextFollowUp.job.title} · {statusLabel(nextFollowUp.status)}
-                  </p>
-                  <span
-                    className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${nextFollowUpState.badgeClassName}`}
-                  >
-                    {nextFollowUpState.label}
-                  </span>
-                </Link>
-              ) : null}
-
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <Link
-                  href={todayState.primaryHref}
-                  className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  {todayState.primaryLabel}
-                  <span aria-hidden="true">&nbsp;→</span>
-                </Link>
-
-                {todayState.secondaryLabel && todayState.secondaryHref ? (
-                  <Link
-                    href={todayState.secondaryHref}
-                    className="inline-flex items-center justify-center px-2 py-2 text-sm font-semibold text-foreground transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  >
-                    {todayState.secondaryLabel}
-                    <span aria-hidden="true">&nbsp;→</span>
-                  </Link>
-                ) : null}
-              </div>
-            </section>
-
-            <section className="mt-10" aria-labelledby="next-up-heading">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-primary">Next up</p>
-                  <h2 id="next-up-heading" className="mt-1 text-2xl font-semibold">
-                    Needs your attention
-                  </h2>
-                </div>
-
-                <Link
-                  href="/applications?follow_up=scheduled"
-                  className="shrink-0 text-sm font-semibold text-primary transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  View all <span aria-hidden="true">→</span>
-                </Link>
-              </div>
-
-              {visibleFollowUps.length === 0 ? (
-                <article className="mt-5 rounded-2xl border border-dashed border-border bg-card p-6">
-                  <h3 className="text-lg font-semibold">Nothing to follow up on right now</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Set a follow-up date from an application whenever you want to plan your next
-                    check-in.
-                  </p>
-                </article>
-              ) : (
-                <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-card">
-                  {visibleFollowUps.map((followUp, index) => {
-                    const label = followUpState(followUp.follow_up_on);
-
-                    return (
-                      <Link
-                        href={`/applications/${followUp.id}`}
-                        key={followUp.id}
-                        className={`group flex items-center justify-between gap-4 px-5 py-4 transition hover:bg-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset sm:px-6 ${
-                          index > 0 ? "border-t border-border" : ""
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-semibold group-hover:text-primary">
-                            {followUp.job.title}
-                          </p>
-                          <p className="mt-1 truncate text-sm text-muted-foreground">
-                            {statusLabel(followUp.status)} · {followUp.job.company_name}
-                          </p>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span className={`text-sm font-semibold ${label.textClassName}`}>
-                            {label.label}
-                          </span>
-                          <span
-                            className="text-lg text-primary transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
-                          >
-                            →
-                          </span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section
-              className="mt-10 rounded-2xl border border-border bg-card p-6 sm:p-8"
-              aria-labelledby="pipeline-heading"
-            >
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-                <div>
-                  <p className="text-sm font-medium text-primary">Your pipeline</p>
-                  <h2 id="pipeline-heading" className="mt-1 text-2xl font-semibold">
-                    Keep your momentum visible
-                  </h2>
-                </div>
-
-                <Link
-                  href="/applications/board"
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  Open pipeline <span aria-hidden="true">&nbsp;→</span>
-                </Link>
-              </div>
-
-              <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-xl bg-muted p-4">
-                  <dt className="text-sm text-muted-foreground">Saved</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">
-                    {summary.applications_saved}
-                  </dd>
-                </div>
-                <div className="rounded-xl bg-muted p-4">
-                  <dt className="text-sm text-muted-foreground">Applied</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">
-                    {summary.applications_applied}
-                  </dd>
-                </div>
-                <div className="rounded-xl bg-muted p-4">
-                  <dt className="text-sm text-muted-foreground">Interviewing</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">
-                    {summary.applications_interviewing}
-                  </dd>
-                </div>
-                <div className="rounded-xl bg-muted p-4">
-                  <dt className="text-sm text-muted-foreground">Active</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">
-                    {summary.active_applications}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          </>
-        ) : (
-          <section className="mt-8 rounded-2xl border border-dashed border-border bg-card p-6 sm:p-8">
-            <p className="text-sm font-medium text-primary">Today</p>
-            <h2 className="mt-1 text-2xl font-semibold">We couldn’t refresh your dashboard</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Your saved applications are still available. Try again after the API reconnects.
-            </p>
-            <Link
-              href="/applications"
-              className="mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              View applications <span aria-hidden="true">&nbsp;→</span>
-            </Link>
-          </section>
-        )}
-
-        <section className="mt-10" aria-labelledby="explore-heading">
-          <div>
-            <p className="text-sm font-medium text-primary">Explore</p>
-            <h2 id="explore-heading" className="mt-1 text-2xl font-semibold">
-              Continue your search
-            </h2>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {exploreActions.map((action) => (
+            <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href={action.href}
-                key={action.href}
-                className="group rounded-xl border border-border bg-card p-4 transition hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                href="/todo"
+                className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:scale-[1.02] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
-                <h3 className="text-sm font-semibold group-hover:text-primary">{action.title}</h3>
-                <p className="mt-1 text-sm leading-5 text-muted-foreground">{action.description}</p>
+                Open To Do <span aria-hidden="true">&nbsp;→</span>
+              </Link>
+
+              <Link
+                href="/jobs"
+                className="border-border bg-card/70 text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg border px-5 py-3 text-sm font-semibold backdrop-blur transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              >
+                Browse jobs
+              </Link>
+            </div>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-md lg:mx-0 lg:justify-self-end">
+            <div
+              aria-hidden="true"
+              className="bg-primary/15 absolute -inset-5 -z-10 rounded-[2rem] blur-3xl"
+            />
+
+            <div className="border-border bg-card/90 rounded-[1.75rem] border p-5 shadow-2xl backdrop-blur sm:p-6">
+              <div className="border-border flex items-center justify-between gap-4 border-b pb-5">
+                <div>
+                  <p className="text-primary text-xs font-semibold tracking-[0.16em] uppercase">
+                    Your next move
+                  </p>
+                  <p className="mt-1 text-lg font-semibold">A focused job search</p>
+                </div>
+                <span className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-full text-lg">
+                  →
+                </span>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <div className="border-warning-border bg-warning-background rounded-xl border p-4">
+                  <p className="text-warning text-xs font-semibold tracking-[0.14em] uppercase">
+                    To Do
+                  </p>
+                  <p className="mt-2 font-semibold">Follow up with the roles that matter.</p>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Keep your momentum without losing track.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="border-border bg-background rounded-xl border p-3">
+                    <p className="text-muted-foreground text-xs">Discover</p>
+                    <p className="mt-1 text-sm font-semibold">Jobs</p>
+                  </div>
+                  <div className="border-border bg-background rounded-xl border p-3">
+                    <p className="text-muted-foreground text-xs">Track</p>
+                    <p className="mt-1 text-sm font-semibold">Pipeline</p>
+                  </div>
+                  <div className="border-border bg-background rounded-xl border p-3">
+                    <p className="text-muted-foreground text-xs">Prepare</p>
+                    <p className="mt-1 text-sm font-semibold">Resumes</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="max-w-2xl">
+          <p className="text-primary text-sm font-semibold tracking-[0.18em] uppercase">
+            One focused workflow
+          </p>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+            Make the next step obvious.
+          </h2>
+          <p className="text-muted-foreground mt-4 text-base leading-7">
+            CareerNeed brings opportunity discovery, application tracking, follow-ups, and resume
+            preparation into one calm workspace.
+          </p>
+        </div>
+
+        <ol className="mt-10 grid gap-4 md:grid-cols-3">
+          {workflowSteps.map((step) => (
+            <li
+              key={step.number}
+              className="border-border bg-card relative rounded-2xl border p-6 shadow-sm"
+            >
+              <p className="text-primary text-sm font-semibold tracking-[0.14em]">{step.number}</p>
+              <h3 className="mt-5 text-xl font-semibold">{step.title}</h3>
+              <p className="text-muted-foreground mt-2 text-sm leading-6">{step.description}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="border-border bg-muted/30 border-t">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-primary text-sm font-semibold tracking-[0.18em] uppercase">
+                Explore CareerNeed
+              </p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight">Choose where to start.</h2>
+            </div>
+
+            <Link
+              href="/todo"
+              className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background text-sm font-semibold transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              Go to To Do <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {destinations.map((destination) => (
+              <Link
+                key={destination.href}
+                href={destination.href}
+                className={`group focus-visible:ring-primary focus-visible:ring-offset-background relative overflow-hidden rounded-2xl border p-6 transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none ${
+                  destination.featured
+                    ? "border-primary/50 bg-primary/10 hover:border-primary hover:bg-primary/15"
+                    : "border-border bg-card hover:border-primary/50 hover:bg-muted"
+                }`}
+              >
+                {destination.featured ? (
+                  <span
+                    aria-hidden="true"
+                    className="bg-primary/15 absolute top-0 right-0 h-24 w-24 translate-x-10 -translate-y-10 rounded-full blur-2xl"
+                  />
+                ) : null}
+
+                <p className="text-primary relative text-xs font-semibold tracking-[0.16em] uppercase">
+                  {destination.eyebrow}
+                </p>
+                <h3 className="relative mt-4 text-xl font-semibold">{destination.title}</h3>
+                <p className="text-muted-foreground relative mt-2 min-h-12 text-sm leading-6">
+                  {destination.description}
+                </p>
+                <span className="text-foreground group-hover:text-primary relative mt-6 inline-flex text-sm font-semibold transition">
+                  {destination.label} <span aria-hidden="true">&nbsp;→</span>
+                </span>
               </Link>
             ))}
           </div>
-        </section>
-
-        {showQuickStart ? (
-          <section
-            className="mt-10 rounded-2xl border border-border bg-card p-6 sm:p-8"
-            aria-labelledby="quick-start-heading"
-          >
-            <p className="text-sm font-medium text-primary">Getting started</p>
-            <h2 id="quick-start-heading" className="mt-1 text-2xl font-semibold">
-              A simple loop for your search
-            </h2>
-
-            <ol className="mt-6 grid gap-5 md:grid-cols-3">
-              {quickStartSteps.map((step, index) => (
-                <li key={step} className="flex gap-3 text-sm leading-6 text-muted-foreground">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-primary">
-                    {index + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
+        </div>
       </section>
     </main>
   );

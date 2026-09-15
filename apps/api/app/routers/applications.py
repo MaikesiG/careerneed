@@ -6,9 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Application, Job, Resume
+from app.models import Application, ApplicationContact, Job, Resume
 from app.schemas import (
     ApplicationByJobUpdate,
+    ApplicationContactCreate,
+    ApplicationContactOut,
+    ApplicationContactUpdate,
     ApplicationCreate,
     ApplicationJobState,
     ApplicationJobStateMap,
@@ -241,6 +244,123 @@ def get_application(
             "application_url": job.application_url,
         },
     }
+
+
+def _get_owned_application(
+    application_id: uuid.UUID,
+    db: Session,
+) -> Application:
+    application = db.scalar(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == INITIAL_USER_ID,
+        )
+    )
+
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    return application
+
+
+@router.get(
+    "/{application_id}/contacts",
+    response_model=list[ApplicationContactOut],
+)
+def list_application_contacts(
+    application_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[ApplicationContact]:
+    _get_owned_application(application_id, db)
+
+    return list(
+        db.scalars(
+            select(ApplicationContact)
+            .where(ApplicationContact.application_id == application_id)
+            .order_by(ApplicationContact.created_at.desc())
+        )
+    )
+
+
+@router.post(
+    "/{application_id}/contacts",
+    response_model=ApplicationContactOut,
+    status_code=201,
+)
+def create_application_contact(
+    application_id: uuid.UUID,
+    payload: ApplicationContactCreate,
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, db)
+
+    contact = ApplicationContact(
+        application_id=application_id,
+        **payload.model_dump(),
+    )
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+
+    return contact
+
+
+@router.patch(
+    "/{application_id}/contacts/{contact_id}",
+    response_model=ApplicationContactOut,
+)
+def update_application_contact(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    payload: ApplicationContactUpdate,
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(contact, field, value)
+
+    db.commit()
+    db.refresh(contact)
+
+    return contact
+
+
+@router.delete(
+    "/{application_id}/contacts/{contact_id}",
+    status_code=204,
+)
+def delete_application_contact(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    _get_owned_application(application_id, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    db.delete(contact)
+    db.commit()
+
+    return Response(status_code=204)
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)

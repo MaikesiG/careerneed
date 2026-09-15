@@ -193,3 +193,33 @@ class LLMCredentialOut(BaseModel):
 class ExtractionModeOut(BaseModel):
     mode: Literal["byok", "platform", "basic"]
     free_calls_remaining: int | None
+
+
+class ApplicationContactCreate(BaseModel):
+    name: str
+    contact_type: str = "other"
+    email: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+
+
+class ApplicationContactUpdate(BaseModel):
+    name: str | None = None
+    contact_type: str | None = None
+    email: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+
+
+class ApplicationContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    name: str
+    contact_type: str
+    email: str | None
+    linkedin_url: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime

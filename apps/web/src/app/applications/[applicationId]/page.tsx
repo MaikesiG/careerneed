@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ApplicationContactsEditor from "./ApplicationContactsEditor";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
 import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
 import ApplicationStatusEditor from "./ApplicationStatusEditor";
@@ -243,6 +244,17 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
               applicationId={application.id}
               initialNotes={application.notes ?? ""}
             />
+          </div>
+        </section>
+
+        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-semibold">Contacts</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Track recruiters, hiring managers, referrals, and interviewers for this application.
+          </p>
+
+          <div className="mt-5">
+            <ApplicationContactsEditor applicationId={application.id} />
           </div>
         </section>
       </div>

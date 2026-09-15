@@ -70,7 +70,7 @@ export default function ApplicationStatusEditor({
         void saveStatus();
       }}
     >
-      <div className="min-w-0 w-full sm:w-80">
+      <div className="w-full min-w-0 sm:w-80">
         <label className="text-foreground text-sm font-medium" htmlFor="application-status">
           Current status
         </label>

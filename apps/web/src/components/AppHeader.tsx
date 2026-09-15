@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import ThemeToggle from "./ThemeToggle";
 
 const navigation = [
-  { href: "/", label: "Today", exact: true },
+  { href: "/", label: "Home", exact: true },
+  { href: "/todo", label: "To Do" },
   { href: "/jobs", label: "Jobs" },
   { href: "/applications", label: "Applications" },
   { href: "/resumes", label: "Resumes" },
@@ -32,7 +33,7 @@ export default function AppHeader() {
       <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="text-foreground hover:text-primary shrink-0 text-lg font-bold tracking-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="text-foreground hover:text-primary focus-visible:ring-primary focus-visible:ring-offset-background shrink-0 text-lg font-bold tracking-tight transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           CareerNeed
         </Link>
@@ -49,7 +50,7 @@ export default function AppHeader() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-md px-2.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+                className={`focus-visible:ring-primary rounded-md px-2.5 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${
                   active
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"

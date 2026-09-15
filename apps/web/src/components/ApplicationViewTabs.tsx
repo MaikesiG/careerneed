@@ -14,7 +14,7 @@ export default function ApplicationViewTabs({ currentView }: ApplicationViewTabs
   return (
     <nav
       aria-label="Application views"
-      className="inline-flex rounded-lg border border-border bg-card p-1"
+      className="border-border bg-card inline-flex rounded-lg border p-1"
     >
       {currentView === "list" ? (
         <span aria-current="page" className={activeClassName}>
