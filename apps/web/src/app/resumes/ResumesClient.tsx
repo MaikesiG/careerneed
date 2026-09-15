@@ -238,14 +238,14 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
-          <p className="text-sm font-semibold tracking-[0.2em] text-indigo-600 uppercase">
+          <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
             CareerNeed
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Resume management</h1>
-          <p className="mt-3 max-w-2xl text-slate-600">
+          <p className="mt-3 max-w-2xl text-muted-foreground">
             Upload tailored resumes, choose one active default resume, and archive versions you no
             longer want included in your job-search workflow.
           </p>
@@ -253,13 +253,13 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
         {error ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
             role="alert"
           >
             <p>{error}</p>
             <button
               aria-label="Dismiss error"
-              className="shrink-0 font-semibold text-red-700 hover:text-red-900"
+              className="shrink-0 font-semibold text-destructive hover:opacity-80"
               onClick={() => setError(null)}
               type="button"
             >
@@ -270,13 +270,13 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
         {notice ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
             role="status"
           >
             <p>{notice}</p>
             <button
               aria-label="Dismiss notification"
-              className="shrink-0 font-semibold text-emerald-700 hover:text-emerald-900"
+              className="shrink-0 font-semibold text-success hover:opacity-80"
               onClick={() => setNotice(null)}
               type="button"
             >
@@ -285,10 +285,10 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
           </div>
         ) : null}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <div className="mb-5">
             <h2 className="text-lg font-semibold">Upload a resume</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               PDF only. The API extracts its text and skills after upload.
             </p>
           </div>
@@ -297,18 +297,18 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
             className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
             onSubmit={handleUpload}
           >
-            <div className="grid gap-2 text-sm font-medium text-slate-700">
+            <div className="grid gap-2 text-sm font-medium text-foreground">
               <span>PDF file</span>
 
               <label
-                className={`flex h-10 w-full items-center rounded-lg border border-slate-300 bg-white px-1.5 text-sm font-normal text-slate-600 ${
+                className={`flex h-10 w-full items-center rounded-lg border border-border bg-background px-1.5 text-sm font-normal text-muted-foreground ${
                   isUploading
                     ? "cursor-not-allowed opacity-60"
-                    : "cursor-pointer hover:border-indigo-400"
+                    : "cursor-pointer hover:border-primary"
                 }`}
                 htmlFor="resume-file"
               >
-                <span className="flex h-8 shrink-0 items-center rounded-md bg-indigo-50 px-3 text-sm font-semibold text-indigo-700">
+                <span className="flex h-8 shrink-0 items-center rounded-md bg-primary/10 px-3 text-sm font-semibold text-primary">
                   Choose file
                 </span>
 
@@ -325,10 +325,10 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
               />
             </div>
 
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               Label
               <input
-                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 w-full rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isUploading}
                 onChange={(event) => setUploadLabel(event.target.value)}
                 placeholder="e.g. Backend / SRE / AI"
@@ -338,10 +338,10 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
             </label>
 
             <div className="flex flex-wrap items-center gap-4">
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
                 <input
                   checked={makeDefaultOnUpload}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-indigo-500"
                   disabled={isUploading}
                   onChange={(event) => setMakeDefaultOnUpload(event.target.checked)}
                   type="checkbox"
@@ -350,7 +350,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
               </label>
 
               <button
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isUploading}
                 type="submit"
               >
@@ -364,15 +364,15 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold">Your resumes</h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Your default resume will be used as the initial profile for future job workflows.
               </p>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
               <input
                 checked={showArchived}
-                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-indigo-500"
                 disabled={isRefreshing}
                 onChange={(event) => void handleArchivedToggle(event.target.checked)}
                 type="checkbox"
@@ -382,15 +382,15 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
           </div>
 
           {isRefreshing ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600 shadow-sm">
+            <div className="rounded-2xl border border-border bg-card p-8 text-sm text-muted-foreground shadow-sm">
               Refreshing resumes...
             </div>
           ) : null}
 
           {!isRefreshing && visibleResumes.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
+            <div className="rounded-2xl border border-dashed border-border bg-background p-8 text-center shadow-sm">
               <h3 className="text-lg font-semibold">No resumes to show</h3>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Upload a PDF resume above, or enable “Show archived” to view archived versions.
               </p>
             </div>
@@ -404,7 +404,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
                 return (
                   <article
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                    className="rounded-2xl border border-border bg-card p-5 shadow-sm"
                     key={resume.id}
                   >
                     <div className="flex flex-col justify-between gap-5 lg:flex-row">
@@ -415,42 +415,42 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
                           </h3>
 
                           {resume.is_default ? (
-                            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                               Default
                             </span>
                           ) : null}
 
                           {isArchived ? (
-                            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                            <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                               Archived
                             </span>
                           ) : null}
                         </div>
 
                         {resume.label ? (
-                          <p className="mt-1 truncate text-sm text-slate-500">{resume.filename}</p>
+                          <p className="mt-1 truncate text-sm text-muted-foreground">{resume.filename}</p>
                         ) : null}
 
-                        <dl className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                        <dl className="mt-4 grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
                           <div>
-                            <dt className="font-medium text-slate-700">Uploaded</dt>
+                            <dt className="font-medium text-foreground">Uploaded</dt>
                             <dd className="mt-1">{formatDate(resume.uploaded_at)}</dd>
                           </div>
                           <div>
-                            <dt className="font-medium text-slate-700">Source</dt>
+                            <dt className="font-medium text-foreground">Source</dt>
                             <dd className="mt-1">{resume.source ?? "Unknown"}</dd>
                           </div>
                           {isArchived && resume.archived_at ? (
                             <div>
-                              <dt className="font-medium text-slate-700">Archived</dt>
+                              <dt className="font-medium text-foreground">Archived</dt>
                               <dd className="mt-1">{formatDate(resume.archived_at)}</dd>
                             </div>
                           ) : null}
                         </dl>
 
                         <div className="mt-4">
-                          <p className="text-sm font-medium text-slate-700">Extracted skills</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                          <p className="text-sm font-medium text-foreground">Extracted skills</p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
                             {resume.skills ?? "No skills were extracted from this resume."}
                           </p>
                         </div>
@@ -458,7 +458,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
                       <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-52 lg:justify-end">
                         <button
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isBusy}
                           onClick={() => void handleRename(resume)}
                           type="button"
@@ -468,7 +468,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
                         {!isArchived && !resume.is_default ? (
                           <button
-                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -485,7 +485,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
 
                         {isArchived ? (
                           <button
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg border border-success-border bg-success-background px-3 py-2 text-sm font-semibold text-success transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -500,7 +500,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
                           </button>
                         ) : (
                           <button
-                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg border border-warning-border bg-warning-background px-3 py-2 text-sm font-semibold text-warning transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -516,7 +516,7 @@ export default function ResumesClient({ initialResumes }: ResumesClientProps) {
                         )}
 
                         <button
-                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition hover:bg-destructive/15 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isBusy}
                           onClick={() => void handleDelete(resume)}
                           type="button"

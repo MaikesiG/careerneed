@@ -52,12 +52,21 @@ function formatStatus(status: ApplicationStatus): string {
 }
 
 function statusClass(status: ApplicationStatus): string {
-  if (status === "applied") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "interviewing") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (status === "offer") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (status === "saved") return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  return "border-slate-200 bg-slate-50 text-slate-600";
+  if (status === "applied") {
+    return "border-success-border bg-success-background text-success";
+  }
+
+  if (status === "interviewing" || status === "saved") {
+    return "border-primary/30 bg-primary/10 text-primary";
+  }
+
+  if (status === "offer") {
+    return "border-warning-border bg-warning-background text-warning";
+  }
+
+  return "border-border bg-muted text-muted-foreground";
 }
+
 function applicationHref(status: ApplicationStatus | null, followUp: FollowUpFilter): string {
   const params = new URLSearchParams();
 
@@ -115,20 +124,20 @@ function getFollowUpLabel(value: string | null): {
   if (value === localToday) {
     return {
       label: "Follow up today",
-      className: "border-amber-200 bg-amber-50 text-amber-800",
+      className: "border-warning-border bg-warning-background text-warning",
     };
   }
 
   if (value < localToday) {
     return {
       label: "Follow-up overdue",
-      className: "border-rose-200 bg-rose-50 text-rose-700",
+      className: "border-error-border bg-error-background text-destructive",
     };
   }
 
   return {
     label: `Follow up ${formatDate(value)}`,
-    className: "border-slate-200 bg-slate-50 text-slate-700",
+    className: "border-border bg-muted text-muted-foreground",
   };
 }
 
@@ -157,21 +166,21 @@ export default async function ApplicationsPage({
   const applications = await getApplications(selectedStatus, selectedFollowUp);
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
+    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-sm font-semibold tracking-[0.2em] text-indigo-600 uppercase">
+            <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
               CareerNeed
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">My applications</h1>
-            <p className="mt-3 max-w-2xl text-slate-600">
+            <p className="mt-3 max-w-2xl text-muted-foreground">
               Track every role you saved or applied to. Results are ordered by most recently
               updated.
             </p>
           </div>
           <Link
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
             href="/jobs"
           >
             Browse jobs
@@ -182,8 +191,8 @@ export default async function ApplicationsPage({
           <Link
             className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
               selectedStatus === null
-                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border bg-card text-foreground hover:bg-muted"
             }`}
             href={applicationHref(null, selectedFollowUp)}
           >
@@ -193,8 +202,8 @@ export default async function ApplicationsPage({
             <Link
               className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 selectedStatus === option.value
-                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border bg-card text-foreground hover:bg-muted"
               }`}
               href={applicationHref(option.value, selectedFollowUp)}
               key={option.value}
@@ -208,8 +217,8 @@ export default async function ApplicationsPage({
             <Link
               className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 selectedFollowUp === option.value
-                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border bg-card text-foreground hover:bg-muted"
               }`}
               href={applicationHref(selectedStatus, option.value)}
               key={option.value}
@@ -219,12 +228,12 @@ export default async function ApplicationsPage({
           ))}
         </nav>
 
-        <p className="mb-4 text-sm text-slate-600">{applications.length} tracked jobs</p>
+        <p className="mb-4 text-sm text-muted-foreground">{applications.length} tracked jobs</p>
 
         {applications.length === 0 ? (
-          <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
+          <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-center shadow-sm">
             <h2 className="text-lg font-semibold">No tracked jobs here yet</h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-muted-foreground">
               Choose a tracking status from any job card to start your workflow.
             </p>
           </section>
@@ -235,7 +244,7 @@ export default async function ApplicationsPage({
 
               return (
                 <article
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  className="rounded-2xl border border-border bg-card p-5 shadow-sm"
                   key={application.id}
                 >
                   <div className="flex flex-col justify-between gap-4 sm:flex-row">
@@ -257,28 +266,28 @@ export default async function ApplicationsPage({
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-2 text-sm font-medium text-slate-700">
+                      <p className="mt-2 text-sm font-medium text-foreground">
                         {application.job.company_name}
                       </p>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         {application.job.location ?? "Location not specified"}
                       </p>
                       {application.notes ? (
-                        <p className="mt-3 text-sm whitespace-pre-wrap text-slate-600">
+                        <p className="mt-3 text-sm whitespace-pre-wrap text-muted-foreground">
                           {application.notes}
                         </p>
                       ) : null}
                     </div>
                     <div className="flex h-fit shrink-0 flex-wrap gap-2">
                       <Link
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
                         href={`/applications/${application.id}`}
                       >
                         View details
                       </Link>
 
                       <a
-                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                        className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
                         href={application.job.application_url}
                         rel="noopener noreferrer"
                         target="_blank"
@@ -287,7 +296,7 @@ export default async function ApplicationsPage({
                       </a>
                     </div>
                   </div>
-                  <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-4 text-sm text-slate-500">
+                  <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-4 text-sm text-muted-foreground">
                     {application.applied_at ? (
                       <span>Applied {formatDate(application.applied_at)}</span>
                     ) : null}

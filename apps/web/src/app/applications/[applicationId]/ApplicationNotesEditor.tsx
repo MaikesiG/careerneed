@@ -85,7 +85,7 @@ export default function ApplicationNotesEditor({
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error ? (
         <div
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
           role="alert"
         >
           {error}
@@ -94,17 +94,17 @@ export default function ApplicationNotesEditor({
 
       {notice ? (
         <div
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+          className="rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
           role="status"
         >
           {notice}
         </div>
       ) : null}
 
-      <label className="grid gap-2 text-sm font-medium text-slate-700">
+      <label className="grid gap-2 text-sm font-medium text-foreground">
         Notes for this application
         <textarea
-          className="min-h-44 w-full resize-y rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          className="min-h-44 w-full resize-y rounded-xl border border-border bg-background px-3 py-3 text-sm leading-6 text-foreground transition outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           disabled={isSaving}
           onChange={(event) => {
             setNotes(event.target.value);
@@ -118,12 +118,12 @@ export default function ApplicationNotesEditor({
       </label>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           {hasChanges ? "Unsaved changes" : "All changes saved"}
         </p>
 
         <button
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={isSaving || !hasChanges}
           type="submit"
         >

@@ -8,8 +8,8 @@ type Priority = "high" | "medium" | "low";
 type Company = {
   id: string;
   name: string;
-  source_type: Provider;
-  priority: Priority;
+  source_type: string;
+  priority: string;
   active: boolean;
 };
 
@@ -101,32 +101,32 @@ function providerLabel(provider: string): string {
   return PROVIDER_OPTIONS.find((option) => option.value === provider)?.label ?? provider;
 }
 
-function providerBadgeClass(provider: Provider): string {
-  if (provider === "ashby") {
-    return "border-violet-200 bg-violet-50 text-violet-700";
-  }
-
+function providerBadgeClass(provider: string): string {
   if (provider === "greenhouse") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-success-border bg-success-background text-success";
   }
 
-  if (provider === "lever") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+  if (provider === "manual") {
+    return "border-warning-border bg-warning-background text-warning";
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  if (provider === "ashby" || provider === "lever") {
+    return "border-primary/30 bg-primary/10 text-primary";
+  }
+
+  return "border-border bg-muted text-muted-foreground";
 }
 
-function priorityBadgeClass(priority: Priority): string {
+function priorityBadgeClass(priority: string): string {
   if (priority === "high") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-error-border bg-error-background text-destructive";
   }
 
   if (priority === "low") {
-    return "border-slate-200 bg-slate-50 text-slate-600";
+    return "border-border bg-muted text-muted-foreground";
   }
 
-  return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-warning-border bg-warning-background text-warning";
 }
 
 export default function SourcesClient({ initialCompanies }: SourcesClientProps) {
@@ -239,7 +239,11 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   }
 
   async function handleSyncCompany(company: Company) {
-    if (!connectorProviders.includes(company.source_type)) {
+    if (
+      company.source_type !== "ashby" &&
+      company.source_type !== "greenhouse" &&
+      company.source_type !== "lever"
+    ) {
       setError(`${company.name} does not use a supported job-board connector.`);
       return;
     }
@@ -299,14 +303,14 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
-          <p className="text-sm font-semibold tracking-[0.2em] text-indigo-600 uppercase">
+          <p className="text-sm font-semibold tracking-[0.2em] text-primary uppercase">
             CareerNeed
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Company sources</h1>
-          <p className="mt-3 max-w-3xl text-slate-600">
+          <p className="mt-3 max-w-3xl text-muted-foreground">
             Track company job boards from Ashby, Greenhouse, and Lever. Add a verified board token,
             sync the source, and search its jobs from the Jobs dashboard.
           </p>
@@ -314,13 +318,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
         {error ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
             role="alert"
           >
             <p>{error}</p>
             <button
               aria-label="Dismiss error"
-              className="shrink-0 font-semibold text-red-700 hover:text-red-900"
+              className="shrink-0 font-semibold text-destructive hover:opacity-80"
               onClick={() => setError(null)}
               type="button"
             >
@@ -331,13 +335,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
         {notice ? (
           <div
-            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
             role="status"
           >
             <p>{notice}</p>
             <button
               aria-label="Dismiss notification"
-              className="shrink-0 font-semibold text-emerald-700 hover:text-emerald-900"
+              className="shrink-0 font-semibold text-success hover:opacity-80"
               onClick={() => setNotice(null)}
               type="button"
             >
@@ -346,19 +350,19 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           </div>
         ) : null}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <div className="mb-5">
             <h2 className="text-lg font-semibold">Add a company source</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               Use the token or slug from the company’s public careers URL. Do not enter API keys.
             </p>
           </div>
 
           <form className="grid gap-4 lg:grid-cols-2" onSubmit={handleAddCompany}>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               Provider
               <select
-                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 rounded-lg border border-border bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isAdding}
                 onChange={(event) => setProvider(event.target.value as Provider)}
                 value={provider}
@@ -371,10 +375,10 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               </select>
             </label>
 
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               Company name
               <input
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isAdding}
                 onChange={(event) => setCompanyName(event.target.value)}
                 placeholder="e.g. Vanta"
@@ -383,10 +387,10 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               {providerConfig.tokenLabel}
               <input
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isAdding}
                 onChange={(event) => setBoardToken(event.target.value)}
                 placeholder={
@@ -402,13 +406,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 type="text"
                 value={boardToken}
               />
-              <span className="text-xs font-normal text-slate-500">{providerConfig.tokenHint}</span>
+              <span className="text-xs font-normal text-muted-foreground">{providerConfig.tokenHint}</span>
             </label>
 
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               Careers URL
               <input
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 rounded-lg border border-border px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isAdding}
                 onChange={(event) => setCareersUrl(event.target.value)}
                 placeholder="https://jobs.ashbyhq.com/vanta"
@@ -417,10 +421,10 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-2 text-sm font-medium text-foreground">
               Priority
               <select
-                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 rounded-lg border border-border bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 disabled={isAdding}
                 onChange={(event) => setPriority(event.target.value as Priority)}
                 value={priority}
@@ -433,7 +437,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
             <div className="flex items-end">
               <button
-                className="h-10 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isAdding}
                 type="submit"
               >
@@ -447,7 +451,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold">Tracked sources</h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {companies.length} company source{companies.length === 1 ? "" : "s"} tracked.
               </p>
             </div>
@@ -455,7 +459,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
             <div className="flex flex-wrap gap-2">
               {connectorProviders.map((nextProvider) => (
                 <button
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={syncingProvider !== null}
                   key={nextProvider}
                   onClick={() => void handleSyncAll(nextProvider)}
@@ -468,7 +472,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               ))}
 
               <button
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isRefreshing}
                 onClick={() => void refreshCompanies()}
                 type="button"
@@ -478,16 +482,16 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
             </div>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             {companies.length === 0 ? (
               <div className="p-8 text-center">
                 <h3 className="text-lg font-semibold">No company sources yet</h3>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-muted-foreground">
                   Add an Ashby, Greenhouse, or Lever company board above.
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-200">
+              <div className="divide-y divide-border">
                 {companies.map((company) => (
                   <article
                     className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
@@ -511,12 +515,12 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                           {company.priority} priority
                         </span>
                         {!company.active ? (
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                          <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                             Inactive
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-2 text-sm text-slate-600">
+                      <p className="mt-2 text-sm text-muted-foreground">
                         {company.active
                           ? "Included in provider sync-all runs."
                           : "Excluded from provider sync-all runs."}
@@ -524,7 +528,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                     </div>
 
                     <button
-                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                       disabled={syncingCompanyId !== null}
                       onClick={() => void handleSyncCompany(company)}
                       type="button"
@@ -539,11 +543,11 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
         </section>
 
         {syncResults.length > 0 ? (
-          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section className="mt-8 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
             <h2 className="text-lg font-semibold">Latest sync results</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="border-b border-slate-200 text-slate-500">
+                <thead className="border-b border-border text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">Company</th>
                     <th className="px-3 py-2 font-medium">Fetched</th>
@@ -555,7 +559,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 <tbody>
                   {syncResults.map((result, index) => (
                     <tr
-                      className="border-b border-slate-100 last:border-0"
+                      className="border-b border-border last:border-0"
                       key={`${result.company}-${index}`}
                     >
                       <td className="px-3 py-3 font-medium">{result.company ?? "Unknown"}</td>
@@ -564,7 +568,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                       <td className="px-3 py-3">{result.skipped ?? "—"}</td>
                       <td
                         className={
-                          result.error ? "px-3 py-3 text-red-700" : "px-3 py-3 text-emerald-700"
+                          result.error ? "px-3 py-3 text-destructive" : "px-3 py-3 text-success"
                         }
                       >
                         {result.error ?? "Completed"}
