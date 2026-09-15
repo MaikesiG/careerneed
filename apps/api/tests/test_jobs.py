@@ -249,3 +249,84 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
     assert str(current_user_job.id) not in applied_job_ids
     assert {str(current_user_job.id), str(current_user_applied_job.id)} <= combined_job_ids
     assert str(other_user_job.id) not in combined_job_ids
+
+
+def test_get_application_detail_includes_job(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    job = create_job(
+        db_session,
+        title="Application detail test role",
+    )
+    application = Application(
+        user_id=INITIAL_USER_ID,
+        job_id=job.id,
+        status="applied",
+        notes="Initial application note",
+    )
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    response = client.get(f"/applications/{application.id}")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["id"] == str(application.id)
+    assert body["status"] == "applied"
+    assert body["notes"] == "Initial application note"
+    assert body["job"]["id"] == str(job.id)
+    assert body["job"]["title"] == job.title
+    assert body["job"]["company_name"] == job.company_name
+
+
+def test_list_jobs_filters_by_location_query(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    canada_job = create_job(db_session, title="Canada role")
+    canada_job.location = "Toronto, Ontario, Canada"
+
+    ny_job = create_job(db_session, title="New York role")
+    ny_job.location = "New York City, NY, United States"
+
+    remote_job = create_job(db_session, title="Remote role")
+    remote_job.location = "Remote, Global"
+    remote_job.workplace_type = "remote"
+
+    db_session.commit()
+
+    canada_response = client.get(
+        "/jobs",
+        params={"location_query": "canada"},
+    )
+
+    assert canada_response.status_code == 200
+    canada_titles = {job["title"] for job in canada_response.json()}
+    assert "Canada role" in canada_titles
+    assert "New York role" not in canada_titles
+    assert "Remote role" not in canada_titles
+
+    new_york_response = client.get(
+        "/jobs",
+        params={"location_query": "NEW YORK"},
+    )
+
+    assert new_york_response.status_code == 200
+    new_york_titles = {job["title"] for job in new_york_response.json()}
+    assert "New York role" in new_york_titles
+    assert "Canada role" not in new_york_titles
+
+    combined_response = client.get(
+        "/jobs",
+        params=[
+            ("location_query", "remote"),
+            ("workplace_type", "remote"),
+        ],
+    )
+
+    assert combined_response.status_code == 200
+    combined_titles = {job["title"] for job in combined_response.json()}
+    assert "Remote role" in combined_titles

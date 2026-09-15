@@ -9,6 +9,7 @@ type Application = {
   status: ApplicationStatus;
   applied_at: string | null;
   notes: string | null;
+  follow_up_on: string | null;
   updated_at: string;
   job: {
     company_name: string;
@@ -20,6 +21,8 @@ type Application = {
   };
 };
 
+type FollowUpFilter = "all" | "today" | "overdue" | "scheduled";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
@@ -29,6 +32,13 @@ const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "offer", label: "Offer" },
   { value: "rejected", label: "Rejected" },
   { value: "withdrawn", label: "Withdrawn" },
+];
+
+const FOLLOW_UP_OPTIONS: { value: FollowUpFilter; label: string }[] = [
+  { value: "all", label: "All follow-ups" },
+  { value: "today", label: "Due today" },
+  { value: "overdue", label: "Overdue" },
+  { value: "scheduled", label: "Scheduled" },
 ];
 
 function formatDate(value: string): string {
@@ -48,11 +58,35 @@ function statusClass(status: ApplicationStatus): string {
   if (status === "saved") return "border-indigo-200 bg-indigo-50 text-indigo-700";
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
+function applicationHref(status: ApplicationStatus | null, followUp: FollowUpFilter): string {
+  const params = new URLSearchParams();
 
-async function getApplications(status: ApplicationStatus | null): Promise<Application[]> {
+  if (status) {
+    params.set("status", status);
+  }
+
+  if (followUp !== "all") {
+    params.set("follow_up", followUp);
+  }
+
+  const query = params.toString();
+
+  return query ? `/applications?${query}` : "/applications";
+}
+
+async function getApplications(
+  status: ApplicationStatus | null,
+  followUp: FollowUpFilter
+): Promise<Application[]> {
   const params = new URLSearchParams({ limit: "100" });
-  if (status) params.set("status", status);
 
+  if (status) {
+    params.set("status", status);
+  }
+
+  if (followUp !== "all") {
+    params.set("follow_up", followUp);
+  }
   try {
     const response = await fetch(`${API_URL}/applications?${params.toString()}`, {
       cache: "no-store",
@@ -63,10 +97,48 @@ async function getApplications(status: ApplicationStatus | null): Promise<Applic
   }
 }
 
+function getFollowUpLabel(value: string | null): {
+  label: string;
+  className: string;
+} | null {
+  if (!value) {
+    return null;
+  }
+
+  const today = new Date();
+  const localToday = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  if (value === localToday) {
+    return {
+      label: "Follow up today",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+
+  if (value < localToday) {
+    return {
+      label: "Follow-up overdue",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+
+  return {
+    label: `Follow up ${formatDate(value)}`,
+    className: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+}
+
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string | string[] }>;
+  searchParams: Promise<{
+    status?: string | string[];
+    follow_up?: string | string[];
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const requestedStatus = Array.isArray(resolvedSearchParams.status)
@@ -75,7 +147,14 @@ export default async function ApplicationsPage({
   const selectedStatus = STATUS_OPTIONS.some((option) => option.value === requestedStatus)
     ? (requestedStatus as ApplicationStatus)
     : null;
-  const applications = await getApplications(selectedStatus);
+  const requestedFollowUp = Array.isArray(resolvedSearchParams.follow_up)
+    ? resolvedSearchParams.follow_up[0]
+    : resolvedSearchParams.follow_up;
+
+  const selectedFollowUp = FOLLOW_UP_OPTIONS.some((option) => option.value === requestedFollowUp)
+    ? (requestedFollowUp as FollowUpFilter)
+    : "all";
+  const applications = await getApplications(selectedStatus, selectedFollowUp);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
@@ -99,14 +178,14 @@ export default async function ApplicationsPage({
           </Link>
         </header>
 
-        <nav aria-label="Application status filters" className="mb-6 flex flex-wrap gap-2">
+        <nav aria-label="Application status filters" className="mb-3 flex flex-wrap gap-2">
           <Link
             className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
               selectedStatus === null
                 ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                 : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             }`}
-            href="/applications"
+            href={applicationHref(null, selectedFollowUp)}
           >
             All statuses
           </Link>
@@ -117,7 +196,22 @@ export default async function ApplicationsPage({
                   ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
               }`}
-              href={`/applications?status=${option.value}`}
+              href={applicationHref(option.value, selectedFollowUp)}
+              key={option.value}
+            >
+              {option.label}
+            </Link>
+          ))}
+        </nav>
+        <nav aria-label="Follow-up filters" className="mb-6 flex flex-wrap gap-2">
+          {FOLLOW_UP_OPTIONS.map((option) => (
+            <Link
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                selectedFollowUp === option.value
+                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+              href={applicationHref(selectedStatus, option.value)}
               key={option.value}
             >
               {option.label}
@@ -136,62 +230,73 @@ export default async function ApplicationsPage({
           </section>
         ) : (
           <section className="grid gap-4">
-            {applications.map((application) => (
-              <article
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                key={application.id}
-              >
-                <div className="flex flex-col justify-between gap-4 sm:flex-row">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-semibold">{application.job.title}</h2>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
-                          application.status
-                        )}`}
-                      >
-                        {formatStatus(application.status)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm font-medium text-slate-700">
-                      {application.job.company_name}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {application.job.location ?? "Location not specified"}
-                    </p>
-                    {application.notes ? (
-                      <p className="mt-3 text-sm whitespace-pre-wrap text-slate-600">
-                        {application.notes}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex h-fit shrink-0 flex-wrap gap-2">
-                    <Link
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      href={`/applications/${application.id}`}
-                    >
-                      View details
-                    </Link>
+            {applications.map((application) => {
+              const followUp = getFollowUpLabel(application.follow_up_on);
 
-                    <a
-                      className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                      href={application.job.application_url}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      View posting
-                    </a>
+              return (
+                <article
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  key={application.id}
+                >
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-semibold">{application.job.title}</h2>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
+                            application.status
+                          )}`}
+                        >
+                          {formatStatus(application.status)}
+                        </span>
+                        {followUp ? (
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${followUp.className}`}
+                          >
+                            {followUp.label}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm font-medium text-slate-700">
+                        {application.job.company_name}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {application.job.location ?? "Location not specified"}
+                      </p>
+                      {application.notes ? (
+                        <p className="mt-3 text-sm whitespace-pre-wrap text-slate-600">
+                          {application.notes}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex h-fit shrink-0 flex-wrap gap-2">
+                      <Link
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        href={`/applications/${application.id}`}
+                      >
+                        View details
+                      </Link>
+
+                      <a
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                        href={application.job.application_url}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        View posting
+                      </a>
+                    </div>
                   </div>
-                </div>
-                <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-4 text-sm text-slate-500">
-                  {application.applied_at ? (
-                    <span>Applied {formatDate(application.applied_at)}</span>
-                  ) : null}
-                  <span>Updated {formatDate(application.updated_at)}</span>
-                  <span>{application.resume_id ? "Resume linked" : "No resume linked"}</span>
-                </footer>
-              </article>
-            ))}
+                  <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-4 text-sm text-slate-500">
+                    {application.applied_at ? (
+                      <span>Applied {formatDate(application.applied_at)}</span>
+                    ) : null}
+                    <span>Updated {formatDate(application.updated_at)}</span>
+                    <span>{application.resume_id ? "Resume linked" : "No resume linked"}</span>
+                  </footer>
+                </article>
+              );
+            })}
           </section>
         )}
       </div>

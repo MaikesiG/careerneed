@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -23,11 +23,14 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 # TODO: replace with real authenticated user once auth is implemented.
 INITIAL_USER_ID = uuid.UUID("363a7386-c17c-43ab-ad6c-9a60ff52492a")
 
+ALLOWED_FOLLOW_UP_FILTERS = {"all", "today", "overdue", "scheduled"}
+
 
 @router.get("", response_model=list[ApplicationWithJobOut])
 def list_applications(
     response: Response,
     status: str | None = Query(default=None, max_length=50),
+    follow_up: str = Query(default="all", max_length=20),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -38,8 +41,25 @@ def list_applications(
         .where(Application.user_id == INITIAL_USER_ID)
     )
 
+    follow_up_filter = follow_up.strip().lower()
+
+    if follow_up_filter not in ALLOWED_FOLLOW_UP_FILTERS:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid follow-up filter. Use all, today, overdue, or scheduled.",
+        )
+
     if status and status.strip():
         statement = statement.where(Application.status == status.strip().lower())
+
+    today = date.today()
+
+    if follow_up_filter == "today":
+        statement = statement.where(Application.follow_up_on == today)
+    elif follow_up_filter == "overdue":
+        statement = statement.where(Application.follow_up_on < today)
+    elif follow_up_filter == "scheduled":
+        statement = statement.where(Application.follow_up_on.is_not(None))
 
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 
@@ -63,6 +83,7 @@ def list_applications(
             "status": application.status,
             "applied_at": application.applied_at,
             "notes": application.notes,
+            "follow_up_on": application.follow_up_on,
             "created_at": application.created_at,
             "updated_at": application.updated_at,
             "job": {
@@ -104,6 +125,7 @@ def get_my_job_states(
             status=application.status,
             applied_at=application.applied_at,
             notes=application.notes,
+            follow_up_on=application.follow_up_on,
         )
         for application in applications
     }
@@ -180,12 +202,45 @@ def delete_application_for_job(
     db.commit()
 
 
-@router.get("/{application_id}", response_model=ApplicationOut)
-def get_application(application_id: uuid.UUID, db: Session = Depends(get_db)) -> Application:
-    application = db.get(Application, application_id)
-    if application is None or application.user_id != INITIAL_USER_ID:
+@router.get("/{application_id}", response_model=ApplicationWithJobOut)
+def get_application(
+    application_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.execute(
+        select(Application, Job)
+        .join(Job, Job.id == Application.job_id)
+        .where(
+            Application.id == application_id,
+            Application.user_id == INITIAL_USER_ID,
+        )
+    ).one_or_none()
+
+    if row is None:
         raise HTTPException(status_code=404, detail="Application not found")
-    return application
+
+    application, job = row
+
+    return {
+        "id": application.id,
+        "job_id": application.job_id,
+        "resume_id": application.resume_id,
+        "status": application.status,
+        "applied_at": application.applied_at,
+        "notes": application.notes,
+        "follow_up_on": application.follow_up_on,
+        "created_at": application.created_at,
+        "updated_at": application.updated_at,
+        "job": {
+            "id": job.id,
+            "company_name": job.company_name,
+            "source": job.source,
+            "title": job.title,
+            "location": job.location,
+            "workplace_type": job.workplace_type,
+            "application_url": job.application_url,
+        },
+    }
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)

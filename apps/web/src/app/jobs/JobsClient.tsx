@@ -51,6 +51,7 @@ type DateRange = "all" | "yesterday" | "week" | "month";
 
 type JobFilters = {
   q: string;
+  locationQuery: string;
   sources: string[];
   workplaceTypes: string[];
   applicationStatuses: ApplicationStatus[];
@@ -303,6 +304,7 @@ export default function JobsClient({
   const searchParams = useSearchParams();
 
   const [searchInput, setSearchInput] = useState(initialFilters.q);
+  const [locationInput, setLocationInput] = useState(initialFilters.locationQuery);
   const [applicationStates, setApplicationStates] = useState<Record<string, ApplicationState>>({});
   const [isLoadingStates, setIsLoadingStates] = useState(true);
   const [resumes, setResumes] = useState<Resume[]>([]);
@@ -450,6 +452,7 @@ export default function JobsClient({
   function navigateWithFilters(next: {
     page?: number;
     q?: string;
+    locationQuery?: string;
     sources?: string[];
     workplaceTypes?: string[];
     applicationStatuses?: ApplicationStatus[];
@@ -463,6 +466,7 @@ export default function JobsClient({
 
     const page = next.page ?? 1;
     const q = next.q ?? initialFilters.q;
+    const locationQuery = next.locationQuery ?? initialFilters.locationQuery;
     const sources = next.sources ?? initialFilters.sources;
     const workplaceTypes = next.workplaceTypes ?? initialFilters.workplaceTypes;
     const applicationStatuses = next.applicationStatuses ?? initialFilters.applicationStatuses;
@@ -483,6 +487,12 @@ export default function JobsClient({
       params.set("q", q.trim());
     } else {
       params.delete("q");
+    }
+
+    if (locationQuery.trim()) {
+      params.set("location_query", locationQuery.trim());
+    } else {
+      params.delete("location_query");
     }
 
     params.delete("source");
@@ -530,6 +540,7 @@ export default function JobsClient({
     navigateWithFilters({
       page: 1,
       q: searchInput,
+      locationQuery: locationInput,
     });
   }
 
@@ -701,11 +712,13 @@ export default function JobsClient({
   function clearFilters() {
     clearFeedback();
     setSearchInput("");
+    setLocationInput("");
     setKeywordGroups([]);
 
     navigateWithFilters({
       page: 1,
       q: "",
+      locationQuery: "",
       sources: [],
       workplaceTypes: [],
       applicationStatuses: [],
@@ -902,6 +915,7 @@ export default function JobsClient({
               </div>
 
               {(initialFilters.q ||
+                initialFilters.locationQuery ||
                 initialFilters.sources.length > 0 ||
                 initialFilters.workplaceTypes.length > 0 ||
                 initialFilters.applicationStatuses.length > 0 ||
@@ -918,14 +932,36 @@ export default function JobsClient({
               )}
             </div>
 
-            <form className="flex gap-2" onSubmit={handleSearch}>
+            <form
+              className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              onSubmit={handleSearch}
+            >
+              <label className="sr-only" htmlFor="job-search">
+                Search title or company
+              </label>
+
               <input
-                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                id="job-search"
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search title, company, or location"
+                placeholder="Search title or company"
                 type="search"
                 value={searchInput}
               />
+
+              <label className="sr-only" htmlFor="location-search">
+                Location
+              </label>
+
+              <input
+                className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm transition outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                id="location-search"
+                onChange={(event) => setLocationInput(event.target.value)}
+                placeholder="Country, state, province, or city"
+                type="search"
+                value={locationInput}
+              />
+
               <button
                 className="h-10 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700"
                 type="submit"

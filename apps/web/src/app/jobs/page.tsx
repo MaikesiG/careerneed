@@ -30,6 +30,7 @@ const APPLICATION_STATUSES: ApplicationStatus[] = [
 type SearchParams = {
   page?: string | string[];
   q?: string | string[];
+  location_query?: string | string[];
   source?: string | string[];
   workplace_type?: string | string[];
   application_status?: string | string[];
@@ -172,6 +173,7 @@ async function getJobs(
   page: number,
   filters: {
     q: string;
+    locationQuery: string;
     sources: string[];
     workplaceTypes: string[];
     applicationStatuses: ApplicationStatus[];
@@ -191,6 +193,10 @@ async function getJobs(
 
   if (filters.q) {
     params.set("q", filters.q);
+  }
+
+  if (filters.locationQuery) {
+    params.set("location_query", filters.locationQuery);
   }
 
   filters.sources.forEach((source) => {
@@ -241,7 +247,10 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   const resolvedSearchParams = await searchParams;
 
   const requestedPage = getPageNumber(resolvedSearchParams.page);
+
   const q = getSingleValue(resolvedSearchParams.q).trim();
+
+  const locationQuery = getSingleValue(resolvedSearchParams.location_query).trim();
 
   const sources = Array.from(
     new Set(
@@ -285,6 +294,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   const { jobs, total } = await getJobs(requestedPage, {
     q,
+    locationQuery,
     sources,
     workplaceTypes,
     applicationStatuses,
@@ -302,6 +312,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     <JobsClient
       initialFilters={{
         q,
+        locationQuery,
         sources,
         workplaceTypes,
         applicationStatuses,

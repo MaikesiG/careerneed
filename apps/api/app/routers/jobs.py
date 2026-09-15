@@ -70,6 +70,7 @@ CURATED_KEYWORDS = [
 def list_jobs(
     response: Response,
     q: str | None = Query(default=None, max_length=200),
+    location_query: str | None = Query(default=None, max_length=100),
     source: list[str] = Query(default=[]),
     source_type: str | None = Query(default=None, max_length=50),
     workplace_type: list[str] = Query(default=[]),
@@ -145,6 +146,12 @@ def list_jobs(
                 Job.company_name.ilike(search_term),
                 func.coalesce(Job.location, "").ilike(search_term),
             )
+        )
+
+    if location_query and location_query.strip():
+        location_term = f"%{location_query.strip()}%"
+        statement = statement.where(
+            func.coalesce(Job.location, "").ilike(location_term)
         )
 
     cleaned_keywords = [keyword.strip() for keyword in keywords if keyword and keyword.strip()]

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -114,6 +114,7 @@ class ApplicationOut(BaseModel):
     status: ApplicationStatus
     applied_at: datetime | None
     notes: str | None
+    follow_up_on: date | None
     created_at: datetime
     updated_at: datetime
 
@@ -139,6 +140,7 @@ class ApplicationUpdate(BaseModel):
     resume_id: uuid.UUID | None = None
     applied_at: datetime | None = None
     notes: str | None = None
+    follow_up_on: date | None = None
 
 
 class ApplicationByJobUpdate(BaseModel):
@@ -154,6 +156,7 @@ class ApplicationJobState(BaseModel):
     status: ApplicationStatus
     applied_at: datetime | None
     notes: str | None
+    follow_up_on: date | None
 
 
 class ApplicationJobStateMap(BaseModel):

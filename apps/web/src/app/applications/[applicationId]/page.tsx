@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
+import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -13,6 +14,7 @@ type ApplicationDetail = {
   status: ApplicationStatus;
   applied_at: string | null;
   notes: string | null;
+  follow_up_on: string | null;
   created_at: string;
   updated_at: string;
   job: {
@@ -205,6 +207,20 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
               <dd className="mt-1 text-slate-600">{formatDate(application.applied_at)}</dd>
             </div>
           </dl>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-semibold">Follow-up</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Set a date so you know when to contact a recruiter or check on the application.
+          </p>
+
+          <div className="mt-5">
+            <ApplicationFollowUpEditor
+              applicationId={application.id}
+              initialFollowUpOn={application.follow_up_on}
+            />
+          </div>
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
