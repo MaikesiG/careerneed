@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -9,8 +11,6 @@ type ApplicationStatusEditorProps = {
   applicationId: string;
   initialStatus: ApplicationStatus;
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "saved", label: "Saved" },
@@ -41,7 +41,7 @@ export default function ApplicationStatusEditor({
     setMessage(null);
 
     try {
-      const response = await fetch(`${API_URL}/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${applicationId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

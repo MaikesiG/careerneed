@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { FormEvent, useState } from "react";
 
 type ApplicationFollowUpEditorProps = {
   applicationId: string;
@@ -66,7 +66,7 @@ export default function ApplicationFollowUpEditor({
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_URL}/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${applicationId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

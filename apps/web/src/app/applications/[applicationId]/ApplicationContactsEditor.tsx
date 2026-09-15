@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { FormEvent, useEffect, useState } from "react";
 
 type ContactType = "recruiter" | "hiring_manager" | "interviewer" | "referral" | "other";
 
@@ -117,7 +117,7 @@ export default function ApplicationContactsEditor({
       setError(null);
 
       try {
-        const response = await fetch(`${API_URL}/applications/${applicationId}/contacts`, {
+        const response = await apiFetch(`/applications/${applicationId}/contacts`, {
           cache: "no-store",
         });
 
@@ -208,11 +208,11 @@ export default function ApplicationContactsEditor({
 
     const isEditing = editingContactId !== null;
     const endpoint = isEditing
-      ? `${API_URL}/applications/${applicationId}/contacts/${editingContactId}`
-      : `${API_URL}/applications/${applicationId}/contacts`;
+      ? `/applications/${applicationId}/contacts/${editingContactId}`
+      : `/applications/${applicationId}/contacts`;
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await apiFetch(endpoint, {
         method: isEditing ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -272,8 +272,8 @@ export default function ApplicationContactsEditor({
     setNotice(null);
 
     try {
-      const response = await fetch(
-        `${API_URL}/applications/${applicationId}/contacts/${contact.id}`,
+      const response = await apiFetch(
+        `/applications/${applicationId}/contacts/${contact.id}`,
         {
           method: "DELETE",
         }
