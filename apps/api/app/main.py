@@ -1,7 +1,12 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Careerneed API", version="0.1.0")
+from app.routers import applications, companies, connectors, jobs, resumes, settings, system
+
+load_dotenv()
+app = FastAPI(title="Careerneed API", version="0.2.0")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -11,10 +16,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health", tags=["system"])
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "careerneed-api"}
 
-@app.get("/jobs", tags=["jobs"])
-def list_jobs() -> list[dict[str, str]]:
-    return []
+app.include_router(applications.router)
+app.include_router(companies.router)
+app.include_router(connectors.router)
+app.include_router(jobs.router)
+app.include_router(resumes.router)
+app.include_router(settings.router)
+app.include_router(system.router)
