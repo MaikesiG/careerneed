@@ -1,13 +1,13 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Application
+from app.models import Application, Job
 from app.routers.applications import INITIAL_USER_ID
-from app.schemas import DashboardSummaryOut
+from app.schemas import DashboardFollowUpsOut, DashboardSummaryOut
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -16,9 +16,13 @@ def count_applications(
     db: Session,
     *conditions: object,
 ) -> int:
-    statement = select(func.count()).select_from(Application).where(
-        Application.user_id == INITIAL_USER_ID,
-        *conditions,
+    statement = (
+        select(func.count())
+        .select_from(Application)
+        .where(
+            Application.user_id == INITIAL_USER_ID,
+            *conditions,
+        )
     )
     return db.scalar(statement) or 0
 
@@ -42,4 +46,53 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummaryOut:
         applications_applied=applications_applied,
         applications_interviewing=applications_interviewing,
         active_applications=applications_applied + applications_interviewing,
+    )
+
+
+@router.get("/follow-ups", response_model=DashboardFollowUpsOut)
+def get_dashboard_follow_ups(
+    limit: int = Query(default=6, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> DashboardFollowUpsOut:
+    today = date.today()
+
+    rows = db.execute(
+        select(Application, Job)
+        .join(Job, Job.id == Application.job_id)
+        .where(
+            Application.user_id == INITIAL_USER_ID,
+            Application.follow_up_on.is_not(None),
+            Application.follow_up_on <= today,
+        )
+        .order_by(
+            Application.follow_up_on.asc(),
+            Application.updated_at.desc(),
+        )
+        .limit(limit)
+    ).all()
+
+    return DashboardFollowUpsOut(
+        items=[
+            {
+                "id": application.id,
+                "job_id": application.job_id,
+                "resume_id": application.resume_id,
+                "status": application.status,
+                "applied_at": application.applied_at,
+                "notes": application.notes,
+                "follow_up_on": application.follow_up_on,
+                "created_at": application.created_at,
+                "updated_at": application.updated_at,
+                "job": {
+                    "id": job.id,
+                    "company_name": job.company_name,
+                    "source": job.source,
+                    "title": job.title,
+                    "location": job.location,
+                    "workplace_type": job.workplace_type,
+                    "application_url": job.application_url,
+                },
+            }
+            for application, job in rows
+        ]
     )

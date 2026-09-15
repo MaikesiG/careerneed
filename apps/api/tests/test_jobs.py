@@ -332,6 +332,7 @@ def test_list_jobs_filters_by_location_query(
     combined_titles = {job["title"] for job in combined_response.json()}
     assert "Remote role" in combined_titles
 
+
 def test_dashboard_summary_returns_expected_shape(
     client: TestClient,
 ) -> None:
@@ -442,3 +443,90 @@ def test_dashboard_summary_counts_added_records_and_excludes_other_users(
     assert after["applications_applied"] == before["applications_applied"] + 1
     assert after["applications_interviewing"] == before["applications_interviewing"] + 1
     assert after["active_applications"] == before["active_applications"] + 2
+
+
+def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    ensure_initial_user(db_session)
+    today = date.today()
+
+    other_user = User(id=uuid.uuid4(), email="other-follow-up-user@example.test")
+    db_session.add(other_user)
+    db_session.flush()
+
+    oldest_overdue_job = create_job(db_session, title="Follow-up oldest overdue role")
+    recent_overdue_job = create_job(db_session, title="Follow-up recent overdue role")
+    due_today_job = create_job(db_session, title="Follow-up due today role")
+    future_job = create_job(db_session, title="Follow-up future role")
+    no_follow_up_job = create_job(db_session, title="Follow-up no date role")
+    other_user_job = create_job(db_session, title="Follow-up other user role")
+
+    db_session.add_all(
+        [
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=oldest_overdue_job.id,
+                status="applied",
+                follow_up_on=today - timedelta(days=4),
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=recent_overdue_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=1),
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=due_today_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=future_job.id,
+                status="saved",
+                follow_up_on=today + timedelta(days=1),
+            ),
+            Application(
+                user_id=INITIAL_USER_ID,
+                job_id=no_follow_up_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=7),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/dashboard/follow-ups", params={"limit": 20})
+
+    assert response.status_code == 200
+
+    items = response.json()["items"]
+    item_job_ids = [item["job_id"] for item in items]
+
+    oldest_index = item_job_ids.index(str(oldest_overdue_job.id))
+    recent_index = item_job_ids.index(str(recent_overdue_job.id))
+    today_index = item_job_ids.index(str(due_today_job.id))
+
+    assert oldest_index < recent_index < today_index
+    assert str(future_job.id) not in item_job_ids
+    assert str(no_follow_up_job.id) not in item_job_ids
+    assert str(other_user_job.id) not in item_job_ids
+
+
+
+@pytest.mark.parametrize("limit", [0, 21])
+def test_dashboard_follow_ups_rejects_invalid_limit(
+    client: TestClient,
+    limit: int,
+) -> None:
+    response = client.get("/dashboard/follow-ups", params={"limit": limit})
+
+    assert response.status_code == 422

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
 import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
+import ApplicationStatusEditor from "./ApplicationStatusEditor";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -201,6 +202,20 @@ export default async function ApplicationPage({ params }: ApplicationPageProps) 
               <dd className="text-muted-foreground mt-1">{formatDate(application.applied_at)}</dd>
             </div>
           </dl>
+        </section>
+
+        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-semibold">Application status</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Update this stage when the application moves forward, pauses, or closes.
+          </p>
+
+          <div className="mt-5">
+            <ApplicationStatusEditor
+              applicationId={application.id}
+              initialStatus={application.status}
+            />
+          </div>
         </section>
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">

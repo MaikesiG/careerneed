@@ -172,6 +172,10 @@ class DashboardSummaryOut(BaseModel):
     active_applications: int
 
 
+class DashboardFollowUpsOut(BaseModel):
+    items: list[ApplicationWithJobOut]
+
+
 LLMProvider = Literal["openai", "groq", "anthropic"]
 
 
