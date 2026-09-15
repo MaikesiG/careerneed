@@ -1,12 +1,13 @@
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, Job
-from app.routers.applications import INITIAL_USER_ID
+from app.models import Application, Job, User
 from app.schemas import DashboardFollowUpsOut, DashboardSummaryOut
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -14,13 +15,14 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 def count_applications(
     db: Session,
+    user_id: uuid.UUID,
     *conditions: object,
 ) -> int:
     statement = (
         select(func.count())
         .select_from(Application)
         .where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == user_id,
             *conditions,
         )
     )
@@ -28,17 +30,37 @@ def count_applications(
 
 
 @router.get("/summary", response_model=DashboardSummaryOut)
-def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummaryOut:
+def get_dashboard_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DashboardSummaryOut:
     today = date.today()
 
-    applications_saved = count_applications(db, Application.status == "saved")
-    applications_applied = count_applications(db, Application.status == "applied")
-    applications_interviewing = count_applications(db, Application.status == "interviewing")
+    applications_saved = count_applications(
+        db,
+        current_user.id,
+        Application.status == "saved",
+    )
+    applications_applied = count_applications(
+        db,
+        current_user.id,
+        Application.status == "applied",
+    )
+    applications_interviewing = count_applications(
+        db,
+        current_user.id,
+        Application.status == "interviewing",
+    )
 
     return DashboardSummaryOut(
-        follow_ups_due_today=count_applications(db, Application.follow_up_on == today),
+        follow_ups_due_today=count_applications(
+            db,
+            current_user.id,
+            Application.follow_up_on == today,
+        ),
         follow_ups_overdue=count_applications(
             db,
+            current_user.id,
             Application.follow_up_on.is_not(None),
             Application.follow_up_on < today,
         ),
@@ -52,6 +74,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummaryOut:
 @router.get("/follow-ups", response_model=DashboardFollowUpsOut)
 def get_dashboard_follow_ups(
     limit: int = Query(default=6, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardFollowUpsOut:
     today = date.today()
@@ -60,7 +83,7 @@ def get_dashboard_follow_ups(
         select(Application, Job)
         .join(Job, Job.id == Application.job_id)
         .where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
             Application.follow_up_on.is_not(None),
             Application.follow_up_on <= today,
         )

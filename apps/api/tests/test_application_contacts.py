@@ -8,12 +8,10 @@ from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app.main import app
 from app.models import Application, ApplicationContact, Job, User
-from app.routers.applications import INITIAL_USER_ID
 
 
 @pytest.fixture
 def db_session() -> Session:
-    """Run every request in a transaction that is rolled back after the test."""
     connection = engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
@@ -34,10 +32,16 @@ def client(db_session: Session) -> TestClient:
         yield test_client
 
 
-def ensure_initial_user(db_session: Session) -> None:
-    if db_session.get(User, INITIAL_USER_ID) is None:
-        db_session.add(User(id=INITIAL_USER_ID, email="initial-user@example.test"))
-        db_session.flush()
+def register(client: TestClient, email: str) -> dict[str, object]:
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "correct horse battery staple",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
 
 
 def create_job(db_session: Session, *, title: str) -> Job:
@@ -58,12 +62,9 @@ def create_job(db_session: Session, *, title: str) -> Job:
 def create_application(
     db_session: Session,
     *,
-    user_id: uuid.UUID = INITIAL_USER_ID,
+    user_id: uuid.UUID,
     title: str = "Contacts test role",
 ) -> Application:
-    if user_id == INITIAL_USER_ID:
-        ensure_initial_user(db_session)
-
     job = create_job(db_session, title=title)
     application = Application(
         user_id=user_id,
@@ -98,11 +99,34 @@ def create_contact(
     return contact
 
 
+def test_application_contact_routes_require_authentication(client: TestClient) -> None:
+    application_id = uuid.uuid4()
+
+    list_response = client.get(f"/applications/{application_id}/contacts")
+    create_response = client.post(
+        f"/applications/{application_id}/contacts",
+        json={"name": "Jordan Lee"},
+    )
+    update_response = client.patch(
+        f"/applications/{application_id}/contacts/{uuid.uuid4()}",
+        json={"name": "Jordan Lee"},
+    )
+    delete_response = client.delete(
+        f"/applications/{application_id}/contacts/{uuid.uuid4()}"
+    )
+
+    assert list_response.status_code == 401
+    assert create_response.status_code == 401
+    assert update_response.status_code == 401
+    assert delete_response.status_code == 401
+
+
 def test_list_application_contacts_returns_empty_list(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    application = create_application(db_session)
+    user = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=user["id"])
 
     response = client.get(f"/applications/{application.id}/contacts")
 
@@ -114,7 +138,8 @@ def test_create_and_list_application_contact(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    application = create_application(db_session)
+    user = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=user["id"])
 
     create_response = client.post(
         f"/applications/{application.id}/contacts",
@@ -147,7 +172,8 @@ def test_update_application_contact_preserves_omitted_fields_and_clears_null(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    application = create_application(db_session)
+    user = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=user["id"])
     contact = create_contact(db_session, application_id=application.id)
 
     response = client.patch(
@@ -174,8 +200,17 @@ def test_contact_cannot_be_accessed_through_another_application(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    first_application = create_application(db_session, title="First contacts role")
-    second_application = create_application(db_session, title="Second contacts role")
+    user = register(client, "contacts-owner@example.test")
+    first_application = create_application(
+        db_session,
+        user_id=user["id"],
+        title="First contacts role",
+    )
+    second_application = create_application(
+        db_session,
+        user_id=user["id"],
+        title="Second contacts role",
+    )
     contact = create_contact(db_session, application_id=first_application.id)
 
     update_response = client.patch(
@@ -193,36 +228,55 @@ def test_contact_cannot_be_accessed_through_another_application(
     assert contact.name == "Taylor Morgan"
 
 
-def test_contacts_return_404_when_parent_application_is_not_owned(
+def test_other_user_cannot_access_contacts_for_owners_application(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    other_user = User(id=uuid.uuid4(), email="other-user@example.test")
-    db_session.add(other_user)
-    db_session.flush()
+    owner = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=owner["id"])
+    contact = create_contact(db_session, application_id=application.id)
 
-    application = create_application(
-        db_session,
-        user_id=other_user.id,
-        title="Other user's contacts role",
-    )
+    other_client = TestClient(app)
+    try:
+        register(other_client, "contacts-other@example.test")
 
-    response = client.get(f"/applications/{application.id}/contacts")
+        list_response = other_client.get(f"/applications/{application.id}/contacts")
+        create_response = other_client.post(
+            f"/applications/{application.id}/contacts",
+            json={"name": "Unauthorized contact"},
+        )
+        update_response = other_client.patch(
+            f"/applications/{application.id}/contacts/{contact.id}",
+            json={"name": "Unauthorized update"},
+        )
+        delete_response = other_client.delete(
+            f"/applications/{application.id}/contacts/{contact.id}"
+        )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Application not found"
+        assert list_response.status_code == 404
+        assert list_response.json()["detail"] == "Application not found"
+        assert create_response.status_code == 404
+        assert create_response.json()["detail"] == "Application not found"
+        assert update_response.status_code == 404
+        assert update_response.json()["detail"] == "Application not found"
+        assert delete_response.status_code == 404
+        assert delete_response.json()["detail"] == "Application not found"
+
+        db_session.refresh(contact)
+        assert contact.name == "Taylor Morgan"
+    finally:
+        other_client.close()
 
 
 def test_delete_application_contact(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    application = create_application(db_session)
+    user = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=user["id"])
     contact = create_contact(db_session, application_id=application.id)
 
-    delete_response = client.delete(
-        f"/applications/{application.id}/contacts/{contact.id}"
-    )
+    delete_response = client.delete(f"/applications/{application.id}/contacts/{contact.id}")
 
     assert delete_response.status_code == 204
     assert delete_response.content == b""
@@ -233,9 +287,11 @@ def test_delete_application_contact(
 
 
 def test_deleting_application_cascades_to_contacts(
+    client: TestClient,
     db_session: Session,
 ) -> None:
-    application = create_application(db_session)
+    user = register(client, "contacts-owner@example.test")
+    application = create_application(db_session, user_id=user["id"])
     contact = create_contact(db_session, application_id=application.id)
 
     db_session.delete(application)

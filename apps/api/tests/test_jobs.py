@@ -34,6 +34,19 @@ def client(db_session: Session) -> TestClient:
         yield test_client
 
 
+@pytest.fixture
+def authenticated_user_id(client: TestClient) -> uuid.UUID:
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "jobs-authenticated@example.test",
+            "password": "correct horse battery staple",
+        },
+    )
+    assert response.status_code == 201
+    return uuid.UUID(response.json()["id"])
+
+
 def create_job(db_session: Session, *, title: str, workplace_type: str = "unknown") -> Job:
     job = Job(
         company_name="Regression Test Co.",
@@ -181,9 +194,10 @@ def test_list_jobs_matches_historical_workplace_type_variants(
 
 
 def test_application_by_job_update_preserves_notes_when_only_status_changes(
-    client: TestClient, db_session: Session
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
-    ensure_initial_user(db_session)
     job = create_job(db_session, title="Application details job")
 
     created_response = client.put(
@@ -255,13 +269,14 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
 def test_get_application_detail_includes_job(
     client: TestClient,
     db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
     job = create_job(
         db_session,
         title="Application detail test role",
     )
     application = Application(
-        user_id=INITIAL_USER_ID,
+        user_id=authenticated_user_id,
         job_id=job.id,
         status="applied",
         notes="Initial application note",
@@ -335,6 +350,7 @@ def test_list_jobs_filters_by_location_query(
 
 def test_dashboard_summary_returns_expected_shape(
     client: TestClient,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
     response = client.get("/dashboard/summary")
 
@@ -360,12 +376,11 @@ def test_dashboard_summary_returns_expected_shape(
 def test_dashboard_summary_counts_added_records_and_excludes_other_users(
     client: TestClient,
     db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
     before_response = client.get("/dashboard/summary")
     assert before_response.status_code == 200
     before = before_response.json()
-
-    ensure_initial_user(db_session)
 
     other_user = User(id=uuid.uuid4(), email="other-dashboard-user@example.test")
     db_session.add(other_user)
@@ -385,40 +400,40 @@ def test_dashboard_summary_counts_added_records_and_excludes_other_users(
     db_session.add_all(
         [
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=saved_job.id,
                 status="saved",
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=applied_job.id,
                 status="applied",
                 follow_up_on=today,
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=interviewing_job.id,
                 status="interviewing",
                 follow_up_on=today - timedelta(days=1),
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=offer_job.id,
                 status="offer",
                 follow_up_on=today - timedelta(days=3),
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=rejected_job.id,
                 status="rejected",
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=withdrawn_job.id,
                 status="withdrawn",
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=future_follow_up_job.id,
                 status="saved",
                 follow_up_on=today + timedelta(days=1),
@@ -448,8 +463,8 @@ def test_dashboard_summary_counts_added_records_and_excludes_other_users(
 def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
     client: TestClient,
     db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
-    ensure_initial_user(db_session)
     today = date.today()
 
     other_user = User(id=uuid.uuid4(), email="other-follow-up-user@example.test")
@@ -466,31 +481,31 @@ def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
     db_session.add_all(
         [
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=oldest_overdue_job.id,
                 status="applied",
                 follow_up_on=today - timedelta(days=4),
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=recent_overdue_job.id,
                 status="interviewing",
                 follow_up_on=today - timedelta(days=1),
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=due_today_job.id,
                 status="applied",
                 follow_up_on=today,
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=future_job.id,
                 status="saved",
                 follow_up_on=today + timedelta(days=1),
             ),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
                 job_id=no_follow_up_job.id,
                 status="saved",
             ),
@@ -526,6 +541,7 @@ def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
 def test_dashboard_follow_ups_rejects_invalid_limit(
     client: TestClient,
     limit: int,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
     response = client.get("/dashboard/follow-ups", params={"limit": limit})
 

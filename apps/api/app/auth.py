@@ -5,10 +5,11 @@ from datetime import datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from fastapi import HTTPException, Response, status
+from fastapi import Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.models import User, UserSession
 
 PASSWORD_HASHER = PasswordHasher()
@@ -91,6 +92,13 @@ def get_user_for_session_token(db: Session, token: str | None) -> User:
         )
 
     return session.user
+
+
+def get_current_user(
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    db: Session = Depends(get_db),
+) -> User:
+    return get_user_for_session_token(db, session_token)
 
 
 def set_session_cookie(response: Response, token: str) -> None:
