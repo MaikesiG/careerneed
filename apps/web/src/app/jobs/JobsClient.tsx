@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 
 type Job = {
   id: string;
@@ -71,7 +71,6 @@ type JobsClientProps = {
   totalJobs: number;
   totalPages: number;
 };
-
 
 const SORT_OPTIONS = [
   { value: "match_score", label: "Best match" },
@@ -247,27 +246,6 @@ function trackingLabel(status: ApplicationStatus): string {
   return "Not interested";
 }
 
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
-
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
-
 function getVisiblePages(currentPage: number, totalPages: number): number[] {
   const firstPage = Math.max(1, currentPage - 2);
   const lastPage = Math.min(totalPages, currentPage + 2);
@@ -323,6 +301,13 @@ export default function JobsClient({
   const lastJobNumber = Math.min(initialPage * pageSize, totalJobs);
   const visiblePages = getVisiblePages(initialPage, totalPages);
 
+  const handleUnauthenticated = useCallback(() => {
+    const query = searchParams.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+
+    router.replace(`/login?next=${encodeURIComponent(next)}`);
+  }, [pathname, router, searchParams]);
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -347,8 +332,15 @@ export default function JobsClient({
           signal: controller.signal,
         });
 
+        if (response.status === 401) {
+          handleUnauthenticated();
+          return;
+        }
+
         if (!response.ok) {
-          throw new Error(await readError(response, "Unable to load application tracking states."));
+          throw new Error(
+            await getApiErrorMessage(response, "Unable to load application tracking states.")
+          );
         }
 
         const data = (await response.json()) as ApplicationStateResponse;
@@ -375,7 +367,7 @@ export default function JobsClient({
     return () => {
       controller.abort();
     };
-  }, [jobIds]);
+  }, [handleUnauthenticated, jobIds]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -387,8 +379,13 @@ export default function JobsClient({
           signal: controller.signal,
         });
 
+        if (response.status === 401) {
+          handleUnauthenticated();
+          return;
+        }
+
         if (!response.ok) {
-          throw new Error(await readError(response, "Unable to load resumes."));
+          throw new Error(await getApiErrorMessage(response, "Unable to load resumes."));
         }
 
         setResumes((await response.json()) as Resume[]);
@@ -404,7 +401,7 @@ export default function JobsClient({
     void loadResumes();
 
     return () => controller.abort();
-  }, []);
+  }, [handleUnauthenticated]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -417,6 +414,11 @@ export default function JobsClient({
             `/jobs/keyword-suggestions?q=${encodeURIComponent(lastToken)}`,
             { signal: controller.signal }
           );
+
+          if (response.status === 401) {
+            handleUnauthenticated();
+            return;
+          }
 
           if (response.ok) {
             const data = (await response.json()) as {
@@ -438,7 +440,7 @@ export default function JobsClient({
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [newGroupKeywords]);
+  }, [newGroupKeywords, handleUnauthenticated]);
 
   function clearFeedback() {
     setError(null);
@@ -747,7 +749,7 @@ export default function JobsClient({
   async function updateApplicationStatus(
     jobId: string,
     status: ApplicationStatus,
-    details?: { notes?: string; resumeId?: string | null }
+    details?: { notes?: string | null; resumeId?: string | null }
   ) {
     clearFeedback();
     setUpdatingJobId(jobId);
@@ -765,8 +767,15 @@ export default function JobsClient({
         }),
       });
 
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to update application tracking."));
+        throw new Error(
+          await getApiErrorMessage(response, "Unable to update application tracking.")
+        );
       }
 
       const updated = (await response.json()) as ApplicationState;
@@ -798,7 +807,7 @@ export default function JobsClient({
 
   function saveApplicationDetails(jobId: string) {
     void updateApplicationStatus(jobId, applicationStates[jobId]?.status ?? "saved", {
-      notes: draftNotes.trim() || undefined,
+      notes: draftNotes.trim() || null,
       resumeId: draftResumeId || null,
     });
   }
@@ -812,8 +821,15 @@ export default function JobsClient({
         method: "DELETE",
       });
 
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to remove application tracking."));
+        throw new Error(
+          await getApiErrorMessage(response, "Unable to remove application tracking.")
+        );
       }
 
       setApplicationStates((previous) => {
