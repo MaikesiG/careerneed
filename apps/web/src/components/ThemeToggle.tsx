@@ -27,12 +27,9 @@ export default function ThemeToggle() {
   const mounted = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 
   const activeTheme = (theme ?? "system") as ThemeOption;
-  const TriggerIcon =
-    activeTheme === "system" ? Monitor : resolvedTheme === "dark" ? Moon : Sun;
+  const TriggerIcon = activeTheme === "system" ? Monitor : resolvedTheme === "dark" ? Moon : Sun;
 
-  const triggerLabel = mounted
-    ? `Theme: ${activeTheme}. Change theme`
-    : "Change theme";
+  const triggerLabel = mounted ? `Theme: ${activeTheme}. Change theme` : "Change theme";
 
   return (
     <div ref={menuRef} className="relative">

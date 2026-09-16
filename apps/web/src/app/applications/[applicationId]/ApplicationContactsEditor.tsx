@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/dist/client/components/navigation";
 
 import { FormEvent, useEffect, useState } from "react";
 
@@ -99,6 +100,7 @@ function draftPayload(draft: ContactDraft) {
 export default function ApplicationContactsEditor({
   applicationId,
 }: ApplicationContactsEditorProps) {
+  const router = useRouter();
   const [contacts, setContacts] = useState<ApplicationContact[]>([]);
   const [draft, setDraft] = useState<ContactDraft>(EMPTY_DRAFT);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
@@ -120,6 +122,11 @@ export default function ApplicationContactsEditor({
         const response = await apiFetch(`/applications/${applicationId}/contacts`, {
           cache: "no-store",
         });
+
+        if (response.status === 401) {
+          router.push(`/login?next=/applications/${applicationId}`);
+          return;
+        }
 
         if (!response.ok) {
           throw new Error(await readError(response, "Unable to load contacts."));
@@ -150,7 +157,7 @@ export default function ApplicationContactsEditor({
     return () => {
       isCurrent = false;
     };
-  }, [applicationId]);
+  }, [applicationId, router]);
 
   function updateDraft<Field extends keyof ContactDraft>(field: Field, value: ContactDraft[Field]) {
     setDraft((previous) => ({
@@ -272,12 +279,9 @@ export default function ApplicationContactsEditor({
     setNotice(null);
 
     try {
-      const response = await apiFetch(
-        `/applications/${applicationId}/contacts/${contact.id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response = await apiFetch(`/applications/${applicationId}/contacts/${contact.id}`, {
+        method: "DELETE",
+      });
 
       if (!response.ok) {
         throw new Error(await readError(response, "Unable to delete contact."));

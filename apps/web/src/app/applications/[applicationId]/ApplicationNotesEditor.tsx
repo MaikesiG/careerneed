@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/dist/client/components/navigation";
 
 type ApplicationNotesEditorProps = {
   applicationId: string;
@@ -12,6 +13,7 @@ export default function ApplicationNotesEditor({
   applicationId,
   initialNotes,
 }: ApplicationNotesEditorProps) {
+  const router = useRouter();
   const [notes, setNotes] = useState<string>(initialNotes);
   const [savedNotes, setSavedNotes] = useState<string>(initialNotes);
   const [isSaving, setIsSaving] = useState(false);
@@ -32,6 +34,11 @@ export default function ApplicationNotesEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
+
+      if (response.status === 401) {
+        router.push(`/login?next=/applications/${applicationId}`);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Unable to save application notes.");

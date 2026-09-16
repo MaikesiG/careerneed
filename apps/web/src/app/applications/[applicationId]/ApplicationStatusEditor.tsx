@@ -49,6 +49,11 @@ export default function ApplicationStatusEditor({
         body: JSON.stringify({ status }),
       });
 
+      if (response.status === 401) {
+        router.push(`/login?next=/applications/${applicationId}`);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error("Unable to update application status.");
       }

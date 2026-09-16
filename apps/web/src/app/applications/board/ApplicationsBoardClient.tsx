@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import PipelineBoard, { type PipelineApplication } from "./PipelineBoard";
+import { useRouter } from "next/dist/client/components/navigation";
 
 function localDateKey(): string {
   const today = new Date();
@@ -17,6 +18,7 @@ function localDateKey(): string {
 }
 
 export default function ApplicationsBoardClient() {
+  const router = useRouter();
   const [applications, setApplications] = useState<PipelineApplication[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +32,11 @@ export default function ApplicationsBoardClient() {
         });
 
         if (cancelled) {
+          return;
+        }
+
+        if (response.status === 401) {
+          router.push("/login?next=/applications");
           return;
         }
 
@@ -54,7 +61,7 @@ export default function ApplicationsBoardClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   const totalApplications = applications?.length ?? 0;
   const activeApplications =

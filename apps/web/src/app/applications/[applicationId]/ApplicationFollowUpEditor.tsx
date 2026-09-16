@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/dist/client/components/navigation";
 
 import { FormEvent, useState } from "react";
 
@@ -46,6 +47,7 @@ export default function ApplicationFollowUpEditor({
   applicationId,
   initialFollowUpOn,
 }: ApplicationFollowUpEditorProps) {
+  const router = useRouter();
   const [followUpOn, setFollowUpOn] = useState(initialFollowUpOn ?? "");
   const [savedFollowUpOn, setSavedFollowUpOn] = useState(initialFollowUpOn ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -76,6 +78,10 @@ export default function ApplicationFollowUpEditor({
         }),
       });
 
+      if (response.status === 401) {
+        router.push(`/login?next=/applications/${applicationId}`);
+        return;
+      }
       if (!response.ok) {
         throw new Error(await readError(response, "Unable to save follow-up date."));
       }

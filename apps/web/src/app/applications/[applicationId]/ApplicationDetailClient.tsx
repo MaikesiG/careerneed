@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import ApplicationContactsEditor from "./ApplicationContactsEditor";
@@ -109,9 +110,8 @@ function sourceClass(source: string): string {
   return "border-border bg-muted text-muted-foreground";
 }
 
-export default function ApplicationDetailClient({
-  applicationId,
-}: ApplicationDetailClientProps) {
+export default function ApplicationDetailClient({ applicationId }: ApplicationDetailClientProps) {
+  const router = useRouter();
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isNotFound, setIsNotFound] = useState(false);
@@ -130,6 +130,11 @@ export default function ApplicationDetailClient({
         });
 
         if (cancelled) {
+          return;
+        }
+
+        if (response.status === 401) {
+          router.push(`/login?next=/applications/${applicationId}`);
           return;
         }
 
@@ -161,7 +166,7 @@ export default function ApplicationDetailClient({
     return () => {
       cancelled = true;
     };
-  }, [applicationId]);
+  }, [applicationId, router]);
 
   if (isNotFound) {
     return (

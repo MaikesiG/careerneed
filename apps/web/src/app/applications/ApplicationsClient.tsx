@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 
@@ -129,6 +129,7 @@ function getFollowUpLabel(value: string | null): {
 }
 
 export default function ApplicationsClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedStatus = searchParams.get("status");
   const requestedFollowUp = searchParams.get("follow_up");
@@ -171,6 +172,11 @@ export default function ApplicationsClient() {
           return;
         }
 
+        if (response.status === 401) {
+          router.push("/login?next=/applications");
+          return;
+        }
+
         if (!response.ok) {
           throw new Error(await getApiErrorMessage(response, "Unable to load applications."));
         }
@@ -196,7 +202,7 @@ export default function ApplicationsClient() {
     return () => {
       cancelled = true;
     };
-  }, [requestPath]);
+  }, [requestPath, router]);
 
   return (
     <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
