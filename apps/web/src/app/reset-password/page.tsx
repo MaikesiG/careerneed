@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
-import AuthForm from "@/components/auth/AuthForm";
+import ResetPasswordForm from "@/components/auth/ResetPasswordForm";
 
 export const metadata = {
-  title: "Log in",
+  title: "Reset password",
 };
 
-export default function LoginPage() {
+export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
@@ -18,7 +18,7 @@ export default function LoginPage() {
         </main>
       }
     >
-      <AuthForm mode="login" />
+      <ResetPasswordForm />
     </Suspense>
   );
 }

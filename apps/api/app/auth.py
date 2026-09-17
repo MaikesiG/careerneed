@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import Cookie, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, UserSession
+from app.models import PasswordResetToken, User, UserSession
 
 PASSWORD_HASHER = PasswordHasher()
 
@@ -18,12 +18,16 @@ SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "careerneed_session")
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
 SESSION_DURATION_DAYS = int(os.getenv("SESSION_DURATION_DAYS", "30"))
+PASSWORD_RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_MINUTES", "30"))
 
 if SESSION_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
     raise RuntimeError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
 
 if SESSION_DURATION_DAYS <= 0:
     raise RuntimeError("SESSION_DURATION_DAYS must be greater than zero")
+
+if PASSWORD_RESET_TOKEN_MINUTES <= 0:
+    raise RuntimeError("PASSWORD_RESET_TOKEN_MINUTES must be greater than zero")
 
 UNAUTHENTICATED_DETAIL = "Not authenticated"
 
@@ -54,6 +58,33 @@ def hash_session_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def generate_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_password_reset_token(
+    db: Session,
+    user: User,
+) -> tuple[PasswordResetToken, str]:
+    raw_token = generate_password_reset_token()
+
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_password_reset_token(raw_token),
+        expires_at=utcnow()
+        + timedelta(
+            minutes=PASSWORD_RESET_TOKEN_MINUTES,
+        ),
+    )
+
+    db.add(reset_token)
+    return reset_token, raw_token
+
+
 def create_session(db: Session, user: User) -> tuple[UserSession, str]:
     token = generate_session_token()
     session = UserSession(
@@ -73,9 +104,7 @@ def get_user_for_session_token(db: Session, token: str | None) -> User:
         )
 
     token_hash = hash_session_token(token)
-    session = db.scalar(
-        select(UserSession).where(UserSession.token_hash == token_hash)
-    )
+    session = db.scalar(select(UserSession).where(UserSession.token_hash == token_hash))
 
     if session is None:
         raise HTTPException(

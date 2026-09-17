@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { apiFetch } from "@/lib/api";
 import SourcesClient from "./SourcesClient";
+import { serverApiFetch } from "@/lib/serverApi";
 
 type Company = {
   id: string;
@@ -14,7 +14,7 @@ async function getInitialCompanies(): Promise<Company[]> {
   let response: Response;
 
   try {
-    response = await apiFetch("/companies", {
+    response = await serverApiFetch("/companies", {
       cache: "no-store",
     });
   } catch {

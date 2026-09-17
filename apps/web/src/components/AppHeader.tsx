@@ -15,7 +15,7 @@ const navigation = [
   { href: "/sources", label: "Sources" },
 ] as const;
 
-const AUTH_PAGES = new Set(["/login", "/register"]);
+const AUTH_PAGES = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
 function isActivePath(
   pathname: string,
