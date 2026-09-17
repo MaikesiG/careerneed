@@ -61,6 +61,8 @@ class CompanyOut(BaseModel):
     id: uuid.UUID
     name: str
     source_type: str
+    board_token: str | None = None
+    careers_url: str | None = None
     priority: str
     active: bool
 
@@ -246,3 +248,107 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     created_at: datetime
+
+
+InterviewStatus = Literal[
+    "scheduled",
+    "completed",
+    "cancelled",
+    "rescheduled",
+]
+
+InterviewResult = Literal[
+    "pending",
+    "passed",
+    "failed",
+    "unknown",
+]
+
+InterviewType = Literal[
+    "recruiter",
+    "technical",
+    "coding",
+    "system_design",
+    "behavioral",
+    "hiring_manager",
+    "panel",
+    "final",
+    "other",
+]
+
+
+class InterviewBase(BaseModel):
+    round: int = 1
+    title: str
+    interview_type: str = "technical"
+    scheduled_at: datetime | None = None
+    duration_minutes: int | None = 60
+    timezone: str | None = None
+    status: InterviewStatus = "scheduled"
+    result: InterviewResult = "pending"
+    interviewer_name: str | None = None
+    interviewer_title: str | None = None
+    interviewer_email: str | None = None
+    meeting_url: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    preparation_notes: str | None = None
+
+
+class InterviewCreate(InterviewBase):
+    pass
+
+
+class InterviewUpdate(BaseModel):
+    round: int | None = None
+    title: str | None = None
+    interview_type: str | None = None
+    scheduled_at: datetime | None = None
+    duration_minutes: int | None = None
+    timezone: str | None = None
+    status: InterviewStatus | None = None
+    result: InterviewResult | None = None
+    interviewer_name: str | None = None
+    interviewer_title: str | None = None
+    interviewer_email: str | None = None
+    meeting_url: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    preparation_notes: str | None = None
+
+
+class InterviewOut(InterviewBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class UpcomingInterviewOut(InterviewOut):
+    company_name: str
+    job_title: str
+
+
+class FastCaptureRequest(BaseModel):
+    raw_text: str
+    application_id: uuid.UUID | None = None
+
+
+class InterviewExtraction(BaseModel):
+    round: int = 1
+    title: str = "Interview"
+    interview_type: str = "technical"
+    scheduled_at: datetime | None = None
+    duration_minutes: int | None = 60
+    timezone: str | None = None
+    interviewer_name: str | None = None
+    interviewer_title: str | None = None
+    interviewer_email: str | None = None
+    meeting_url: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    company: str | None = None
+    role: str | None = None
+

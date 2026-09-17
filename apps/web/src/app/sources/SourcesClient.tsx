@@ -1,8 +1,9 @@
 "use client";
 
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
-import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
 
 type Provider = "ashby" | "greenhouse" | "lever" | "custom" | "manual";
 type Priority = "high" | "medium" | "low";
@@ -11,6 +12,8 @@ type Company = {
   id: string;
   name: string;
   source_type: string;
+  board_token?: string | null;
+  careers_url?: string | null;
   priority: string;
   active: boolean;
 };
@@ -27,6 +30,160 @@ type SyncAllResult = {
   companies_synced: number;
   results: SyncResult[];
 };
+
+type PresetCompany = {
+  name: string;
+  source_type: Provider;
+  board_token: string;
+  careers_url: string;
+  category: "AI" | "Tech";
+};
+
+const POPULAR_PRESETS: PresetCompany[] = [
+  // Frontier AI
+  {
+    name: "Anthropic",
+    source_type: "greenhouse",
+    board_token: "anthropic",
+    careers_url: "https://job-boards.greenhouse.io/anthropic",
+    category: "AI",
+  },
+  {
+    name: "OpenAI",
+    source_type: "ashby",
+    board_token: "openai",
+    careers_url: "https://jobs.ashbyhq.com/openai",
+    category: "AI",
+  },
+  {
+    name: "Scale AI",
+    source_type: "greenhouse",
+    board_token: "scaleai",
+    careers_url: "https://job-boards.greenhouse.io/scaleai",
+    category: "AI",
+  },
+  {
+    name: "Cursor",
+    source_type: "ashby",
+    board_token: "anysphere",
+    careers_url: "https://jobs.ashbyhq.com/anysphere",
+    category: "AI",
+  },
+  {
+    name: "Cohere",
+    source_type: "greenhouse",
+    board_token: "cohere",
+    careers_url: "https://job-boards.greenhouse.io/cohere",
+    category: "AI",
+  },
+
+  // High-growth & Core Tech
+  {
+    name: "Stripe",
+    source_type: "greenhouse",
+    board_token: "stripe",
+    careers_url: "https://job-boards.greenhouse.io/stripe",
+    category: "Tech",
+  },
+  {
+    name: "Figma",
+    source_type: "greenhouse",
+    board_token: "figma",
+    careers_url: "https://job-boards.greenhouse.io/figma",
+    category: "Tech",
+  },
+  {
+    name: "Databricks",
+    source_type: "greenhouse",
+    board_token: "databricks",
+    careers_url: "https://job-boards.greenhouse.io/databricks",
+    category: "Tech",
+  },
+  {
+    name: "Notion",
+    source_type: "ashby",
+    board_token: "notion",
+    careers_url: "https://jobs.ashbyhq.com/notion",
+    category: "Tech",
+  },
+  {
+    name: "Vanta",
+    source_type: "ashby",
+    board_token: "vanta",
+    careers_url: "https://jobs.ashbyhq.com/vanta",
+    category: "Tech",
+  },
+  {
+    name: "Ramp",
+    source_type: "ashby",
+    board_token: "ramp",
+    careers_url: "https://jobs.ashbyhq.com/ramp",
+    category: "Tech",
+  },
+  {
+    name: "Linear",
+    source_type: "ashby",
+    board_token: "linear",
+    careers_url: "https://jobs.ashbyhq.com/linear",
+    category: "Tech",
+  },
+  {
+    name: "Retool",
+    source_type: "ashby",
+    board_token: "retool",
+    careers_url: "https://jobs.ashbyhq.com/retool",
+    category: "Tech",
+  },
+  {
+    name: "Discord",
+    source_type: "greenhouse",
+    board_token: "discord",
+    careers_url: "https://job-boards.greenhouse.io/discord",
+    category: "Tech",
+  },
+  {
+    name: "Airbnb",
+    source_type: "greenhouse",
+    board_token: "airbnb",
+    careers_url: "https://job-boards.greenhouse.io/airbnb",
+    category: "Tech",
+  },
+  {
+    name: "Netflix",
+    source_type: "lever",
+    board_token: "netflix",
+    careers_url: "https://jobs.lever.co/netflix",
+    category: "Tech",
+  },
+  {
+    name: "Spotify",
+    source_type: "lever",
+    board_token: "spotify",
+    careers_url: "https://jobs.lever.co/spotify",
+    category: "Tech",
+  },
+  {
+    name: "Palantir",
+    source_type: "lever",
+    board_token: "palantir",
+    careers_url: "https://jobs.lever.co/palantir",
+    category: "Tech",
+  },
+  {
+    name: "Deel",
+    source_type: "ashby",
+    board_token: "deel",
+    careers_url: "https://jobs.ashbyhq.com/deel",
+    category: "Tech",
+  },
+  {
+    name: "Roblox",
+    source_type: "greenhouse",
+    board_token: "roblox",
+    careers_url: "https://job-boards.greenhouse.io/roblox",
+    category: "Tech",
+  },
+];
 
 type SourcesClientProps = {
   initialCompanies: Company[];
@@ -82,34 +239,41 @@ function providerLabel(provider: string): string {
 
 function providerBadgeClass(provider: string): string {
   if (provider === "greenhouse") {
-    return "border-success-border bg-success-background text-success";
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
   }
-
   if (provider === "manual") {
-    return "border-warning-border bg-warning-background text-warning";
+    return "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
   }
-
   if (provider === "ashby" || provider === "lever") {
     return "border-primary/30 bg-primary/10 text-primary";
   }
-
   return "border-border bg-muted text-muted-foreground";
 }
 
 function priorityBadgeClass(priority: string): string {
   if (priority === "high") {
-    return "border-error-border bg-error-background text-destructive";
+    return "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400";
   }
-
   if (priority === "low") {
     return "border-border bg-muted text-muted-foreground";
   }
+  return "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+}
 
-  return "border-warning-border bg-warning-background text-warning";
+function capitalizeSlug(slug: string): string {
+  return slug
+    .split(/[-_]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 export default function SourcesClient({ initialCompanies }: SourcesClientProps) {
   const router = useRouter();
+
+  // Navigation tab: company boards vs manual job links
+  const [activeTab, setActiveTab] = useState<"companies" | "manual_jobs">("companies");
+
+  // Companies state
   const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [provider, setProvider] = useState<Provider>("ashby");
   const [companyName, setCompanyName] = useState("");
@@ -118,6 +282,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   const [priority, setPriority] = useState<Priority>("medium");
 
   const [isAdding, setIsAdding] = useState(false);
+  const [addingPresetName, setAddingPresetName] = useState<string | null>(null);
   const [syncingCompanyId, setSyncingCompanyId] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<Provider | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -125,6 +290,20 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
+
+  // Preset filter category
+  const [presetCategory, setPresetCategory] = useState<"All" | "AI" | "Tech">("All");
+
+  // Manual Job Link State
+  const [jobLinkUrl, setJobLinkUrl] = useState("");
+  const [jobCompany, setJobCompany] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [jobLocation, setJobLocation] = useState("");
+  const [jobWorkplaceType, setJobWorkplaceType] = useState("remote");
+  const [jobDescription, setJobDescription] = useState("");
+  const [jobNotes, setJobNotes] = useState("");
+  const [isAddingJob, setIsAddingJob] = useState(false);
+  const [addedJobNotice, setAddedJobNotice] = useState<string | null>(null);
 
   const providerConfig = useMemo(
     () => PROVIDER_OPTIONS.find((option) => option.value === provider) ?? PROVIDER_OPTIONS[0],
@@ -136,15 +315,76 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   function clearFeedback() {
     setError(null);
     setNotice(null);
+    setAddedJobNotice(null);
   }
 
   function handleUnauthenticated() {
     router.replace("/login?next=/sources");
   }
 
+  // Auto-detect provider and token from careersUrl
+  function handleCareersUrlChange(url: string) {
+    setCareersUrl(url);
+    const trimmed = url.trim();
+
+    // Check Ashby
+    const ashbyMatch = trimmed.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
+    if (ashbyMatch && ashbyMatch[1]) {
+      setProvider("ashby");
+      setBoardToken(ashbyMatch[1]);
+      if (!companyName) {
+        setCompanyName(capitalizeSlug(ashbyMatch[1]));
+      }
+      return;
+    }
+
+    // Check Greenhouse
+    const ghMatch = trimmed.match(/(?:job-boards|boards)\.greenhouse\.io\/([^/?#]+)/i);
+    if (ghMatch && ghMatch[1]) {
+      setProvider("greenhouse");
+      setBoardToken(ghMatch[1]);
+      if (!companyName) {
+        setCompanyName(capitalizeSlug(ghMatch[1]));
+      }
+      return;
+    }
+
+    // Check Lever
+    const leverMatch = trimmed.match(/jobs\.lever\.co\/([^/?#]+)/i);
+    if (leverMatch && leverMatch[1]) {
+      setProvider("lever");
+      setBoardToken(leverMatch[1]);
+      if (!companyName) {
+        setCompanyName(capitalizeSlug(leverMatch[1]));
+      }
+    }
+  }
+
+  // Auto-detect company name from job link
+  function handleJobLinkChange(url: string) {
+    setJobLinkUrl(url);
+    const trimmed = url.trim();
+
+    if (!jobCompany) {
+      const ashbyMatch = trimmed.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
+      if (ashbyMatch && ashbyMatch[1]) {
+        setJobCompany(capitalizeSlug(ashbyMatch[1]));
+        return;
+      }
+      const ghMatch = trimmed.match(/(?:job-boards|boards)\.greenhouse\.io\/([^/?#]+)/i);
+      if (ghMatch && ghMatch[1]) {
+        setJobCompany(capitalizeSlug(ghMatch[1]));
+        return;
+      }
+      const leverMatch = trimmed.match(/jobs\.lever\.co\/([^/?#]+)/i);
+      if (leverMatch && leverMatch[1]) {
+        setJobCompany(capitalizeSlug(leverMatch[1]));
+      }
+    }
+  }
+
   async function refreshCompanies() {
     setIsRefreshing(true);
-
     try {
       const response = await apiFetch("/companies", {
         cache: "no-store",
@@ -232,6 +472,96 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     }
   }
 
+  // 1-Click Quick Add Preset
+  async function handleQuickAddPreset(preset: PresetCompany) {
+    clearFeedback();
+    setAddingPresetName(preset.name);
+
+    try {
+      const response = await apiFetch(`/companies`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: preset.name,
+          source_type: preset.source_type,
+          board_token: preset.board_token,
+          careers_url: preset.careers_url,
+          priority: "high",
+        }),
+      });
+
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, `Unable to add ${preset.name}.`));
+      }
+
+      const company = (await response.json()) as Company;
+      setCompanies((previous) =>
+        [...previous, company].sort((left, right) => left.name.localeCompare(right.name))
+      );
+      setNotice(`Added ${preset.name} (${providerLabel(preset.source_type)}) to tracked sources.`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : `Unable to add ${preset.name}.`
+      );
+    } finally {
+      setAddingPresetName(null);
+    }
+  }
+
+  // Quick Add All AI Presets
+  async function handleAddAllAIPresets() {
+    clearFeedback();
+    const untrackedAI = POPULAR_PRESETS.filter(
+      (p) =>
+        p.category === "AI" &&
+        !companies.some(
+          (c) =>
+            c.name.toLowerCase() === p.name.toLowerCase() ||
+            (c.board_token && c.board_token.toLowerCase() === p.board_token.toLowerCase())
+        )
+    );
+
+    if (untrackedAI.length === 0) {
+      setNotice("All popular AI companies are already tracked!");
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/companies/batch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          untrackedAI.map((p) => ({
+            name: p.name,
+            source_type: p.source_type,
+            board_token: p.board_token,
+            careers_url: p.careers_url,
+            priority: "high",
+          }))
+        ),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, "Unable to batch add AI companies."));
+      }
+
+      await refreshCompanies();
+      setNotice(`Added ${untrackedAI.length} AI company sources! You can now sync their jobs.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add AI companies");
+    }
+  }
+
+  // Per-company Sync
   async function handleSyncCompany(company: Company) {
     if (
       company.source_type !== "ashby" &&
@@ -239,6 +569,12 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
       company.source_type !== "lever"
     ) {
       setError(`${company.name} does not use a supported job-board connector.`);
+      return;
+    }
+
+    const token = company.board_token;
+    if (!token) {
+      setError(`No board token configured for ${company.name}. Please re-add with token.`);
       return;
     }
 
@@ -251,15 +587,39 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     });
 
     if (company.source_type === "lever") {
-      params.set("company_slug", "");
+      params.set("company_slug", token);
     } else {
-      params.set("board_token", "");
+      params.set("board_token", token);
     }
 
-    setError(
-      "This first version needs board tokens in the company list response before per-company sync can run. Use Sync all for now; the next backend update will expose board_token safely."
-    );
-    setSyncingCompanyId(null);
+    try {
+      const response = await apiFetch(
+        `/connectors/${company.source_type}/sync?${params.toString()}`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, `Unable to sync ${company.name}.`));
+      }
+
+      const result = await response.json();
+      setNotice(
+        `Synced ${company.name}: ${result.fetched ?? 0} jobs fetched, ${result.created ?? 0} new jobs added, ${result.skipped ?? 0} up to date.`
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : `Unable to sync ${company.name}.`
+      );
+    } finally {
+      setSyncingCompanyId(null);
+    }
   }
 
   async function handleSyncAll(nextProvider: Provider) {
@@ -304,6 +664,76 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     }
   }
 
+  // Handle manual job link submission
+  async function handleAddManualJob(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    clearFeedback();
+
+    const normalizedUrl = jobLinkUrl.trim();
+    const normalizedCompany = jobCompany.trim();
+    const normalizedTitle = jobTitle.trim();
+
+    if (!normalizedUrl || !normalizedCompany || !normalizedTitle) {
+      setError("Application URL, Company name, and Job title are required.");
+      return;
+    }
+
+    setIsAddingJob(true);
+
+    try {
+      const response = await apiFetch("/jobs/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: normalizedCompany,
+          title: normalizedTitle,
+          location: jobLocation.trim() || null,
+          workplace_type: jobWorkplaceType || null,
+          description: jobDescription.trim() || null,
+          application_url: normalizedUrl,
+          source_url: normalizedUrl,
+          notes: jobNotes.trim() || "Added from Sources link entry",
+        }),
+      });
+
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, "Unable to add job link."));
+      }
+
+      setAddedJobNotice(
+        `"${normalizedTitle}" at ${normalizedCompany} has been added to your Job pool and saved in your Applications!`
+      );
+      setJobLinkUrl("");
+      setJobCompany("");
+      setJobTitle("");
+      setJobLocation("");
+      setJobDescription("");
+      setJobNotes("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add job link.");
+    } finally {
+      setIsAddingJob(false);
+    }
+  }
+
+  const isPresetTracked = (preset: PresetCompany) => {
+    return companies.some(
+      (c) =>
+        c.name.toLowerCase() === preset.name.toLowerCase() ||
+        (c.board_token && c.board_token.toLowerCase() === preset.board_token.toLowerCase())
+    );
+  };
+
+  const filteredPresets = POPULAR_PRESETS.filter((p) => {
+    if (presetCategory === "All") return true;
+    return p.category === presetCategory;
+  });
+
   return (
     <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
@@ -311,16 +741,41 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
             CareerNeed
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Company sources</h1>
-          <p className="text-muted-foreground mt-3 max-w-3xl">
-            Track company job boards from Ashby, Greenhouse, and Lever. Add a verified board token,
-            sync the source, and search its jobs from the Jobs dashboard.
+          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Job Sources & Ingestion</h1>
+          <p className="text-muted-foreground mt-3 max-w-3xl text-base">
+            Configure automated job boards (Ashby, Greenhouse, Lever) or paste individual job links found on LinkedIn, company sites, and referrals.
           </p>
+
+          {/* Navigation Tabs */}
+          <div className="mt-6 flex border-b border-border">
+            <button
+              type="button"
+              onClick={() => setActiveTab("companies")}
+              className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+                activeTab === "companies"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              🏢 Tracked Companies & ATS Boards ({companies.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("manual_jobs")}
+              className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+                activeTab === "manual_jobs"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              🔗 Add Individual Job Link
+            </button>
+          </div>
         </header>
 
         {error ? (
           <div
-            className="border-error-border bg-error-background text-destructive mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
+            className="border-destructive/30 bg-destructive/10 text-destructive mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
             role="alert"
           >
             <p>{error}</p>
@@ -337,13 +792,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
         {notice ? (
           <div
-            className="border-success-border bg-success-background text-success mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
+            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
             role="status"
           >
             <p>{notice}</p>
             <button
               aria-label="Dismiss notification"
-              className="text-success shrink-0 font-semibold hover:opacity-80"
+              className="shrink-0 font-semibold hover:opacity-80"
               onClick={() => setNotice(null)}
               type="button"
             >
@@ -352,238 +807,461 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           </div>
         ) : null}
 
-        <section className="border-border bg-card rounded-2xl border p-5 shadow-sm sm:p-6">
-          <div className="mb-5">
-            <h2 className="text-lg font-semibold">Add a company source</h2>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Use the token or slug from the company’s public careers URL. Do not enter API keys.
-            </p>
-          </div>
+        {activeTab === "companies" ? (
+          <>
+            {/* Section 1: Quick Add Popular Companies */}
+            <section className="border-border bg-card mb-8 rounded-2xl border p-5 shadow-xs sm:p-6">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚡</span>
+                    <h2 className="text-lg font-bold">Quick Add Popular Companies</h2>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 text-sm">
+                    Pre-configured ATS slugs for top engineering & AI leaders. Add in one click without looking up tokens.
+                  </p>
+                </div>
 
-          <form className="grid gap-4 lg:grid-cols-2" onSubmit={handleAddCompany}>
-            <label className="text-foreground grid gap-2 text-sm font-medium">
-              Provider
-              <select
-                className="border-border bg-background focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
-                disabled={isAdding}
-                onChange={(event) => setProvider(event.target.value as Provider)}
-                value={provider}
-              >
-                {PROVIDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <div className="flex items-center gap-2">
+                  <div className="border-border bg-muted/40 inline-flex rounded-lg border p-1 text-xs">
+                    {(["All", "AI", "Tech"] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setPresetCategory(cat)}
+                        className={`rounded-md px-2.5 py-1 font-semibold transition ${
+                          presetCategory === cat
+                            ? "bg-card text-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {cat === "AI" ? "Frontier AI" : cat === "Tech" ? "High-Growth Tech" : "All"}
+                      </button>
+                    ))}
+                  </div>
 
-            <label className="text-foreground grid gap-2 text-sm font-medium">
-              Company name
-              <input
-                className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
-                disabled={isAdding}
-                onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="e.g. Vanta"
-                type="text"
-                value={companyName}
-              />
-            </label>
+                  <button
+                    type="button"
+                    onClick={handleAddAllAIPresets}
+                    className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+                  >
+                    + Add All AI
+                  </button>
+                </div>
+              </div>
 
-            <label className="text-foreground grid gap-2 text-sm font-medium">
-              {providerConfig.tokenLabel}
-              <input
-                className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
-                disabled={isAdding}
-                onChange={(event) => setBoardToken(event.target.value)}
-                placeholder={
-                  provider === "ashby"
-                    ? "e.g. vanta"
-                    : provider === "greenhouse"
-                      ? "e.g. company-token"
-                      : provider === "lever"
-                        ? "e.g. company-slug"
-                        : "Optional"
-                }
-                required={providerConfig.needsToken}
-                type="text"
-                value={boardToken}
-              />
-              <span className="text-muted-foreground text-xs font-normal">
-                {providerConfig.tokenHint}
-              </span>
-            </label>
+              <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {filteredPresets.map((preset) => {
+                  const tracked = isPresetTracked(preset);
+                  const isBeingAdded = addingPresetName === preset.name;
 
-            <label className="text-foreground grid gap-2 text-sm font-medium">
-              Careers URL
-              <input
-                className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
-                disabled={isAdding}
-                onChange={(event) => setCareersUrl(event.target.value)}
-                placeholder="https://jobs.ashbyhq.com/vanta"
-                type="url"
-                value={careersUrl}
-              />
-            </label>
+                  return (
+                    <div
+                      key={preset.name}
+                      className={`border-border bg-muted/20 flex flex-col justify-between rounded-xl border p-3 transition ${
+                        tracked ? "opacity-75" : "hover:border-primary/50"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-foreground text-sm font-bold">{preset.name}</span>
+                          <span
+                            className={`rounded-full border px-1.5 py-0.2 text-[10px] font-semibold uppercase ${providerBadgeClass(
+                              preset.source_type
+                            )}`}
+                          >
+                            {preset.source_type}
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-1 truncate text-[11px]">
+                          token: {preset.board_token}
+                        </p>
+                      </div>
 
-            <label className="text-foreground grid gap-2 text-sm font-medium">
-              Priority
-              <select
-                className="border-border bg-background focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
-                disabled={isAdding}
-                onChange={(event) => setPriority(event.target.value as Priority)}
-                value={priority}
-              >
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </label>
+                      <div className="mt-3">
+                        {tracked ? (
+                          <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 block w-full rounded-md border py-1 text-center text-xs font-semibold">
+                            ✓ Tracked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={isBeingAdded}
+                            onClick={() => handleQuickAddPreset(preset)}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-md py-1 text-xs font-semibold shadow-xs transition disabled:opacity-50"
+                          >
+                            {isBeingAdded ? "Adding…" : "+ Quick Add"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
-            <div className="flex items-end">
-              <button
-                className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isAdding}
-                type="submit"
-              >
-                {isAdding ? "Adding..." : "Add source"}
-              </button>
-            </div>
-          </form>
-        </section>
+            {/* Section 2: Custom Company Source Form */}
+            <section className="border-border bg-card mb-8 rounded-2xl border p-5 shadow-xs sm:p-6">
+              <div className="mb-5">
+                <h2 className="text-lg font-semibold">Add a Custom Company Source</h2>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Paste any company’s career URL (e.g. <code>https://jobs.ashbyhq.com/vanta</code> or <code>https://job-boards.greenhouse.io/anthropic</code>). It will automatically detect the provider and token.
+                </p>
+              </div>
 
-        <section className="mt-8">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold">Tracked sources</h2>
+              <form className="grid gap-4 lg:grid-cols-2" onSubmit={handleAddCompany}>
+                <label className="text-foreground grid gap-2 text-sm font-medium">
+                  Careers URL (Paste to auto-detect provider & token)
+                  <input
+                    className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    disabled={isAdding}
+                    onChange={(event) => handleCareersUrlChange(event.target.value)}
+                    placeholder="https://jobs.ashbyhq.com/vanta or https://job-boards.greenhouse.io/anthropic"
+                    type="url"
+                    value={careersUrl}
+                  />
+                  <span className="text-muted-foreground text-xs font-normal">
+                    Auto-fills provider, token, and company name when pasted.
+                  </span>
+                </label>
+
+                <label className="text-foreground grid gap-2 text-sm font-medium">
+                  Provider
+                  <select
+                    className="border-border bg-background focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    disabled={isAdding}
+                    onChange={(event) => setProvider(event.target.value as Provider)}
+                    value={provider}
+                  >
+                    {PROVIDER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-foreground grid gap-2 text-sm font-medium">
+                  Company name *
+                  <input
+                    className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    disabled={isAdding}
+                    onChange={(event) => setCompanyName(event.target.value)}
+                    placeholder="e.g. Vanta"
+                    type="text"
+                    value={companyName}
+                    required
+                  />
+                </label>
+
+                <label className="text-foreground grid gap-2 text-sm font-medium">
+                  {providerConfig.tokenLabel}
+                  <input
+                    className="border-border focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    disabled={isAdding}
+                    onChange={(event) => setBoardToken(event.target.value)}
+                    placeholder={
+                      provider === "ashby"
+                        ? "e.g. vanta"
+                        : provider === "greenhouse"
+                          ? "e.g. anthropic"
+                          : provider === "lever"
+                            ? "e.g. netflix"
+                            : "Optional"
+                    }
+                    required={providerConfig.needsToken}
+                    type="text"
+                    value={boardToken}
+                  />
+                  <span className="text-muted-foreground text-xs font-normal">
+                    {providerConfig.tokenHint}
+                  </span>
+                </label>
+
+                <label className="text-foreground grid gap-2 text-sm font-medium">
+                  Priority
+                  <select
+                    className="border-border bg-background focus:border-primary focus:ring-primary/20 h-10 rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    disabled={isAdding}
+                    onChange={(event) => setPriority(event.target.value as Priority)}
+                    value={priority}
+                  >
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </label>
+
+                <div className="flex items-end lg:col-span-2">
+                  <button
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-xs transition disabled:opacity-50"
+                    disabled={isAdding}
+                    type="submit"
+                  >
+                    {isAdding ? "Adding source…" : "Add company source"}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* Section 3: Tracked Sources List */}
+            <section className="border-border bg-card rounded-2xl border p-5 shadow-xs sm:p-6">
+              <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-center">
+                <div>
+                  <h2 className="text-lg font-semibold">Tracked Sources</h2>
+                  <p className="text-muted-foreground text-sm">
+                    {companies.length} company source{companies.length === 1 ? "" : "s"} currently tracked.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {connectorProviders.map((syncableProvider) => (
+                    <button
+                      key={syncableProvider}
+                      className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={syncingProvider !== null || syncingCompanyId !== null}
+                      onClick={() => handleSyncAll(syncableProvider)}
+                      type="button"
+                    >
+                      {syncingProvider === syncableProvider
+                        ? `Syncing ${providerLabel(syncableProvider)}…`
+                        : `Sync all ${providerLabel(syncableProvider)}`}
+                    </button>
+                  ))}
+
+                  <button
+                    className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isRefreshing}
+                    onClick={refreshCompanies}
+                    type="button"
+                  >
+                    {isRefreshing ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
+              </div>
+
+              {syncResults.length > 0 ? (
+                <div className="border-border bg-muted/30 my-4 rounded-xl border p-4 text-xs">
+                  <p className="text-foreground font-semibold">Sync run breakdown:</p>
+                  <ul className="mt-2 space-y-1">
+                    {syncResults.map((result, idx) => (
+                      <li key={idx} className="text-muted-foreground">
+                        <strong className="text-foreground">{result.company ?? "Unknown"}:</strong>{" "}
+                        {result.error
+                          ? `Error: ${result.error}`
+                          : `Fetched ${result.fetched ?? 0}, created ${result.created ?? 0}, skipped ${result.skipped ?? 0}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {companies.length === 0 ? (
+                <div className="border-border border-dashed mt-6 rounded-xl border p-8 text-center text-sm text-muted-foreground">
+                  No company sources added yet. Use the quick-add buttons above or enter a custom job board URL.
+                </div>
+              ) : (
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {companies.map((company) => (
+                    <div
+                      key={company.id}
+                      className="border-border bg-card hover:border-primary/40 flex flex-col justify-between rounded-xl border p-4 shadow-xs transition"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-foreground text-base font-bold">{company.name}</h3>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${providerBadgeClass(
+                              company.source_type
+                            )}`}
+                          >
+                            {providerLabel(company.source_type)}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 flex items-center gap-2 text-xs">
+                          <span
+                            className={`rounded-full border px-2 py-0.5 font-semibold ${priorityBadgeClass(
+                              company.priority
+                            )}`}
+                          >
+                            {company.priority} priority
+                          </span>
+                          {company.board_token && (
+                            <span className="text-muted-foreground truncate" title={company.board_token}>
+                              token: {company.board_token}
+                            </span>
+                          )}
+                        </div>
+
+                        {company.careers_url ? (
+                          <a
+                            href={company.careers_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline mt-2.5 block truncate text-xs"
+                          >
+                            {company.careers_url} ↗
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <div className="border-border mt-4 border-t pt-3 flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">
+                          {company.source_type in { ashby: 1, greenhouse: 1, lever: 1 }
+                            ? "Auto-syncable"
+                            : "Manual tracking"}
+                        </span>
+
+                        {company.source_type in { ashby: 1, greenhouse: 1, lever: 1 } ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncCompany(company)}
+                            disabled={syncingCompanyId === company.id || syncingProvider !== null}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-xs transition disabled:opacity-50"
+                          >
+                            {syncingCompanyId === company.id ? "Syncing…" : "Sync this source"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        ) : (
+          /* Tab 2: Manual Job Link Entry */
+          <section className="border-border bg-card rounded-2xl border p-5 shadow-xs sm:p-8">
+            <div className="mb-6">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🔗</span>
+                <h2 className="text-xl font-bold">Track an Individual Job by Link</h2>
+              </div>
               <p className="text-muted-foreground mt-1 text-sm">
-                {companies.length} company source{companies.length === 1 ? "" : "s"} tracked.
+                Found an interesting posting on LinkedIn, a company careers page, or through a friend? Add it directly to your job pool and personal application pipeline.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {connectorProviders.map((nextProvider) => (
-                <button
-                  className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={syncingProvider !== null}
-                  key={nextProvider}
-                  onClick={() => void handleSyncAll(nextProvider)}
-                  type="button"
-                >
-                  {syncingProvider === nextProvider
-                    ? `Syncing ${providerLabel(nextProvider)}...`
-                    : `Sync all ${providerLabel(nextProvider)}`}
-                </button>
-              ))}
-
-              <button
-                className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isRefreshing}
-                onClick={() => void refreshCompanies()}
-                type="button"
-              >
-                {isRefreshing ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
-          </div>
-
-          <div className="border-border bg-card mt-4 overflow-hidden rounded-2xl border shadow-sm">
-            {companies.length === 0 ? (
-              <div className="p-8 text-center">
-                <h3 className="text-lg font-semibold">No company sources yet</h3>
-                <p className="text-muted-foreground mt-2 text-sm">
-                  Add an Ashby, Greenhouse, or Lever company board above.
-                </p>
+            {addedJobNotice ? (
+              <div className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-6 rounded-xl border p-4 text-sm">
+                <p className="font-semibold">{addedJobNotice}</p>
+                <div className="mt-3 flex gap-3">
+                  <Link href="/jobs" className="text-primary underline font-semibold text-xs">
+                    View in Jobs Dashboard →
+                  </Link>
+                  <Link href="/applications" className="text-primary underline font-semibold text-xs">
+                    View in Applications Board →
+                  </Link>
+                </div>
               </div>
-            ) : (
-              <div className="divide-border divide-y">
-                {companies.map((company) => (
-                  <article
-                    className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
-                    key={company.id}
+            ) : null}
+
+            <form onSubmit={handleAddManualJob} className="space-y-4">
+              <div>
+                <label className="text-foreground block text-sm font-medium">
+                  Job Link / Application URL *
+                </label>
+                <input
+                  type="url"
+                  value={jobLinkUrl}
+                  onChange={(e) => handleJobLinkChange(e.target.value)}
+                  placeholder="https://jobs.ashbyhq.com/company/job-id or https://linkedin.com/jobs/view/..."
+                  className="border-border focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                  required
+                />
+                <span className="text-muted-foreground mt-1 block text-xs">
+                  We’ll automatically extract the company name if it’s hosted on Ashby, Greenhouse, or Lever.
+                </span>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-foreground block text-sm font-medium">Company Name *</label>
+                  <input
+                    type="text"
+                    value={jobCompany}
+                    onChange={(e) => setJobCompany(e.target.value)}
+                    placeholder="e.g. Stripe"
+                    className="border-border focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-foreground block text-sm font-medium">Job Title *</label>
+                  <input
+                    type="text"
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="e.g. Staff Backend Engineer"
+                    className="border-border focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-foreground block text-sm font-medium">Location</label>
+                  <input
+                    type="text"
+                    value={jobLocation}
+                    onChange={(e) => setJobLocation(e.target.value)}
+                    placeholder="e.g. Remote, US or San Francisco, CA"
+                    className="border-border focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-foreground block text-sm font-medium">Workplace Type</label>
+                  <select
+                    value={jobWorkplaceType}
+                    onChange={(e) => setJobWorkplaceType(e.target.value)}
+                    className="border-border bg-background focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
                   >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-base font-semibold">{company.name}</h3>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${providerBadgeClass(
-                            company.source_type
-                          )}`}
-                        >
-                          {providerLabel(company.source_type)}
-                        </span>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityBadgeClass(
-                            company.priority
-                          )}`}
-                        >
-                          {company.priority} priority
-                        </span>
-                        {!company.active ? (
-                          <span className="border-border bg-muted text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-semibold">
-                            Inactive
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-muted-foreground mt-2 text-sm">
-                        {company.active
-                          ? "Included in provider sync-all runs."
-                          : "Excluded from provider sync-all runs."}
-                      </p>
-                    </div>
-
-                    <button
-                      className="border-border bg-card text-foreground hover:bg-muted w-full rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                      disabled={syncingCompanyId !== null}
-                      onClick={() => void handleSyncCompany(company)}
-                      type="button"
-                    >
-                      {syncingCompanyId === company.id ? "Syncing..." : "Sync this source"}
-                    </button>
-                  </article>
-                ))}
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="on-site">On-site</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </div>
               </div>
-            )}
-          </div>
-        </section>
 
-        {syncResults.length > 0 ? (
-          <section className="border-border bg-card mt-8 rounded-2xl border p-5 shadow-sm sm:p-6">
-            <h2 className="text-lg font-semibold">Latest sync results</h2>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="border-border text-muted-foreground border-b">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Company</th>
-                    <th className="px-3 py-2 font-medium">Fetched</th>
-                    <th className="px-3 py-2 font-medium">Created</th>
-                    <th className="px-3 py-2 font-medium">Skipped</th>
-                    <th className="px-3 py-2 font-medium">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {syncResults.map((result, index) => (
-                    <tr
-                      className="border-border border-b last:border-0"
-                      key={`${result.company}-${index}`}
-                    >
-                      <td className="px-3 py-3 font-medium">{result.company ?? "Unknown"}</td>
-                      <td className="px-3 py-3">{result.fetched ?? "—"}</td>
-                      <td className="px-3 py-3">{result.created ?? "—"}</td>
-                      <td className="px-3 py-3">{result.skipped ?? "—"}</td>
-                      <td
-                        className={
-                          result.error ? "text-destructive px-3 py-3" : "text-success px-3 py-3"
-                        }
-                      >
-                        {result.error ?? "Completed"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              <div>
+                <label className="text-foreground block text-sm font-medium">Notes / Referral Context</label>
+                <input
+                  type="text"
+                  value={jobNotes}
+                  onChange={(e) => setJobNotes(e.target.value)}
+                  placeholder="e.g. Found on LinkedIn, referral by teammate"
+                  className="border-border focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm transition outline-none focus:ring-2"
+                />
+              </div>
+
+              <div>
+                <label className="text-foreground block text-sm font-medium">Job Description (optional)</label>
+                <textarea
+                  rows={4}
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  placeholder="Paste snippet or JD to help match scoring..."
+                  className="border-border focus:border-primary focus:ring-primary/20 mt-1 w-full rounded-lg border p-3 text-sm transition outline-none focus:ring-2"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isAddingJob}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-6 py-2.5 text-sm font-semibold shadow-xs transition disabled:opacity-50"
+                >
+                  {isAddingJob ? "Adding Job…" : "Add to Job Pool & Applications →"}
+                </button>
+              </div>
+            </form>
           </section>
-        ) : null}
+        )}
       </div>
     </main>
   );

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import ApplicationContactsEditor from "./ApplicationContactsEditor";
 import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
+import ApplicationInterviewsSection from "./ApplicationInterviewsSection";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
 import ApplicationStatusEditor from "./ApplicationStatusEditor";
 
@@ -313,6 +314,12 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
             />
           </div>
         </section>
+
+        <ApplicationInterviewsSection
+          applicationId={application.id}
+          companyName={application.job.company_name}
+          jobTitle={application.job.title}
+        />
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <h2 className="text-xl font-semibold">Follow-up</h2>

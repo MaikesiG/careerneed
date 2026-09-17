@@ -3,11 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
-    auth,
     applications,
+    auth,
     companies,
     connectors,
     dashboard,
+    interviews,
     jobs,
     resumes,
     settings,
@@ -32,6 +33,7 @@ app.include_router(applications.router)
 app.include_router(dashboard.router)
 app.include_router(companies.router)
 app.include_router(connectors.router)
+app.include_router(interviews.router)
 app.include_router(jobs.router)
 app.include_router(resumes.router)
 app.include_router(settings.router)

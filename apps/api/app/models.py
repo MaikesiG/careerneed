@@ -189,6 +189,11 @@ class Application(Base):
         back_populates="application",
         cascade="all, delete-orphan",
     )
+    interviews: Mapped[list["Interview"]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="Interview.round",
+    )
 
 
 class ApplicationContact(Base):
@@ -297,3 +302,39 @@ class PasswordResetToken(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
+
+
+class Interview(Base):
+    __tablename__ = "interviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    round: Mapped[int] = mapped_column(default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    interview_type: Mapped[str] = mapped_column(String(50), nullable=False, default="technical")
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    duration_minutes: Mapped[int | None] = mapped_column(nullable=True, default=60)
+    timezone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="scheduled", index=True)
+    result: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", index=True)
+    interviewer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    interviewer_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    interviewer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    meeting_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="interviews")
+

@@ -91,9 +91,11 @@ The next major milestone:
 
 ## 3. Current architectural milestone
 
-The project successfully completed **Phase 1: Foundation (Auth + Resumes + Jobs + Applications + Contacts)**.
+The project has completed:
+- **Phase 1: Foundation (Auth + Resumes + Jobs + Applications + Contacts)**.
+- **Phase 2: Interview Management & Fast Capture (Interviews Data Model + CRUD API + Application Detail Interviews Section + Upcoming Interviews Dashboard + Fast Capture AI Extraction Pipeline)**.
 
-The Application Detail page and Jobs list follow a clean client-side architecture backed by the unified `apiFetch` client, session cookie authentication, and strict user-isolation database queries.
+The entire workflow from receiving recruiter email invites to AI structured extraction, user confirmation, interview scheduling, prep note management, and outcome debrief is functional, isolated by user, and tested end-to-end.
 
 ---
 
@@ -106,16 +108,13 @@ The Application Detail page and Jobs list follow a clean client-side architectur
 
 ---
 
-## 5. Transition to Phase 2: Next Priorities
+## 5. Transition to Phase 3: Next Priorities
 
-With the foundation complete, active development shifts to:
-1. **Interview Management**:
-   - `interviews` database model & CRUD API.
-   - Upcoming interviews calendar / dashboard view.
-   - Fast Capture (paste email/invite text → smart extraction → review & save).
-2. **AI-Assisted Preparation**:
-   - Per-interview preparation workspace (JD + Resume + Round Type + Past Notes → Prep Plan).
-3. **Post-Interview Outcome Analysis**:
-   - Record questions & reflections → AI failure/success diagnosis → actionable improvement advice.
-4. **Onboarding & Career Growth**:
+With Phase 2 interview tracking and Fast Capture live, active development shifts to:
+1. **AI Interview Preparation (Phase 3)**:
+   - Per-interview prep generator (JD + Target Role + Resume + Round Type → targeted questions, system design checklist, behavioral STAR outlines).
+2. **Post-Interview Outcome Analysis & Learning**:
+   - Structured interview questions & LeetCode link association.
+   - Self-reflection debrief → AI failure/success diagnosis → actionable gaps to practice.
+3. **Onboarding & Profiling (Phase 4)**:
    - First-time resume deep AI profile → Target company discovery → Gap analysis to target roles.

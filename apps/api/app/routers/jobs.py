@@ -273,7 +273,11 @@ def update_job_status(
 
 
 @router.post("/manual", response_model=JobOut, status_code=201)
-def create_manual_job(payload: JobManualCreate, db: Session = Depends(get_db)) -> Job:
+def create_manual_job(
+    payload: JobManualCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+) -> Job:
     job = Job(
         company_name=payload.company_name,
         source="manual",
@@ -290,6 +294,24 @@ def create_manual_job(payload: JobManualCreate, db: Session = Depends(get_db)) -
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    if current_user:
+        existing_app = db.scalar(
+            select(Application).where(
+                Application.user_id == current_user.id,
+                Application.job_id == job.id,
+            )
+        )
+        if not existing_app:
+            app_record = Application(
+                user_id=current_user.id,
+                job_id=job.id,
+                status="saved",
+                notes=payload.notes,
+            )
+            db.add(app_record)
+            db.commit()
+
     return job
 
 

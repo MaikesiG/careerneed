@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { apiFetch, getApiErrorMessage, UpcomingInterview } from "@/lib/api";
 
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
@@ -198,6 +198,27 @@ function followUpState(value: string): {
   };
 }
 
+function formatInterviewTime(dateStr: string | null): string {
+  if (!dateStr) return "Time not set";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "Invalid time";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+function formatFullDate(dateStr: string | null): string {
+  if (!dateStr) return "Date TBD";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "Invalid date";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(d);
+}
+
 function createTodayState(
   summary: DashboardSummary,
   nextFollowUp: DashboardFollowUp | null
@@ -274,6 +295,7 @@ export default function TodoClient() {
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [followUps, setFollowUps] = useState<DashboardFollowUp[] | null>(null);
+  const [upcomingInterviews, setUpcomingInterviews] = useState<UpcomingInterview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -285,11 +307,14 @@ export default function TodoClient() {
       setError(null);
 
       try {
-        const [summaryResponse, followUpsResponse] = await Promise.all([
+        const [summaryResponse, followUpsResponse, interviewsResponse] = await Promise.all([
           apiFetch("/dashboard/summary", {
             cache: "no-store",
           }),
           apiFetch("/dashboard/follow-ups?limit=6", {
+            cache: "no-store",
+          }),
+          apiFetch("/interviews/upcoming?days=7", {
             cache: "no-store",
           }),
         ]);
@@ -298,7 +323,11 @@ export default function TodoClient() {
           return;
         }
 
-        if (summaryResponse.status === 401 || followUpsResponse.status === 401) {
+        if (
+          summaryResponse.status === 401 ||
+          followUpsResponse.status === 401 ||
+          interviewsResponse.status === 401
+        ) {
           router.replace(`/login?next=${encodeURIComponent(pathname)}`);
           return;
         }
@@ -324,6 +353,11 @@ export default function TodoClient() {
 
         if (!isDashboardFollowUpsResponse(followUpsData)) {
           throw new Error("The dashboard follow-up response is invalid.");
+        }
+
+        if (interviewsResponse.ok) {
+          const interviewsData = (await interviewsResponse.json()) as UpcomingInterview[];
+          setUpcomingInterviews(interviewsData);
         }
 
         setSummary(summaryData);
@@ -462,6 +496,103 @@ export default function TodoClient() {
                   </Link>
                 ) : null}
               </div>
+            </section>
+
+            <section className="mt-10" aria-labelledby="upcoming-interviews-heading">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-primary text-sm font-medium">Schedule</p>
+                  <h2 id="upcoming-interviews-heading" className="mt-1 text-2xl font-semibold">
+                    Upcoming Interviews
+                  </h2>
+                </div>
+
+                <Link
+                  href="/interviews"
+                  className="text-primary focus-visible:ring-primary focus-visible:ring-offset-background shrink-0 text-sm font-semibold transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  View all <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+
+              {upcomingInterviews.length === 0 ? (
+                <article className="border-border bg-card mt-5 rounded-2xl border border-dashed p-6">
+                  <h3 className="text-lg font-semibold">No interviews scheduled this week</h3>
+                  <p className="text-muted-foreground mt-2 text-sm leading-6">
+                    Paste interview invitations in any active application to automatically track your upcoming rounds and preparation here.
+                  </p>
+                </article>
+              ) : (
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {upcomingInterviews.map((item) => (
+                    <div
+                      key={item.id}
+                      className="border-border bg-card hover:border-primary/50 flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-primary text-xs font-bold tracking-wider uppercase">
+                            {item.company_name}
+                          </span>
+                          <span className="border-border bg-muted text-foreground rounded-md border px-2 py-0.5 text-xs font-semibold">
+                            Round {item.round}
+                          </span>
+                        </div>
+
+                        <h3 className="text-foreground mt-2 text-base font-bold">
+                          {item.job_title}
+                        </h3>
+                        <p className="text-muted-foreground text-sm font-medium">
+                          {item.title}
+                        </p>
+
+                        <div className="border-border bg-muted/20 mt-3 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium">
+                          <span>⏰</span>
+                          <span>{formatInterviewTime(item.scheduled_at)}</span>
+                          {item.timezone && <span>({item.timezone})</span>}
+                          <span className="text-muted-foreground ml-auto">
+                            {formatFullDate(item.scheduled_at)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 text-xs">
+                          <span className="text-muted-foreground">Preparation: </span>
+                          <span
+                            className={
+                              item.preparation_notes
+                                ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                                : "text-muted-foreground italic"
+                            }
+                          >
+                            {item.preparation_notes ? "Notes ready" : "Not started"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="border-border mt-4 flex items-center justify-between border-t pt-3">
+                        <Link
+                          href={`/applications/${item.application_id}`}
+                          className="text-primary hover:underline text-xs font-semibold"
+                        >
+                          Open prep →
+                        </Link>
+
+                        {item.meeting_url ? (
+                          <a
+                            href={item.meeting_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-xs transition"
+                          >
+                            <span>Join</span>
+                            <span>↗</span>
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="mt-10" aria-labelledby="next-up-heading">

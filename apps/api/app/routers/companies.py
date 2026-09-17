@@ -61,3 +61,46 @@ def create_company(
         ) from exc
 
     return company
+
+
+@router.post("/batch", response_model=list[CompanyOut], status_code=status.HTTP_201_CREATED)
+def create_companies_batch(
+    payload: list[CompanyCreate],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[Company]:
+    added: list[Company] = []
+    for item in payload:
+        board_token = item.board_token.strip() if item.board_token else None
+        if item.source_type in ATS_SOURCE_TYPES and not board_token:
+            continue
+
+        existing = (
+            db.query(Company)
+            .filter(
+                Company.user_id == current_user.id,
+                Company.source_type == item.source_type,
+                Company.board_token == board_token,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        company = Company(
+            user_id=current_user.id,
+            name=item.name.strip(),
+            source_type=item.source_type,
+            board_token=board_token,
+            careers_url=item.careers_url.strip() if item.careers_url else None,
+            priority=item.priority,
+        )
+        db.add(company)
+        added.append(company)
+
+    if added:
+        db.commit()
+        for company in added:
+            db.refresh(company)
+
+    return added

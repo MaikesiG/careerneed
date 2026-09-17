@@ -9,6 +9,7 @@ import ThemeToggle from "./ThemeToggle";
 const navigation = [
   { href: "/", label: "Home", exact: true },
   { href: "/todo", label: "To Do" },
+  { href: "/interviews", label: "Interviews" },
   { href: "/jobs", label: "Jobs" },
   { href: "/applications", label: "Applications" },
   { href: "/resumes", label: "Resumes" },

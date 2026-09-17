@@ -1,7 +1,7 @@
-# Phase 2: Interview Management & Fast Capture (Current Milestone 🎯)
+# Phase 2: Interview Management & Fast Capture (Implemented ✅)
 
-> Status: In Progress (Current Sprint)  
-> Target: Turn tracked applications into multi-round interview workflows with zero tedious data entry.  
+> Status: Completed  
+> Target: Turn tracked applications into structured multi-round interview workflows with zero tedious data entry.  
 > Repository: `careerneed`
 
 ---
@@ -10,9 +10,10 @@
 
 Technical candidates frequently juggle 5–10 active interview processes across various stages (Recruiter Screen, Technical Coding, System Design, Behavioral, Hiring Manager).
 
-**Phase 2 solves two primary problems**:
-1. **Administrative Friction**: Replaces manual multi-field form-filling with **Fast Capture** (*Paste snippet → Smart Extraction → Review → Confirm*).
+**Phase 2 achieves the following key loop**:
+1. **Administrative Friction Reduction**: Replaces manual multi-field form-filling with **Fast Capture** (*Paste snippet → Smart Extraction → Review → Confirm*).
 2. **Interview Organization**: Gives candidates an immediate overview of upcoming interviews in the next 1–7 days, complete with direct meeting URLs, round notes, and prep status.
+3. **Data Model Integrity**: Decouples `status` (`scheduled`, `completed`, `cancelled`, `rescheduled`) from `result` (`pending`, `passed`, `failed`, `unknown`), allowing clean debriefing.
 
 ---
 
@@ -26,84 +27,81 @@ CREATE TABLE interviews (
     application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
     round INTEGER NOT NULL DEFAULT 1,
     title VARCHAR(255) NOT NULL,
-    interview_type VARCHAR(50) NOT NULL DEFAULT 'technical_screen',
+    interview_type VARCHAR(50) NOT NULL DEFAULT 'technical',
     status VARCHAR(50) NOT NULL DEFAULT 'scheduled',
     result VARCHAR(50) NOT NULL DEFAULT 'pending',
-    scheduled_at TIMESTAMP WITH TIME ZONE,
+    scheduled_at TIMESTAMP WITHOUT TIME ZONE,
     duration_minutes INTEGER DEFAULT 60,
+    timezone VARCHAR(50),
     interviewer_name VARCHAR(255),
     interviewer_title VARCHAR(255),
-    interviewer_linkedin_url VARCHAR(1000),
+    interviewer_email VARCHAR(255),
     meeting_url VARCHAR(1000),
     location VARCHAR(500),
+    notes TEXT,
     preparation_notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX ix_interviews_application_id ON interviews(application_id);
 CREATE INDEX ix_interviews_scheduled_at ON interviews(scheduled_at);
+CREATE INDEX ix_interviews_status ON interviews(status);
+CREATE INDEX ix_interviews_result ON interviews(result);
 ```
 
-- **Round Types**: `recruiter`, `technical_screen`, `coding`, `system_design`, `behavioral`, `hiring_manager`, `panel`, `final`, `other`.
+- **Types**: `recruiter`, `technical`, `coding`, `system_design`, `behavioral`, `hiring_manager`, `panel`, `final`, `other`.
 - **Statuses**: `scheduled`, `completed`, `cancelled`, `rescheduled`.
-- **Results**: `pending`, `passed`, `failed`, `no_decision`.
+- **Results**: `pending`, `passed`, `failed`, `unknown`.
 
 ---
 
 ## 3. Endpoints & API Contracts
 
 ### 3.1 Interview CRUD Routes
-- `GET /applications/{application_id}/interviews` — List all rounds for an application (chronological).
-- `POST /applications/{application_id}/interviews` — Create a new round.
+- `GET /applications/{application_id}/interviews` — List all rounds for an application (chronological by round).
+- `POST /applications/{application_id}/interviews` — Create a new round (with automatic round number incrementing).
+- `GET /applications/{application_id}/interviews/{interview_id}` — Get single round details.
 - `PATCH /applications/{application_id}/interviews/{interview_id}` — Update round details.
 - `DELETE /applications/{application_id}/interviews/{interview_id}` — Remove an interview round.
 
 ### 3.2 Global Upcoming Interview Query
-- `GET /interviews/upcoming?days=7`
+- `GET /interviews/upcoming?days=30&include_past=false`
   - Scoped to `current_user.id` across all applications.
-  - Returns interviews with `scheduled_at >= now()` and `scheduled_at <= now() + days`.
-  - Joined with `jobs` and `applications` to provide company name, job title, meeting URL, and round title.
+  - Returns interviews with joined company and job title.
 
 ### 3.3 Fast Capture Extraction API
 - `POST /interviews/fast-capture`
   - **Payload**: `{ "raw_text": "...", "application_id": null }`
   - **Logic**:
     1. Evaluates raw pasted text (recruiter email or calendar invite).
-    2. Searches user's active applications to guess company/role if `application_id` is omitted.
-    3. Extracts `scheduled_at`, `duration_minutes`, `interview_type`, `interviewer_name`, `meeting_url`.
-    4. Returns uncommitted draft object for frontend preview modal.
+    2. Runs AI Structured Extraction (OpenAI / Groq / OpenRouter with Pydantic validation).
+    3. Runs robust deterministic regex fallback (extracts Date/Time, Duration, Meeting URL, Timezone, Interviewer Name/Title).
+    4. Automatically binds company and role if `application_id` is supplied.
+    5. Returns uncommitted draft object for frontend preview modal. Never writes directly to DB without user review and confirmation.
 
 ---
 
 ## 4. Frontend UX Workflows
 
 ### 4.1 Fast Capture Interaction Model
-```text
-User receives email / invite
-  ↳ Clicks "+ Log Interview"
-    ↳ Pastes raw email snippet
-      ↳ AI / Regex extracts structured fields in < 2 seconds
-        ↳ User reviews pre-populated modal (can edit any field)
-          ↳ Clicks "Confirm & Save"
-            ↳ Record created & immediately visible
-```
+1. User clicks **"⚡ Paste & Extract"** on Application Detail.
+2. User pastes email or calendar invitation text.
+3. System extracts structured details and shows **"Interview Detected"** review card.
+4. User inspects, edits any fields, and clicks **"Confirm & Schedule Round"**.
+5. Record created and immediately appears in the interview timeline.
 
-### 4.2 Upcoming Interview Timeline (`/todo` & `/applications`)
-- Answers:
-  - *How many interviews in the next 24h, 3 days, 7 days?*
-  - *Which companies and roles?*
-  - *1-click button to launch Zoom / Google Meet / Teams.*
-  - *1-click link to round notes.*
+### 4.2 Interviews Section on `/applications/[applicationId]`
+- Shows scheduled rounds, badges for status & outcome.
+- 1-click **"Join Meeting ↗"** launcher for Zoom / Google Meet / Teams.
+- **"✓ Mark Completed"** dialog with outcome selection and 1-click Thank-you follow-up schedule.
+- Edit & Delete actions.
+
+### 4.3 Interview Center (`/interviews`) & Dashboard Integration (`/todo`)
+- `/interviews`: Groups rounds into **Today**, **Tomorrow**, **This Week**, **Later**, and **Past / Needs Review**.
+- `/todo`: Highlights upcoming interviews directly within the daily workflow with prep note status.
 
 ---
 
-## 5. Granular Commit Plan for Phase 2
-
-1. `feat: add interview data model and alembic migration`
-2. `feat: add interview CRUD endpoints with user isolation`
-3. `feat: add upcoming interviews query endpoint`
-4. `feat: add interviews section to application detail workspace`
-5. `feat: add upcoming interview calendar widget to todo dashboard`
-6. `feat: implement fast capture smart paste extraction flow`
-7. `test: add automated test suite for interviews and fast capture`
+## 5. Automated Test Coverage
+- `tests/test_interviews.py`: Comprehensive test suite verifying user authentication, ownership isolation, CRUD operations, auto-round increment, delete cascades, upcoming interview queries, and deterministic fast capture extraction.

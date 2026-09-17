@@ -6,6 +6,8 @@ type Company = {
   id: string;
   name: string;
   source_type: string;
+  board_token?: string | null;
+  careers_url?: string | null;
   priority: string;
   active: boolean;
 };
