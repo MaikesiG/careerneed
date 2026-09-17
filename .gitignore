@@ -1,13 +1,24 @@
+# Environment files: never commit actual configuration or secrets.
 .env
-.env.local
+.env.*
+.env*.local
+.environment.*
+
+# Commit templates only.
+!.env.example
+!apps/api/.env.example
+!apps/web/.env.example
+
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+
+# Node / Web
 node_modules/
 .next/
 coverage/
+
+# OS
 .DS_Store
-# Python bytecode caches
-__pycache__/
-*.py[cod]

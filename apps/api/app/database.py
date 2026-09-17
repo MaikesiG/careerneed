@@ -1,19 +1,16 @@
 import os
 from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# 自动向上查找到项目根目录下的 .env 并加载
-load_dotenv(find_dotenv())
-# 如果 apps/api/.env 存在，也支持当前工作区覆盖
-load_dotenv()
+API_ROOT = Path(__file__).resolve().parents[1]
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://careerneed:Pwd%21%40%23123@localhost:5432/careerneed",
-)
+if os.getenv("APP_ENV", "development") == "development":
+    load_dotenv(API_ROOT / ".env.local", override=True)
+
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
