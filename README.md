@@ -1,25 +1,77 @@
-# Careerneed
+# CareerNeed
 
-Careerneed is a privacy-aware career intelligence platform for technical professionals. It ingests jobs from public company sources, matches them against resume and project evidence, and turns job-market signals into explainable, actionable career-growth plans.
+<p align="center">
+  <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-## Current scope
+CareerNeed is an AI-assisted career operating system and privacy-aware job-search workspace for technical professionals. It is designed to **eliminate repetitive job-search administration**, connect the full job-seeking lifecycle, and help candidates spend more time preparing and improving.
 
-- Next.js workspace with Home, To Do, Jobs, Applications, Resumes, and Sources
-- Application tracking with status, notes, follow-up dates, and application contacts
-- FastAPI API with job, company, resume, application, and contact CRUD
-- Keyword-based deterministic match scoring and paginated job/application lists
-- Greenhouse, Lever, and Ashby public ATS connectors with batch sync across configured companies
-- PostgreSQL via Docker Compose, with schema changes managed by reviewed Alembic migrations
-- Manual API and browser verification for current application/contact workflows
+```text
+Upload Resume & AI Analysis
+  ↳ Discover Target Companies & Auto-Sync Jobs
+    ↳ Evaluate Fit & Career Gap Analysis
+      ↳ Track Applications (List & Pipeline Board)
+        ↳ Manage Interview Schedule & Fast Capture
+          ↳ AI Interview Prep & Actionable Practice
+            ↳ Post-Interview Failure/Outcome Analysis
+              ↳ Continuous Career Growth
+```
+
+---
+
+## Product Philosophy
+
+> **"Reduce recording time, maximize improvement focus, and provide actionable growth guidance."**
+
+CareerNeed operates on three core principles:
+1. **Zero Busywork**: Prefer *Paste → Auto-Extract → Preview → Confirm* over filling out 15 form fields manually.
+2. **Actionable Intelligence over Passive Records**: Never treat records as dead data. Every job, application, and interview should answer: *What should I prepare? What am I missing? Why did I fail? What do I do next?*
+3. **User Agency & Data Privacy**: All career data and LLM keys (BYOK) are private and isolated to the authenticated user. AI recommendations are assistive and explainable, never silent or autonomous.
+
+---
+
+## Current Scope & Completed Features
+
+- **Authentication & User Isolation**: Full registration, login, logout, password reset via secure tokens, session cookies, and strict per-user database isolation.
+- **Resume Management**: Multi-version PDF upload (`pdfplumber`), automated technical skill extraction (LLM-powered with regex fallback), label categorization, default resume toggle, and soft archive/restore.
+- **Job Ingestion & Sourcing**: Production connectors for Ashby, Greenhouse, and Lever public ATS boards, plus manual job entry (`POST /jobs/manual`) with idempotent deduplication.
+- **Unified Jobs Dashboard (`/jobs`)**: Search by title/company/location, saved Search Directions, multi-select source & workplace filters, deterministic match scoring thresholds (0–100), recency filters, and URL-persisted filter state.
+- **Applications Tracking (`/applications`)**:
+  - Full lifecycle tracking: `saved` → `applied` → `interviewing` → `offer` / `rejected` / `withdrawn`.
+  - Dual views: Filterable Table List view and visual Kanban Pipeline Board (`/applications/board`).
+  - Application Detail workspace (`/applications/[applicationId]`): Status updates, follow-up scheduler, rich markdown notes, resume linking, and full contact management (recruiters, hiring managers, interviewers, referrals).
+- **Daily Focus Dashboard (`/todo`)**: Tracks active pipeline metrics, follow-ups due today, and overdue actions.
+- **LLM Settings & Security (`/settings`)**: BYOK (Bring Your Own Key) encrypted storage for OpenAI, Groq, and OpenRouter, platform free tier quota tracking, and audit logging.
+- **UI Design System**: Built on Next.js 15, Tailwind CSS with semantic tokens, and zero-flicker System / Light / Dark theme support.
+
+---
+
+## Documentation & Specifications
+
+All project documentation is consolidated in the [`docs/`](docs/DOC_README.md) directory:
+
+- [Documentation Index (`docs/DOC_README.md`)](docs/DOC_README.md) — Directory map, reading paths, and documentation maintenance rules.
+- [Current Status (`docs/CURRENT_STATUS.md`)](docs/CURRENT_STATUS.md) — Detailed checklist of verified completed functionality.
+- [Product Specification (`docs/PRODUCT_SPEC.md`)](docs/PRODUCT_SPEC.md) — Comprehensive functional specifications (v0.2), including Interview Management and AI coaching modules.
+- [Product Roadmap (`docs/ROADMAP.md`)](docs/ROADMAP.md) — Phased development plan from current foundation to autonomous career intelligence.
+- [Product Requirements (`docs/PRODUCT_REQUIREMENT.md`)](docs/PRODUCT_REQUIREMENT.md) — Detailed requirements, user stories, and acceptance criteria (PRD v0.2).
+- [System Architecture (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) — Technical architecture, data models, connector boundaries, and AI pipelines.
+- [Project Conventions (`docs/PROJECT_CONVINTIONS.md`)](docs/PROJECT_CONVINTIONS.md) — Engineering guidelines, UI design tokens, API patterns, and Definition of Done.
+
+---
 
 ## Prerequisites
 
 - Node.js 20+
 - Python 3.11+
-- Docker Desktop
+- Docker & Docker Compose
 - Git
 
-## Start the database
+---
+
+## Getting Started
+
+### 1. Start the Database
 
 ```bash
 cp .env.example .env
@@ -27,7 +79,7 @@ docker compose up -d db
 docker compose ps
 ```
 
-## Start the API
+### 2. Start the FastAPI Backend
 
 ```bash
 cd apps/api
@@ -38,78 +90,57 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open http://localhost:8000/docs to explore the API. `GET /health` should return `{"status": "ok", "service": "careerneed-api"}`.
+- API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Health check: `GET http://localhost:8000/health` → `{"status": "ok", "service": "careerneed-api"}`
 
-## Start the web app
+### 3. Start the Next.js Frontend
 
 ```bash
 cd apps/web
+npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Run tests
+---
 
+## Running Tests
+
+### Backend Tests
 ```bash
 cd apps/api
 source .venv/bin/activate
 python -m pytest -q
 ```
 
-## API overview
+### Frontend Lint & Build
+```bash
+cd apps/web
+npm run lint
+npm run build
+```
 
-### Jobs
+---
 
-- `GET /jobs` — list jobs, filterable by `status` and `location`, paginated via `limit`/`offset` (default `limit=500`, max `1000`). Total count is returned in the `X-Total-Count` response header.
-- `GET /jobs/{job_id}` — fetch a single job with full description.
-- `PATCH /jobs/{job_id}/status` — update status (`new`, `saved`, `applied`, `dismissed`).
-- `POST /jobs/manual` — add a job manually, outside of any connector.
+## Core API Overview
 
-### Companies
+- **Auth**: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`
+- **Resumes**: `GET /resumes`, `POST /resumes/upload`, `GET /resumes/{id}`, `PATCH /resumes/{id}`, `DELETE /resumes/{id}`
+- **Jobs**: `GET /jobs`, `GET /jobs/{id}`, `PATCH /jobs/{id}/status`, `POST /jobs/manual`
+- **Applications**: `GET /applications`, `POST /applications`, `GET /applications/{id}`, `PATCH /applications/{id}`, `DELETE /applications/{id}`, `PUT /applications/by-job/{job_id}`, `GET /applications/me/job-states`
+- **Application Contacts**: `GET /applications/{id}/contacts`, `POST /applications/{id}/contacts`, `PATCH /applications/{id}/contacts/{contact_id}`, `DELETE /applications/{id}/contacts/{contact_id}`
+- **Connectors**: `POST /connectors/{greenhouse|lever|ashby}/sync`, `POST /connectors/{greenhouse|lever|ashby}/sync-all`
+- **Dashboard**: `GET /dashboard/summary`, `GET /dashboard/follow-ups`
+- **Settings**: `GET /settings/llm-credentials`, `POST /settings/llm-credentials`, `DELETE /settings/llm-credentials/{provider}`, `GET /settings/extraction-mode`
+- **Interviews (Upcoming Phase 2)**: `GET /interviews/upcoming`, `GET /applications/{id}/interviews`, `POST /applications/{id}/interviews`, `POST /interviews/fast-capture`, `POST /interviews/{id}/prep-plan`, `POST /interviews/{id}/analyze-outcome`
 
-- `GET /companies` — list configured companies.
-- `POST /companies` — register a new company (`source_type`: `greenhouse`, `lever`, `custom`, or `manual`).
+---
 
-### Applications and contacts
+## What's Next
 
-- `GET /applications` — list the current user's tracked applications; supports status, follow-up, limit, and offset filters.
-- `GET /applications/{application_id}` — fetch one tracked application and its job summary.
-- `POST /applications` — create a tracked application for a job.
-- `PATCH /applications/{application_id}` — update application status, resume, applied date, notes, or follow-up date.
-- `DELETE /applications/{application_id}` — remove an application.
-- `GET /applications/{application_id}/contacts` — list contacts associated with an application.
-- `POST /applications/{application_id}/contacts` — add a recruiter, hiring manager, interviewer, referral, or other contact.
-- `PATCH /applications/{application_id}/contacts/{contact_id}` — update an application contact.
-- `DELETE /applications/{application_id}/contacts/{contact_id}` — delete an application contact.
-
-Contacts contain a required name and contact type, plus optional email, LinkedIn URL, and notes. Contact routes verify that the parent application belongs to the current development user. Full authentication is still a future milestone.
-
-### Connectors
-
-- `POST /connectors/greenhouse/sync?board_token=...&company_name=...` — sync one Greenhouse-hosted company.
-- `POST /connectors/greenhouse/sync-all` — sync every active company with `source_type=greenhouse`.
-- `POST /connectors/lever/sync?company_slug=...&company_name=...` — sync one Lever-hosted company.
-- `POST /connectors/lever/sync-all` — sync every active company with `source_type=lever`.
-
-Sync endpoints are idempotent: jobs are deduplicated by `(source, external_job_id)`, and re-running a sync only updates `last_seen_at` on existing jobs.
-
-## Match scoring
-
-Every ingested job gets a `match_score` (0-100) from `app/connectors/scoring.py`, shared across all connectors so scoring is consistent regardless of source ATS. Scoring logic:
-
-- Titles matching non-engineering patterns (sales, recruiting, legal, generic management, etc.) are capped at 15.
-- High-priority keywords (ML infrastructure, MLOps, research engineer/scientist, GPU/kernel/compiler work) score 40.
-- Medium-priority keywords (SRE, platform/infrastructure engineer) score 15-30 depending on AI/ML context.
-- Low-priority keywords (AI agents, LLM, prompt engineering) score 20.
-- Generic engineering titles score 10 as a baseline.
-
-## Architecture notes
-
-- `app/connectors/<ats>.py` — one module per ATS, each exposing `fetch_*_jobs`, `sync_*_jobs`, and `sync_all_*_companies`, all built against the shared `Company`/`Job` models.
-- `app/connectors/scoring.py` — shared keyword lists and `calculate_match_score`, imported by every connector.
-- Connector errors (unreachable board, disabled API access) raise `ValueError` and are surfaced as `422` with a descriptive message on single-company sync, or collected per-company on batch sync so one failing company doesn't block the rest.
-
-## Next milestone
-
-Add automated API coverage for application contacts, then address Alembic schema-drift checks and replace the development-only fixed user ID with real authentication and per-user isolation.
+The team is currently building **Phase 2: Interview Management & AI Preparation**:
+1. **Interview Entity & Multi-Round Tracking**: Scheduled dates, round types (Recruiter, Coding, System Design, Behavioral), and interviewer notes.
+2. **Upcoming Interview Timeline**: Clear view of interviews scheduled in the next 1–7 days.
+3. **Fast Capture**: Paste recruiter emails or calendar invites to automatically populate interview records.
+4. **AI Interview Prep & Post-Mortem Diagnosis**: Personalized preparation guides and failure analysis to turn every interview into a learning opportunity.
