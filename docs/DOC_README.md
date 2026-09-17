@@ -42,12 +42,23 @@ Every document in this directory addresses a specific dimension of the platform:
 
 | Document | Nature | Purpose & Scope | Target Audience |
 | :--- | :--- | :--- | :--- |
+| **[PORTFOLIO_DEMO_GUIDE.md](PORTFOLIO_DEMO_GUIDE.md)** | Interview / Demo | **Comprehensive Portfolio & Demo Guide**.<br>How to pitch and demo CareerNeed for 5 distinct roles: AI Full-Stack, AI Product, Software Engineer, MLOps, and Forward Deployed Engineer (FDE). Includes 90-second pitch, 3-5 min demo script, architecture diagram, and tailored resume bullets. | Job candidate / Interview prep |
 | **[CURRENT_STATUS.md](CURRENT_STATUS.md)** | Baseline | **Audited baseline of completed functionality**.<br>Detailed inventory of verified features: authentication, user isolation, resume management, skill extraction, ATS sync, job filters, Kanban board, application detail workspace, and BYOK LLM credentials. | All team members / New contributors |
 | **[PRODUCT_SPEC.md](PRODUCT_SPEC.md)** | Specification | **Comprehensive Product Specification (v0.2)**.<br>End-to-end specifications covering first-use onboarding, target company recommendations, job matching/gap planning, interview data models, Fast Capture smart text ingestion, AI preparation, failure analysis, and stage snapshots. | Product / Full-stack / Architects |
 | **[ROADMAP.md](ROADMAP.md)** | Roadmap | **Phased engineering implementation plan**.<br>Outlines milestone boundaries from Phase 1 (Foundation ✅) to the active **Phase 2 (Interview Management & Fast Capture 🎯)**, followed by AI coaching, onboarding profiling, and automation. | Engineering leads / Project managers / Devs |
 | **[PRODUCT_REQUIREMENT.md](PRODUCT_REQUIREMENT.md)** | PRD | **Product Requirements Document (PRD v0.2)**.<br>Problem statement, user personas, end-to-end User Stories, functional specifications, and non-functional requirements (security, latency, offline resilience). | Product managers / QA / Developers |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture | **System Architecture & Technical Design**.<br>Detailed breakdown of Next.js client-side data loading, FastAPI routes, PostgreSQL row-level isolation, modular ATS connectors, LLM intelligence pipelines (Fast Capture, AI Prep, Failure Diagnosis), and ADRs. | Backend developers / Architects / Security |
 | **[PROJECT_CONVINTIONS.md](PROJECT_CONVINTIONS.md)** | Conventions | **Engineering Standards & Design System Rules**.<br>Defines Tailwind semantic token mapping, accessible theme modes (System/Light/Dark), route hierarchy, REST/snake_case API contracts, AI structured response standards, and Definition of Done (DoD). | Frontend / Backend / Code reviewers |
+
+### Granular Phase Specifications (`docs/phases/`)
+- **[Phase 1: Core Foundation](phases/phase-1-core-foundation.md)** (Completed ✅)
+- **[Phase 2: Interview Management & Fast Capture](phases/phase-2-interview-management.md)** (Active Sprint 🎯)
+- **[Phase 3: AI Interview Preparation & Failure Analysis](phases/phase-3-ai-prep-and-failure-analysis.md)**
+- **[Phase 4: Resume-First Onboarding & Profiling](phases/phase-4-onboarding-and-profiling.md)**
+- **[Phase 5: Company Recommendation & Job Sourcing](phases/phase-5-company-recommendation-and-sourcing.md)**
+- **[Phase 6: Explainable Matching & Gap Roadmap](phases/phase-6-matching-and-gap-roadmap.md)**
+- **[Phase 7: Stage Snapshots & Longitudinal Intelligence](phases/phase-7-snapshots-and-longitudinal-intelligence.md)**
+- **[Phase 8: Automation, Reminders & Integrations](phases/phase-8-automation-and-integrations.md)**
 
 ---
 
