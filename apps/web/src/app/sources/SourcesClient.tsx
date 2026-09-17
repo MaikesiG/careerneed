@@ -462,25 +462,16 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
             <div className="flex flex-wrap gap-2">
               {connectorProviders.map((nextProvider) => (
-                // <button
-                //   className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                //   disabled={syncingProvider !== null}
-                //   key={nextProvider}
-                //   onClick={() => void handleSyncAll(nextProvider)}
-                //   type="button"
-                // >
-                //   {syncingProvider === nextProvider
-                //     ? `Syncing ${providerLabel(nextProvider)}...`
-                //     : `Sync all ${providerLabel(nextProvider)}`}
-                // </button>
                 <button
-                  className="border-border bg-card text-muted-foreground w-full cursor-not-allowed rounded-lg border px-3 py-2 text-sm font-semibold opacity-60 sm:w-auto"
-                  disabled
+                  className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={syncingProvider !== null}
                   key={nextProvider}
-                  title="Per-source sync is not available yet. Use the provider Sync all buttons above."
+                  onClick={() => void handleSyncAll(nextProvider)}
                   type="button"
                 >
-                  Sync all by provider
+                  {syncingProvider === nextProvider
+                    ? `Syncing ${providerLabel(nextProvider)}...`
+                    : `Sync all ${providerLabel(nextProvider)}`}
                 </button>
               ))}
 

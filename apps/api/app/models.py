@@ -47,13 +47,26 @@ class Company(Base):
 
     __table_args__ = (
         UniqueConstraint(
+            "user_id",
             "source_type",
             "board_token",
-            name="uq_companies_source_type_board_token",
+            name="uq_companies_user_source_type_board_token",
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     board_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -62,6 +75,7 @@ class Company(Base):
     active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    user: Mapped["User"] = relationship(back_populates="companies")
     jobs: Mapped[list["Job"]] = relationship(back_populates="company")
 
 

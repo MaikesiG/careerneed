@@ -21,8 +21,8 @@ database_url = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg://careerneed:change_me_locally@localhost:5432/careerneed",
 )
-config.set_main_option("sqlalchemy.url", database_url)
 
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
