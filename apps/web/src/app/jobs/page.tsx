@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import JobsClient from "./JobsClient";
+import { serverApiFetch } from "@/lib/serverApi";
 
 type Job = {
   id: string;
@@ -57,7 +59,6 @@ type KeywordGroup = {
   enabled: boolean;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const PAGE_SIZE = 20;
 const DEFAULT_SORT = "match_score";
 const DEFAULT_SORT_DIRECTION = "desc";
@@ -182,7 +183,8 @@ async function getJobs(
     activeKeywords: string[];
     sort: string;
     sortDirection: string;
-  }
+  },
+  resolvedSearchParams: SearchParams
 ): Promise<JobsResponse> {
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
@@ -223,24 +225,41 @@ async function getJobs(
     params.append("keywords", keyword);
   });
 
+  let response: Response;
+
   try {
-    const response = await fetch(`${API_URL}/jobs?${params.toString()}`, {
+    response = await serverApiFetch(`/jobs?${params.toString()}`, {
       cache: "no-store",
     });
-
-    if (!response.ok) {
-      return { jobs: [], total: 0 };
-    }
-
-    const total = Number.parseInt(response.headers.get("X-Total-Count") ?? "0", 10);
-
-    return {
-      jobs: (await response.json()) as Job[],
-      total: Number.isFinite(total) ? total : 0,
-    };
   } catch {
     return { jobs: [], total: 0 };
   }
+
+  if (response.status === 401) {
+    const nextParams = new URLSearchParams();
+
+    Object.entries(resolvedSearchParams).forEach(([key, rawValue]) => {
+      const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+
+      values.filter(Boolean).forEach((value) => {
+        nextParams.append(key, value);
+      });
+    });
+
+    const nextPath = nextParams.toString() ? `/jobs?${nextParams}` : "/jobs";
+    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  }
+
+  if (!response.ok) {
+    return { jobs: [], total: 0 };
+  }
+
+  const total = Number.parseInt(response.headers.get("X-Total-Count") ?? "0", 10);
+
+  return {
+    jobs: (await response.json()) as Job[],
+    total: Number.isFinite(total) ? total : 0,
+  };
 }
 
 export default async function JobsPage({ searchParams }: JobsPageProps) {
@@ -292,18 +311,22 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     .filter((group) => group.enabled)
     .flatMap((group) => group.keywords);
 
-  const { jobs, total } = await getJobs(requestedPage, {
-    q,
-    locationQuery,
-    sources,
-    workplaceTypes,
-    applicationStatuses,
-    minMatchScore,
-    dateRange,
-    activeKeywords,
-    sort,
-    sortDirection,
-  });
+  const { jobs, total } = await getJobs(
+    requestedPage,
+    {
+      q,
+      locationQuery,
+      sources,
+      workplaceTypes,
+      applicationStatuses,
+      minMatchScore,
+      dateRange,
+      activeKeywords,
+      sort,
+      sortDirection,
+    },
+    resolvedSearchParams
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);

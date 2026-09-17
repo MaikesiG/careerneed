@@ -1,6 +1,6 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -40,8 +40,10 @@ export default function ApplicationStatusEditor({
     setIsSaving(true);
     setMessage(null);
 
+    const encodedApplicationId = encodeURIComponent(applicationId);
+
     try {
-      const response = await apiFetch(`/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${encodedApplicationId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -50,12 +52,12 @@ export default function ApplicationStatusEditor({
       });
 
       if (response.status === 401) {
-        router.push(`/login?next=/applications/${applicationId}`);
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
         return;
       }
 
       if (!response.ok) {
-        throw new Error("Unable to update application status.");
+        throw new Error(await getApiErrorMessage(response, "Unable to update application status."));
       }
 
       setMessage("Status updated.");

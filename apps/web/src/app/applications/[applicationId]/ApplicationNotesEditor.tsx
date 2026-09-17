@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { apiFetch } from "@/lib/api";
-import { useRouter } from "next/dist/client/components/navigation";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 type ApplicationNotesEditorProps = {
   applicationId: string;
@@ -28,20 +28,22 @@ export default function ApplicationNotesEditor({
     setError(null);
     setNotice(null);
     setIsSaving(true);
+
+    const encodedApplicationId = encodeURIComponent(applicationId);
     try {
-      const response = await apiFetch(`/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${encodedApplicationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
 
       if (response.status === 401) {
-        router.push(`/login?next=/applications/${applicationId}`);
+        router.push(`/login?next=/applications/${encodedApplicationId}`);
         return;
       }
 
       if (!response.ok) {
-        throw new Error("Unable to save application notes.");
+        throw new Error(await getApiErrorMessage(response, "Unable to save application notes."));
       }
 
       const updated = (await response.json()) as { notes: string | null };

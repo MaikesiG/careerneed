@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 type FormValues = {
   company_name: string;
@@ -62,12 +63,16 @@ export default function ManualJobForm() {
     setIsSubmitting(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/jobs/manual`, {
+      const response = await apiFetch("/jobs/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        router.replace("/login?next=/jobs/manual");
+        return;
+      }
 
       if (!response.ok) {
         const body: unknown = await response.json().catch(() => null);
@@ -82,8 +87,7 @@ export default function ManualJobForm() {
         throw new Error(detail);
       }
 
-      router.push("/jobs?source=manual");
-      router.refresh();
+      router.replace("/jobs?source=manual");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not add the job.");
     } finally {
@@ -207,7 +211,7 @@ export default function ManualJobForm() {
         <button
           className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
-          onClick={() => router.push("/jobs")}
+          onClick={() => router.replace("/jobs")}
           disabled={isSubmitting}
         >
           Cancel

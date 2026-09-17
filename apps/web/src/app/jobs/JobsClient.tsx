@@ -329,7 +329,6 @@ export default function JobsClient({
 
         const response = await apiFetch(`/applications/me/job-states?${params.toString()}`, {
           cache: "no-store",
-          signal: controller.signal,
         });
 
         if (response.status === 401) {
@@ -376,7 +375,7 @@ export default function JobsClient({
       try {
         const response = await apiFetch("/resumes", {
           cache: "no-store",
-          signal: controller.signal,
+          // signal: controller.signal,
         });
 
         if (response.status === 401) {

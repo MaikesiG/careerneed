@@ -9,14 +9,20 @@ const PUBLIC_PATHS = new Set(["/", "/login", "/register"]);
 export default function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
+
   const { user, isLoading } = useAuth();
 
   const isPublicPath = PUBLIC_PATHS.has(pathname);
 
   useEffect(() => {
-    if (!isLoading && !user && !isPublicPath) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    if (isLoading || user || isPublicPath) {
+      return;
     }
+
+    const queryString = window.location.search;
+    const nextPath = queryString ? `${pathname}${queryString}` : pathname;
+
+    router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
   }, [isLoading, isPublicPath, pathname, router, user]);
 
   if (isLoading && !isPublicPath) {

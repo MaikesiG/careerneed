@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import PipelineBoard, { type PipelineApplication } from "./PipelineBoard";
-import { useRouter } from "next/dist/client/components/navigation";
+import { useRouter } from "next/navigation";
 
 function localDateKey(): string {
   const today = new Date();
@@ -36,7 +36,8 @@ export default function ApplicationsBoardClient() {
         }
 
         if (response.status === 401) {
-          router.push("/login?next=/applications");
+          setApplications([]);
+          router.replace("/login?next=/applications");
           return;
         }
 

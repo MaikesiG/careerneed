@@ -4,6 +4,10 @@ export type ApiError = {
   detail?: string;
 };
 
+/**
+ * Browser-only API client. Credentials are intentionally forced to "include"
+ * so authenticated requests always send the session cookie.
+ */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${API_URL}${path}`, {
     ...init,

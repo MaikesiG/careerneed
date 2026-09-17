@@ -2,7 +2,7 @@
 
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useRef, useState, useSyncExternalStore } from "react";
-import { useTheme } from "next-themes";
+import { useTheme } from "./ThemeProvider";
 
 type ThemeOption = "light" | "dark" | "system";
 

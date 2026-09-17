@@ -124,8 +124,9 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
       setError(null);
       setIsNotFound(false);
 
+      const encodedApplicationId = encodeURIComponent(applicationId);
       try {
-        const response = await apiFetch(`/applications/${applicationId}`, {
+        const response = await apiFetch(`/applications/${encodedApplicationId}`, {
           cache: "no-store",
         });
 
@@ -134,7 +135,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         }
 
         if (response.status === 401) {
-          router.push(`/login?next=/applications/${applicationId}`);
+          router.replace(`/login?next=/applications/${encodedApplicationId}`);
           return;
         }
 

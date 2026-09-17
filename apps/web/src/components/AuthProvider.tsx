@@ -36,16 +36,19 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         cache: "no-store",
       });
 
-      if (!response.ok) {
+      if (response.status === 401) {
         setUser(null);
         return null;
+      }
+
+      if (!response.ok) {
+        throw new Error("Unable to verify session.");
       }
 
       const currentUser = (await response.json()) as AuthUser;
       setUser(currentUser);
       return currentUser;
     } catch {
-      setUser(null);
       return null;
     } finally {
       setIsLoading(false);
@@ -64,41 +67,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadCurrentUser() {
-      try {
-        const response = await apiFetch("/auth/me", {
-          cache: "no-store",
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!response.ok) {
-          setUser(null);
-          return;
-        }
-
-        setUser((await response.json()) as AuthUser);
-      } catch {
-        if (!cancelled) {
-          setUser(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadCurrentUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    queueMicrotask(() => {
+      void refreshUser();
+    });
+  }, [refreshUser]);
 
   const value = useMemo(
     () => ({

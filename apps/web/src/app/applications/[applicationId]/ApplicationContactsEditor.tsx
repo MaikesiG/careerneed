@@ -1,8 +1,7 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
-import { useRouter } from "next/dist/client/components/navigation";
-
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 type ContactType = "recruiter" | "hiring_manager" | "interviewer" | "referral" | "other";
@@ -52,27 +51,6 @@ function contactTypeLabel(contactType: string): string {
   return option?.label ?? contactType;
 }
 
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
-
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
-
 function toDraft(contact: ApplicationContact): ContactDraft {
   const supportedType = CONTACT_TYPE_OPTIONS.some((option) => option.value === contact.contact_type)
     ? (contact.contact_type as ContactType)
@@ -97,6 +75,26 @@ function draftPayload(draft: ContactDraft) {
   };
 }
 
+function isApplicationContact(value: unknown): value is ApplicationContact {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const contact = value as Record<string, unknown>;
+
+  return (
+    typeof contact.id === "string" &&
+    typeof contact.application_id === "string" &&
+    typeof contact.name === "string" &&
+    typeof contact.contact_type === "string" &&
+    (contact.email === null || typeof contact.email === "string") &&
+    (contact.linkedin_url === null || typeof contact.linkedin_url === "string") &&
+    (contact.notes === null || typeof contact.notes === "string") &&
+    typeof contact.created_at === "string" &&
+    typeof contact.updated_at === "string"
+  );
+}
+
 export default function ApplicationContactsEditor({
   applicationId,
 }: ApplicationContactsEditorProps) {
@@ -117,24 +115,24 @@ export default function ApplicationContactsEditor({
     async function loadContacts() {
       setIsLoading(true);
       setError(null);
-
+      const encodedApplicationId = encodeURIComponent(applicationId);
       try {
-        const response = await apiFetch(`/applications/${applicationId}/contacts`, {
+        const response = await apiFetch(`/applications/${encodedApplicationId}/contacts`, {
           cache: "no-store",
         });
 
         if (response.status === 401) {
-          router.push(`/login?next=/applications/${applicationId}`);
+          router.replace(`/login?next=/applications/${encodedApplicationId}`);
           return;
         }
 
         if (!response.ok) {
-          throw new Error(await readError(response, "Unable to load contacts."));
+          throw new Error(await getApiErrorMessage(response, "Unable to load contacts."));
         }
 
         const data = (await response.json()) as unknown;
 
-        if (!Array.isArray(data)) {
+        if (!Array.isArray(data) || !data.every(isApplicationContact)) {
           throw new Error("Unable to load contacts.");
         }
 
@@ -213,10 +211,11 @@ export default function ApplicationContactsEditor({
     setError(null);
     setNotice(null);
 
+    const encodedApplicationId = encodeURIComponent(applicationId);
     const isEditing = editingContactId !== null;
     const endpoint = isEditing
-      ? `/applications/${applicationId}/contacts/${editingContactId}`
-      : `/applications/${applicationId}/contacts`;
+      ? `/applications/${encodedApplicationId}/contacts/${editingContactId}`
+      : `/applications/${encodedApplicationId}/contacts`;
 
     try {
       const response = await apiFetch(endpoint, {
@@ -227,9 +226,14 @@ export default function ApplicationContactsEditor({
         body: JSON.stringify(payload),
       });
 
+      if (response.status === 401) {
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(
-          await readError(
+          await getApiErrorMessage(
             response,
             isEditing ? "Unable to update contact." : "Unable to add contact."
           )
@@ -278,13 +282,22 @@ export default function ApplicationContactsEditor({
     setError(null);
     setNotice(null);
 
+    const encodedApplicationId = encodeURIComponent(applicationId);
     try {
-      const response = await apiFetch(`/applications/${applicationId}/contacts/${contact.id}`, {
-        method: "DELETE",
-      });
+      const response = await apiFetch(
+        `/applications/${encodedApplicationId}/contacts/${contact.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (response.status === 401) {
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
+        return;
+      }
 
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to delete contact."));
+        throw new Error(await getApiErrorMessage(response, "Unable to delete contact."));
       }
 
       setContacts((previous) => previous.filter((candidate) => candidate.id !== contact.id));

@@ -1,4 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
@@ -52,8 +57,6 @@ type TodayState = {
   secondaryHref: string | null;
   className: string;
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const exploreActions: ExploreAction[] = [
   {
@@ -119,17 +122,20 @@ function isDashboardFollowUp(value: unknown): value is DashboardFollowUp {
   }
 
   const item = value as Record<string, unknown>;
-  const job = item.job as Record<string, unknown> | null;
+  const job =
+    typeof item.job === "object" && item.job !== null
+      ? (item.job as Record<string, unknown>)
+      : null;
 
   return (
     typeof item.id === "string" &&
     typeof item.job_id === "string" &&
     isApplicationStatus(item.status) &&
     typeof item.follow_up_on === "string" &&
-    Boolean(job) &&
-    typeof job?.id === "string" &&
-    typeof job?.company_name === "string" &&
-    typeof job?.title === "string"
+    job !== null &&
+    typeof job.id === "string" &&
+    typeof job.company_name === "string" &&
+    typeof job.title === "string"
   );
 }
 
@@ -141,41 +147,6 @@ function isDashboardFollowUpsResponse(value: unknown): value is DashboardFollowU
   const response = value as Record<string, unknown>;
 
   return Array.isArray(response.items) && response.items.every(isDashboardFollowUp);
-}
-
-async function getDashboardSummary(): Promise<DashboardSummary | null> {
-  try {
-    const response = await fetch(`${API_URL}/dashboard/summary`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data: unknown = await response.json();
-    return isDashboardSummary(data) ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getDashboardFollowUps(): Promise<DashboardFollowUp[] | null> {
-  try {
-    const response = await fetch(`${API_URL}/dashboard/follow-ups?limit=6`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data: unknown = await response.json();
-
-    return isDashboardFollowUpsResponse(data) ? data.items : null;
-  } catch {
-    return null;
-  }
 }
 
 function statusLabel(status: ApplicationStatus): string {
@@ -297,14 +268,94 @@ function createTodayState(
   };
 }
 
-export default async function Home() {
-  const [summary, followUps] = await Promise.all([getDashboardSummary(), getDashboardFollowUps()]);
+export default function TodoClient() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [followUps, setFollowUps] = useState<DashboardFollowUp[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadDashboard() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [summaryResponse, followUpsResponse] = await Promise.all([
+          apiFetch("/dashboard/summary", {
+            cache: "no-store",
+          }),
+          apiFetch("/dashboard/follow-ups?limit=6", {
+            cache: "no-store",
+          }),
+        ]);
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        if (summaryResponse.status === 401 || followUpsResponse.status === 401) {
+          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          return;
+        }
+
+        if (!summaryResponse.ok) {
+          throw new Error(
+            await getApiErrorMessage(summaryResponse, "Unable to load dashboard summary.")
+          );
+        }
+
+        if (!followUpsResponse.ok) {
+          throw new Error(
+            await getApiErrorMessage(followUpsResponse, "Unable to load dashboard follow-ups.")
+          );
+        }
+
+        const summaryData: unknown = await summaryResponse.json();
+        const followUpsData: unknown = await followUpsResponse.json();
+
+        if (!isDashboardSummary(summaryData)) {
+          throw new Error("The dashboard summary response is invalid.");
+        }
+
+        if (!isDashboardFollowUpsResponse(followUpsData)) {
+          throw new Error("The dashboard follow-up response is invalid.");
+        }
+
+        setSummary(summaryData);
+        setFollowUps(followUpsData.items);
+      } catch (caughtError) {
+        if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+          return;
+        }
+
+        if (!controller.signal.aborted) {
+          setError(
+            caughtError instanceof Error ? caughtError.message : "Unable to load dashboard."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadDashboard();
+
+    return () => {
+      controller.abort();
+    };
+  }, [pathname, router]);
 
   const dashboardAvailable = summary !== null && followUps !== null;
   const visibleFollowUps = followUps?.slice(0, 3) ?? [];
   const nextFollowUp = visibleFollowUps[0] ?? null;
   const nextFollowUpState = nextFollowUp ? followUpState(nextFollowUp.follow_up_on) : null;
-
   const todayState = summary ? createTodayState(summary, nextFollowUp) : null;
 
   const showQuickStart =
@@ -338,7 +389,23 @@ export default async function Home() {
           </Link>
         </header>
 
-        {dashboardAvailable && summary && followUps && todayState ? (
+        {isLoading ? (
+          <section className="border-border bg-card mt-8 rounded-2xl border border-dashed p-8 text-center">
+            <p className="text-muted-foreground text-sm">Loading your dashboard…</p>
+          </section>
+        ) : error ? (
+          <section className="border-error-border bg-error-background text-destructive mt-8 rounded-2xl border p-6 sm:p-8">
+            <p className="text-sm font-medium">Today</p>
+            <h2 className="mt-1 text-2xl font-semibold">We couldn’t refresh your dashboard</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6">{error}</p>
+            <Link
+              href="/applications"
+              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              View applications <span aria-hidden="true">&nbsp;→</span>
+            </Link>
+          </section>
+        ) : dashboardAvailable && summary && followUps && todayState ? (
           <>
             <section
               className={`mt-8 rounded-2xl border p-6 sm:p-8 ${todayState.className}`}

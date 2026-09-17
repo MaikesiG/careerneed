@@ -1,6 +1,6 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { useRouter } from "next/dist/client/components/navigation";
 
 import { FormEvent, useState } from "react";
@@ -9,27 +9,6 @@ type ApplicationFollowUpEditorProps = {
   applicationId: string;
   initialFollowUpOn: string | null;
 };
-
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
-
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
 
 function dateInputValue(daysFromToday: number): string {
   const date = new Date();
@@ -67,8 +46,10 @@ export default function ApplicationFollowUpEditor({
     setNotice(null);
     setIsSaving(true);
 
+    const encodedApplicationId = encodeURIComponent(applicationId);
+
     try {
-      const response = await apiFetch(`/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${encodedApplicationId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -79,11 +60,11 @@ export default function ApplicationFollowUpEditor({
       });
 
       if (response.status === 401) {
-        router.push(`/login?next=/applications/${applicationId}`);
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
         return;
       }
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to save follow-up date."));
+        throw new Error(await getApiErrorMessage(response, "Unable to save follow-up date."));
       }
 
       const updated = (await response.json()) as {

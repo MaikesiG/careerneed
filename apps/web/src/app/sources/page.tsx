@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import SourcesClient from "./SourcesClient";
 
 type Company = {
@@ -8,22 +10,26 @@ type Company = {
   active: boolean;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 async function getInitialCompanies(): Promise<Company[]> {
+  let response: Response;
+
   try {
-    const response = await fetch(`${API_URL}/companies`, {
+    response = await apiFetch("/companies", {
       cache: "no-store",
     });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    return (await response.json()) as Company[];
   } catch {
     return [];
   }
+
+  if (response.status === 401) {
+    redirect(`/login?next=${encodeURIComponent("/sources")}`);
+  }
+
+  if (!response.ok) {
+    return [];
+  }
+
+  return (await response.json()) as Company[];
 }
 
 export default async function SourcesPage() {

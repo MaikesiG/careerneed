@@ -205,6 +205,7 @@ def test_logout_revokes_session_and_clears_cookie(
     assert response.headers["cache-control"] == "no-store"
     assert SESSION_COOKIE_NAME in response.headers["set-cookie"]
     assert "Max-Age=0" in response.headers["set-cookie"]
+    db_session.expire_all()
     assert db_session.get(UserSession, session.id) is None
 
     after_logout = client.get("/auth/me")

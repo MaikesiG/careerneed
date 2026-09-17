@@ -1,6 +1,8 @@
 "use client";
 
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { FormEvent, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Provider = "ashby" | "greenhouse" | "lever" | "custom" | "manual";
 type Priority = "high" | "medium" | "low";
@@ -29,8 +31,6 @@ type SyncAllResult = {
 type SourcesClientProps = {
   initialCompanies: Company[];
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const PROVIDER_OPTIONS: Array<{
   value: Provider;
@@ -76,27 +76,6 @@ const PROVIDER_OPTIONS: Array<{
   },
 ];
 
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
-
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
-
 function providerLabel(provider: string): string {
   return PROVIDER_OPTIONS.find((option) => option.value === provider)?.label ?? provider;
 }
@@ -130,6 +109,7 @@ function priorityBadgeClass(priority: string): string {
 }
 
 export default function SourcesClient({ initialCompanies }: SourcesClientProps) {
+  const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [provider, setProvider] = useState<Provider>("ashby");
   const [companyName, setCompanyName] = useState("");
@@ -158,16 +138,25 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     setNotice(null);
   }
 
+  function handleUnauthenticated() {
+    router.replace("/login?next=/sources");
+  }
+
   async function refreshCompanies() {
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(`${API_URL}/companies`, {
+      const response = await apiFetch("/companies", {
         cache: "no-store",
       });
 
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to refresh company sources."));
+        throw new Error(await getApiErrorMessage(response, "Unable to refresh company sources."));
       }
 
       setCompanies((await response.json()) as Company[]);
@@ -201,7 +190,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     setIsAdding(true);
 
     try {
-      const response = await fetch(`${API_URL}/companies`, {
+      const response = await apiFetch(`/companies`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -215,8 +204,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
         }),
       });
 
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to add company source."));
+        throw new Error(await getApiErrorMessage(response, "Unable to add company source."));
       }
 
       const company = (await response.json()) as Company;
@@ -274,13 +268,21 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
     setSyncingProvider(nextProvider);
 
     try {
-      const response = await fetch(`${API_URL}/connectors/${nextProvider}/sync-all`, {
+      const response = await apiFetch(`/connectors/${nextProvider}/sync-all`, {
         method: "POST",
       });
 
+      if (response.status === 401) {
+        handleUnauthenticated();
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(
-          await readError(response, `Unable to sync ${providerLabel(nextProvider)} sources.`)
+          await getApiErrorMessage(
+            response,
+            `Unable to sync ${providerLabel(nextProvider)} sources.`
+          )
         );
       }
 
@@ -460,16 +462,25 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
             <div className="flex flex-wrap gap-2">
               {connectorProviders.map((nextProvider) => (
+                // <button
+                //   className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                //   disabled={syncingProvider !== null}
+                //   key={nextProvider}
+                //   onClick={() => void handleSyncAll(nextProvider)}
+                //   type="button"
+                // >
+                //   {syncingProvider === nextProvider
+                //     ? `Syncing ${providerLabel(nextProvider)}...`
+                //     : `Sync all ${providerLabel(nextProvider)}`}
+                // </button>
                 <button
-                  className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={syncingProvider !== null}
+                  className="border-border bg-card text-muted-foreground w-full cursor-not-allowed rounded-lg border px-3 py-2 text-sm font-semibold opacity-60 sm:w-auto"
+                  disabled
                   key={nextProvider}
-                  onClick={() => void handleSyncAll(nextProvider)}
+                  title="Per-source sync is not available yet. Use the provider Sync all buttons above."
                   type="button"
                 >
-                  {syncingProvider === nextProvider
-                    ? `Syncing ${providerLabel(nextProvider)}...`
-                    : `Sync all ${providerLabel(nextProvider)}`}
+                  Sync all by provider
                 </button>
               ))}
 
