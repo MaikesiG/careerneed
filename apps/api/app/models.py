@@ -19,6 +19,7 @@ class User(Base):
 
     resumes: Mapped[list["Resume"]] = relationship(back_populates="user")
     applications: Mapped[list["Application"]] = relationship(back_populates="user")
+    companies: Mapped[list["Company"]] = relationship(back_populates="user")
     sessions: Mapped[list["UserSession"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
