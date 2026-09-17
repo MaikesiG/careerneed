@@ -163,6 +163,19 @@ class ApplicationJobStateMap(BaseModel):
     states: dict[str, ApplicationJobState]
 
 
+class DashboardSummaryOut(BaseModel):
+    follow_ups_due_today: int
+    follow_ups_overdue: int
+    applications_saved: int
+    applications_applied: int
+    applications_interviewing: int
+    active_applications: int
+
+
+class DashboardFollowUpsOut(BaseModel):
+    items: list[ApplicationWithJobOut]
+
+
 LLMProvider = Literal["openai", "groq", "anthropic"]
 
 
@@ -180,3 +193,46 @@ class LLMCredentialOut(BaseModel):
 class ExtractionModeOut(BaseModel):
     mode: Literal["byok", "platform", "basic"]
     free_calls_remaining: int | None
+
+
+class ApplicationContactCreate(BaseModel):
+    name: str
+    contact_type: str = "other"
+    email: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+
+
+class ApplicationContactUpdate(BaseModel):
+    name: str | None = None
+    contact_type: str | None = None
+    email: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+
+
+class ApplicationContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    name: str
+    contact_type: str
+    email: str | None
+    linkedin_url: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuthCredentials(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    created_at: datetime

@@ -8,7 +8,7 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.getcwd())
 
 from app.database import Base
-from app.models import Company, Job, Resume  # noqa: F401  (ensures models are registered)
+from app.models import ApplicationContact, Company, Job, Resume, User, UserSession  # noqa: F401
 
 config = context.config
 
@@ -21,8 +21,8 @@ database_url = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg://careerneed:change_me_locally@localhost:5432/careerneed",
 )
-config.set_main_option("sqlalchemy.url", database_url)
 
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")

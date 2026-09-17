@@ -17,7 +17,9 @@ export default function PageContainer({
   className = "",
 }: PageContainerProps) {
   return (
-    <main className={`min-h-full bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8 ${className}`}>
+    <main
+      className={`bg-background text-foreground min-h-full px-4 py-10 sm:px-6 lg:px-8 ${className}`}
+    >
       <div className={`mx-auto w-full ${maxWidth[size]}`}>{children}</div>
     </main>
   );

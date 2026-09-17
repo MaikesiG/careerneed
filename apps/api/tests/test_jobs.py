@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 import uuid
 
 import pytest
@@ -7,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app.main import app
 from app.models import Application, Job, User
-from app.routers.jobs import INITIAL_USER_ID
 
 
 @pytest.fixture
@@ -33,6 +33,19 @@ def client(db_session: Session) -> TestClient:
         yield test_client
 
 
+@pytest.fixture
+def authenticated_user_id(client: TestClient) -> uuid.UUID:
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "jobs-authenticated@example.test",
+            "password": "correct horse battery staple",
+        },
+    )
+    assert response.status_code == 201
+    return uuid.UUID(response.json()["id"])
+
+
 def create_job(db_session: Session, *, title: str, workplace_type: str = "unknown") -> Job:
     job = Job(
         company_name="Regression Test Co.",
@@ -47,12 +60,6 @@ def create_job(db_session: Session, *, title: str, workplace_type: str = "unknow
     db_session.add(job)
     db_session.flush()
     return job
-
-
-def ensure_initial_user(db_session: Session) -> None:
-    if db_session.get(User, INITIAL_USER_ID) is None:
-        db_session.add(User(id=INITIAL_USER_ID, email="initial-user@example.test"))
-        db_session.flush()
 
 
 def test_list_jobs_returns_ok(client: TestClient) -> None:
@@ -180,9 +187,10 @@ def test_list_jobs_matches_historical_workplace_type_variants(
 
 
 def test_application_by_job_update_preserves_notes_when_only_status_changes(
-    client: TestClient, db_session: Session
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
-    ensure_initial_user(db_session)
     job = create_job(db_session, title="Application details job")
 
     created_response = client.put(
@@ -206,10 +214,11 @@ def test_application_by_job_update_preserves_notes_when_only_status_changes(
     assert state_response.json()["states"][str(job.id)]["notes"] == "Ask Casey for a referral."
 
 
-def test_list_jobs_filters_tracking_status_for_initial_user_only(
-    client: TestClient, db_session: Session
+def test_list_jobs_filters_tracking_status_for_current_user_only(
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
 ) -> None:
-    ensure_initial_user(db_session)
     current_user_job = create_job(db_session, title="Current user's saved job")
     current_user_applied_job = create_job(db_session, title="Current user's applied job")
     other_user_job = create_job(db_session, title="Another user's saved job")
@@ -217,13 +226,21 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
     db_session.add_all(
         [
             other_user,
-            Application(user_id=INITIAL_USER_ID, job_id=current_user_job.id, status="saved"),
             Application(
-                user_id=INITIAL_USER_ID,
+                user_id=authenticated_user_id,
+                job_id=current_user_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=authenticated_user_id,
                 job_id=current_user_applied_job.id,
                 status="applied",
             ),
-            Application(user_id=other_user.id, job_id=other_user_job.id, status="saved"),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="saved",
+            ),
         ]
     )
     db_session.flush()
@@ -251,35 +268,13 @@ def test_list_jobs_filters_tracking_status_for_initial_user_only(
     assert str(other_user_job.id) not in combined_job_ids
 
 
-def test_get_application_detail_includes_job(
+def test_list_jobs_application_status_filter_requires_authentication(
     client: TestClient,
-    db_session: Session,
 ) -> None:
-    job = create_job(
-        db_session,
-        title="Application detail test role",
-    )
-    application = Application(
-        user_id=INITIAL_USER_ID,
-        job_id=job.id,
-        status="applied",
-        notes="Initial application note",
-    )
-    db_session.add(application)
-    db_session.commit()
-    db_session.refresh(application)
+    response = client.get("/jobs", params={"application_status": "saved"})
 
-    response = client.get(f"/applications/{application.id}")
-
-    assert response.status_code == 200
-
-    body = response.json()
-    assert body["id"] == str(application.id)
-    assert body["status"] == "applied"
-    assert body["notes"] == "Initial application note"
-    assert body["job"]["id"] == str(job.id)
-    assert body["job"]["title"] == job.title
-    assert body["job"]["company_name"] == job.company_name
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"
 
 
 def test_list_jobs_filters_by_location_query(
@@ -330,3 +325,203 @@ def test_list_jobs_filters_by_location_query(
     assert combined_response.status_code == 200
     combined_titles = {job["title"] for job in combined_response.json()}
     assert "Remote role" in combined_titles
+
+
+def test_dashboard_summary_returns_expected_shape(
+    client: TestClient,
+    authenticated_user_id: uuid.UUID,
+) -> None:
+    response = client.get("/dashboard/summary")
+
+    assert response.status_code == 200
+
+    summary = response.json()
+    expected_keys = {
+        "follow_ups_due_today",
+        "follow_ups_overdue",
+        "applications_saved",
+        "applications_applied",
+        "applications_interviewing",
+        "active_applications",
+    }
+
+    assert set(summary) == expected_keys
+    assert all(isinstance(summary[key], int) and summary[key] >= 0 for key in expected_keys)
+    assert summary["active_applications"] == (
+        summary["applications_applied"] + summary["applications_interviewing"]
+    )
+
+
+def test_dashboard_summary_counts_added_records_and_excludes_other_users(
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
+) -> None:
+    before_response = client.get("/dashboard/summary")
+    assert before_response.status_code == 200
+    before = before_response.json()
+
+    other_user = User(id=uuid.uuid4(), email="other-dashboard-user@example.test")
+    db_session.add(other_user)
+    db_session.flush()
+
+    today = date.today()
+
+    saved_job = create_job(db_session, title="Dashboard saved role")
+    applied_job = create_job(db_session, title="Dashboard applied role")
+    interviewing_job = create_job(db_session, title="Dashboard interviewing role")
+    offer_job = create_job(db_session, title="Dashboard offer role")
+    rejected_job = create_job(db_session, title="Dashboard rejected role")
+    withdrawn_job = create_job(db_session, title="Dashboard withdrawn role")
+    future_follow_up_job = create_job(db_session, title="Dashboard future follow-up role")
+    other_user_job = create_job(db_session, title="Other user dashboard role")
+
+    db_session.add_all(
+        [
+            Application(
+                user_id=authenticated_user_id,
+                job_id=saved_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=applied_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=interviewing_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=1),
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=offer_job.id,
+                status="offer",
+                follow_up_on=today - timedelta(days=3),
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=rejected_job.id,
+                status="rejected",
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=withdrawn_job.id,
+                status="withdrawn",
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=future_follow_up_job.id,
+                status="saved",
+                follow_up_on=today + timedelta(days=1),
+            ),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    after_response = client.get("/dashboard/summary")
+    assert after_response.status_code == 200
+    after = after_response.json()
+
+    assert after["follow_ups_due_today"] == before["follow_ups_due_today"] + 1
+    assert after["follow_ups_overdue"] == before["follow_ups_overdue"] + 2
+    assert after["applications_saved"] == before["applications_saved"] + 2
+    assert after["applications_applied"] == before["applications_applied"] + 1
+    assert after["applications_interviewing"] == before["applications_interviewing"] + 1
+    assert after["active_applications"] == before["active_applications"] + 2
+
+
+def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
+    client: TestClient,
+    db_session: Session,
+    authenticated_user_id: uuid.UUID,
+) -> None:
+    today = date.today()
+
+    other_user = User(id=uuid.uuid4(), email="other-follow-up-user@example.test")
+    db_session.add(other_user)
+    db_session.flush()
+
+    oldest_overdue_job = create_job(db_session, title="Follow-up oldest overdue role")
+    recent_overdue_job = create_job(db_session, title="Follow-up recent overdue role")
+    due_today_job = create_job(db_session, title="Follow-up due today role")
+    future_job = create_job(db_session, title="Follow-up future role")
+    no_follow_up_job = create_job(db_session, title="Follow-up no date role")
+    other_user_job = create_job(db_session, title="Follow-up other user role")
+
+    db_session.add_all(
+        [
+            Application(
+                user_id=authenticated_user_id,
+                job_id=oldest_overdue_job.id,
+                status="applied",
+                follow_up_on=today - timedelta(days=4),
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=recent_overdue_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=1),
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=due_today_job.id,
+                status="applied",
+                follow_up_on=today,
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=future_job.id,
+                status="saved",
+                follow_up_on=today + timedelta(days=1),
+            ),
+            Application(
+                user_id=authenticated_user_id,
+                job_id=no_follow_up_job.id,
+                status="saved",
+            ),
+            Application(
+                user_id=other_user.id,
+                job_id=other_user_job.id,
+                status="interviewing",
+                follow_up_on=today - timedelta(days=7),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/dashboard/follow-ups", params={"limit": 20})
+
+    assert response.status_code == 200
+
+    items = response.json()["items"]
+    item_job_ids = [item["job_id"] for item in items]
+
+    oldest_index = item_job_ids.index(str(oldest_overdue_job.id))
+    recent_index = item_job_ids.index(str(recent_overdue_job.id))
+    today_index = item_job_ids.index(str(due_today_job.id))
+
+    assert oldest_index < recent_index < today_index
+    assert str(future_job.id) not in item_job_ids
+    assert str(no_follow_up_job.id) not in item_job_ids
+    assert str(other_user_job.id) not in item_job_ids
+
+
+
+@pytest.mark.parametrize("limit", [0, 21])
+def test_dashboard_follow_ups_rejects_invalid_limit(
+    client: TestClient,
+    limit: int,
+    authenticated_user_id: uuid.UUID,
+) -> None:
+    response = client.get("/dashboard/follow-ups", params={"limit": limit})
+
+    assert response.status_code == 422

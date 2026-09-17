@@ -1,39 +1,32 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { useRouter } from "next/dist/client/components/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { FormEvent, useState } from "react";
 
 type ApplicationFollowUpEditorProps = {
   applicationId: string;
   initialFollowUpOn: string | null;
 };
 
-function getErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
-  ) {
-    return body.detail;
-  }
+function dateInputValue(daysFromToday: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
 
-  return fallback;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    return getErrorMessage(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
 export default function ApplicationFollowUpEditor({
   applicationId,
   initialFollowUpOn,
 }: ApplicationFollowUpEditorProps) {
+  const router = useRouter();
   const [followUpOn, setFollowUpOn] = useState(initialFollowUpOn ?? "");
   const [savedFollowUpOn, setSavedFollowUpOn] = useState(initialFollowUpOn ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -42,13 +35,21 @@ export default function ApplicationFollowUpEditor({
 
   const hasChanges = followUpOn !== savedFollowUpOn;
 
+  function scheduleFor(daysFromToday: number) {
+    setFollowUpOn(dateInputValue(daysFromToday));
+    setError(null);
+    setNotice(null);
+  }
+
   async function saveFollowUp(nextFollowUpOn: string) {
     setError(null);
     setNotice(null);
     setIsSaving(true);
 
+    const encodedApplicationId = encodeURIComponent(applicationId);
+
     try {
-      const response = await fetch(`${API_URL}/applications/${applicationId}`, {
+      const response = await apiFetch(`/applications/${encodedApplicationId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -58,8 +59,12 @@ export default function ApplicationFollowUpEditor({
         }),
       });
 
+      if (response.status === 401) {
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
+        return;
+      }
       if (!response.ok) {
-        throw new Error(await readError(response, "Unable to save follow-up date."));
+        throw new Error(await getApiErrorMessage(response, "Unable to save follow-up date."));
       }
 
       const updated = (await response.json()) as {
@@ -82,7 +87,7 @@ export default function ApplicationFollowUpEditor({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!hasChanges) {
+    if (!hasChanges || isSaving) {
       return;
     }
 
@@ -93,7 +98,7 @@ export default function ApplicationFollowUpEditor({
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error ? (
         <div
-          className="rounded-xl border border-error-border bg-error-background px-4 py-3 text-sm text-destructive"
+          className="border-error-border bg-error-background text-destructive rounded-xl border px-4 py-3 text-sm"
           role="alert"
         >
           {error}
@@ -102,20 +107,21 @@ export default function ApplicationFollowUpEditor({
 
       {notice ? (
         <div
-          className="rounded-xl border border-success-border bg-success-background px-4 py-3 text-sm text-success"
+          className="border-success-border bg-success-background text-success rounded-xl border px-4 py-3 text-sm"
           role="status"
         >
           {notice}
         </div>
       ) : null}
 
-      <label className="grid gap-2 text-sm font-medium text-foreground">
+      <label className="text-foreground grid gap-2 text-sm font-medium">
         Follow-up date
         <input
-          className="h-10 max-w-xs rounded-lg border border-border bg-background px-3 text-sm text-foreground transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+          className="border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 h-10 max-w-xs rounded-lg border px-3 text-sm transition outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSaving}
           onChange={(event) => {
             setFollowUpOn(event.target.value);
+            setError(null);
             setNotice(null);
           }}
           type="date"
@@ -123,9 +129,29 @@ export default function ApplicationFollowUpEditor({
         />
       </label>
 
+      <fieldset disabled={isSaving}>
+        <legend className="text-foreground text-sm font-medium">Quick schedule</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => scheduleFor(1)}
+            type="button"
+          >
+            Tomorrow
+          </button>
+          <button
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => scheduleFor(7)}
+            type="button"
+          >
+            Next week
+          </button>
+        </div>
+      </fieldset>
+
       <div className="flex flex-wrap items-center gap-3">
         <button
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={isSaving || !hasChanges}
           type="submit"
         >
@@ -134,7 +160,7 @@ export default function ApplicationFollowUpEditor({
 
         {savedFollowUpOn ? (
           <button
-            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isSaving}
             onClick={() => {
               void saveFollowUp("");
@@ -145,7 +171,7 @@ export default function ApplicationFollowUpEditor({
           </button>
         ) : null}
 
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           {hasChanges ? "Unsaved changes" : "All changes saved"}
         </p>
       </div>

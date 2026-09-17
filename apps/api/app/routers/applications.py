@@ -5,10 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, Job, Resume
+from app.models import Application, ApplicationContact, Job, Resume, User
 from app.schemas import (
     ApplicationByJobUpdate,
+    ApplicationContactCreate,
+    ApplicationContactOut,
+    ApplicationContactUpdate,
     ApplicationCreate,
     ApplicationJobState,
     ApplicationJobStateMap,
@@ -18,10 +22,6 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/applications", tags=["applications"])
-
-
-# TODO: replace with real authenticated user once auth is implemented.
-INITIAL_USER_ID = uuid.UUID("363a7386-c17c-43ab-ad6c-9a60ff52492a")
 
 ALLOWED_FOLLOW_UP_FILTERS = {"all", "today", "overdue", "scheduled"}
 
@@ -33,12 +33,13 @@ def list_applications(
     follow_up: str = Query(default="all", max_length=20),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
     statement = (
         select(Application, Job)
         .join(Job, Job.id == Application.job_id)
-        .where(Application.user_id == INITIAL_USER_ID)
+        .where(Application.user_id == current_user.id)
     )
 
     follow_up_filter = follow_up.strip().lower()
@@ -103,6 +104,7 @@ def list_applications(
 @router.get("/me/job-states", response_model=ApplicationJobStateMap)
 def get_my_job_states(
     job_id: list[uuid.UUID] = Query(default=[]),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApplicationJobStateMap:
     if not job_id:
@@ -111,7 +113,7 @@ def get_my_job_states(
     applications = list(
         db.scalars(
             select(Application).where(
-                Application.user_id == INITIAL_USER_ID,
+                Application.user_id == current_user.id,
                 Application.job_id.in_(job_id),
             )
         )
@@ -137,6 +139,7 @@ def get_my_job_states(
 def upsert_application_for_job(
     job_id: uuid.UUID,
     payload: ApplicationByJobUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Application:
     job = db.get(Job, job_id)
@@ -146,20 +149,25 @@ def upsert_application_for_job(
     update_fields = payload.model_fields_set
 
     if "resume_id" in update_fields and payload.resume_id is not None:
-        resume = db.get(Resume, payload.resume_id)
-        if resume is None or resume.user_id != INITIAL_USER_ID:
+        resume = db.scalar(
+            select(Resume).where(
+                Resume.id == payload.resume_id,
+                Resume.user_id == current_user.id,
+            )
+        )
+        if resume is None:
             raise HTTPException(status_code=404, detail="Resume not found")
 
     application = db.scalar(
         select(Application).where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
             Application.job_id == job_id,
         )
     )
 
     if application is None:
         application = Application(
-            user_id=INITIAL_USER_ID,
+            user_id=current_user.id,
             job_id=job_id,
             resume_id=payload.resume_id,
             status=payload.status,
@@ -186,11 +194,12 @@ def upsert_application_for_job(
 @router.delete("/by-job/{job_id}", status_code=204)
 def delete_application_for_job(
     job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
     application = db.scalar(
         select(Application).where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
             Application.job_id == job_id,
         )
     )
@@ -205,6 +214,7 @@ def delete_application_for_job(
 @router.get("/{application_id}", response_model=ApplicationWithJobOut)
 def get_application(
     application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     row = db.execute(
@@ -212,7 +222,7 @@ def get_application(
         .join(Job, Job.id == Application.job_id)
         .where(
             Application.id == application_id,
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
         )
     ).one_or_none()
 
@@ -243,20 +253,148 @@ def get_application(
     }
 
 
+def _get_owned_application(
+    application_id: uuid.UUID,
+    current_user: User,
+    db: Session,
+) -> Application:
+    application = db.scalar(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == current_user.id,
+        )
+    )
+
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    return application
+
+
+@router.get(
+    "/{application_id}/contacts",
+    response_model=list[ApplicationContactOut],
+)
+def list_application_contacts(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ApplicationContact]:
+    _get_owned_application(application_id, current_user, db)
+
+    return list(
+        db.scalars(
+            select(ApplicationContact)
+            .where(ApplicationContact.application_id == application_id)
+            .order_by(ApplicationContact.created_at.desc())
+        )
+    )
+
+
+@router.post(
+    "/{application_id}/contacts",
+    response_model=ApplicationContactOut,
+    status_code=201,
+)
+def create_application_contact(
+    application_id: uuid.UUID,
+    payload: ApplicationContactCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, current_user, db)
+
+    contact = ApplicationContact(
+        application_id=application_id,
+        **payload.model_dump(),
+    )
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.patch(
+    "/{application_id}/contacts/{contact_id}",
+    response_model=ApplicationContactOut,
+)
+def update_application_contact(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    payload: ApplicationContactUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, current_user, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(contact, field, value)
+
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.delete(
+    "/{application_id}/contacts/{contact_id}",
+    status_code=204,
+)
+def delete_application_contact(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    _get_owned_application(application_id, current_user, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    db.delete(contact)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("", response_model=ApplicationOut, status_code=201)
-def save_job(payload: ApplicationCreate, db: Session = Depends(get_db)) -> Application:
+def save_job(
+    payload: ApplicationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Application:
     job = db.get(Job, payload.job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
     if payload.resume_id is not None:
-        resume = db.get(Resume, payload.resume_id)
-        if resume is None or resume.user_id != INITIAL_USER_ID:
+        resume = db.scalar(
+            select(Resume).where(
+                Resume.id == payload.resume_id,
+                Resume.user_id == current_user.id,
+            )
+        )
+        if resume is None:
             raise HTTPException(status_code=404, detail="Resume not found")
 
     existing = db.scalar(
         select(Application).where(
-            Application.user_id == INITIAL_USER_ID,
+            Application.user_id == current_user.id,
             Application.job_id == payload.job_id,
         )
     )
@@ -264,7 +402,7 @@ def save_job(payload: ApplicationCreate, db: Session = Depends(get_db)) -> Appli
         raise HTTPException(status_code=409, detail="This job has already been saved or applied to")
 
     application = Application(
-        user_id=INITIAL_USER_ID,
+        user_id=current_user.id,
         job_id=payload.job_id,
         resume_id=payload.resume_id,
         status=payload.status,
@@ -279,17 +417,30 @@ def save_job(payload: ApplicationCreate, db: Session = Depends(get_db)) -> Appli
 
 @router.patch("/{application_id}", response_model=ApplicationOut)
 def update_application(
-    application_id: uuid.UUID, payload: ApplicationUpdate, db: Session = Depends(get_db)
+    application_id: uuid.UUID,
+    payload: ApplicationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> Application:
-    application = db.get(Application, application_id)
-    if application is None or application.user_id != INITIAL_USER_ID:
+    application = db.scalar(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == current_user.id,
+        )
+    )
+    if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
     update_data = payload.model_dump(exclude_unset=True)
 
     if update_data.get("resume_id") is not None:
-        resume = db.get(Resume, update_data["resume_id"])
-        if resume is None or resume.user_id != INITIAL_USER_ID:
+        resume = db.scalar(
+            select(Resume).where(
+                Resume.id == update_data["resume_id"],
+                Resume.user_id == current_user.id,
+            )
+        )
+        if resume is None:
             raise HTTPException(status_code=404, detail="Resume not found")
 
     if update_data.get("status") == "applied" and application.applied_at is None:
@@ -304,9 +455,19 @@ def update_application(
 
 
 @router.delete("/{application_id}", status_code=204)
-def delete_application(application_id: uuid.UUID, db: Session = Depends(get_db)) -> None:
-    application = db.get(Application, application_id)
-    if application is None or application.user_id != INITIAL_USER_ID:
+def delete_application(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    application = db.scalar(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == current_user.id,
+        )
+    )
+    if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
+
     db.delete(application)
     db.commit()
