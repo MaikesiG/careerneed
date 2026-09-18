@@ -11,6 +11,7 @@ import {
   InterviewExtraction,
 } from "@/lib/api";
 import InterviewQuestionsSection from "./InterviewQuestionsSection";
+import InterviewPreparationSection from "./InterviewPreparationSection";
 
 type ApplicationInterviewsSectionProps = {
   applicationId: string;
@@ -611,6 +612,10 @@ export default function ApplicationInterviewsSection({
                 </div>
 
                 <InterviewQuestionsSection
+                  applicationId={applicationId}
+                  interviewId={interview.id}
+                />
+                <InterviewPreparationSection
                   applicationId={applicationId}
                   interviewId={interview.id}
                 />

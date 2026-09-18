@@ -111,3 +111,82 @@ export type InterviewQuestion = {
   created_at: string;
   updated_at: string;
 };
+
+export type PrepPriority = {
+  title: string;
+  reason: string;
+  recommended_action: string;
+  priority: "high" | "medium" | "low";
+};
+
+export type TechnicalTopic = {
+  topic: string;
+  reason: string;
+  recommended_actions: string[];
+};
+
+export type BehavioralStory = {
+  story_or_evidence: string;
+  relevance: string;
+  suggested_angle: string;
+};
+
+export type LikelyQuestion = {
+  question: string;
+  category: InterviewQuestionCategory;
+  reason: string;
+  recommended_angle: string;
+};
+
+export type GapWarning = {
+  area: string;
+  reason: string;
+  suggested_action: string;
+  confidence: number | null;
+};
+
+export type ReadinessBreakdown = {
+  technical_depth: number | null;
+  role_context: number | null;
+  behavioral_examples: number | null;
+  logistics_and_preparation: number | null;
+};
+
+export type InterviewPrepOutput = {
+  summary: string;
+  preparation_priorities: PrepPriority[];
+  technical_topics: TechnicalTopic[];
+  behavioral_stories: BehavioralStory[];
+  likely_questions: LikelyQuestion[];
+  questions_to_ask: string[];
+  gap_warnings: GapWarning[];
+  limitations_or_uncertainties: string[];
+  readiness: {
+    score: number | null;
+    summary: string;
+    breakdown: ReadinessBreakdown;
+    limitations: string[];
+  };
+};
+
+export type AISuggestionStatus =
+  "pending" | "accepted" | "rejected" | "edited" | "expired" | "failed" | "superseded";
+
+export type InterviewPrepSuggestion = {
+  id: string;
+  interview_id: string;
+  suggestion_type: "interview_prep";
+  proposed_value: InterviewPrepOutput;
+  confidence: number | null;
+  rationale: string | null;
+  model_provider: string;
+  model_version: string;
+  prompt_version: string;
+  output_schema_version: string;
+  input_snapshot_hash: string;
+  status: AISuggestionStatus;
+  resolved_value: InterviewPrepOutput | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
