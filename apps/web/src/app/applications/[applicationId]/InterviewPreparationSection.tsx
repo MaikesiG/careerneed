@@ -24,7 +24,8 @@ type Props = {
 const controlClass =
   "border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2";
 
-function formatTimestamp(value: string): string {
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "Timestamp unavailable";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Timestamp unavailable";
   return new Intl.DateTimeFormat("en-US", {
@@ -238,8 +239,13 @@ export default function InterviewPreparationSection({ applicationId, interviewId
   const [editValue, setEditValue] = useState<InterviewPrepOutput | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const loadInFlightRef = useRef(false);
+  const generateInFlightRef = useRef(false);
+  const resolveInFlightRef = useRef(false);
 
   const loadSuggestions = useCallback(async () => {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
     setIsLoading(true);
     setError(null);
     try {
@@ -250,6 +256,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
     } catch {
       setError("Unable to load preparation plans. Please try again.");
     } finally {
+      loadInFlightRef.current = false;
       setIsLoading(false);
     }
   }, [endpoint]);
@@ -270,7 +277,8 @@ export default function InterviewPreparationSection({ applicationId, interviewId
   }, [editing, resolvingId]);
 
   async function generatePlan() {
-    if (isGenerating) return;
+    if (generateInFlightRef.current) return;
+    generateInFlightRef.current = true;
     setIsGenerating(true);
     setGenerateError(null);
     try {
@@ -285,6 +293,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
     } catch {
       setGenerateError("Unable to generate a preparation plan right now. Please try again.");
     } finally {
+      generateInFlightRef.current = false;
       setIsGenerating(false);
     }
   }
@@ -294,6 +303,8 @@ export default function InterviewPreparationSection({ applicationId, interviewId
     status: "accepted" | "rejected" | "edited",
     resolvedValue?: InterviewPrepOutput
   ) {
+    if (resolveInFlightRef.current || suggestion.status !== "pending") return;
+    resolveInFlightRef.current = true;
     setResolvingId(suggestion.id);
     setError(null);
     try {
@@ -316,13 +327,15 @@ export default function InterviewPreparationSection({ applicationId, interviewId
       if (status === "edited") setEditError(message);
       else setError(message);
     } finally {
+      resolveInFlightRef.current = false;
       setResolvingId(null);
     }
   }
 
   function startEditing(suggestion: InterviewPrepSuggestion) {
     setEditing(suggestion);
-    setEditValue(JSON.parse(JSON.stringify(suggestion.proposed_value)) as InterviewPrepOutput);
+    const selectedValue = suggestion.resolved_value ?? suggestion.proposed_value;
+    setEditValue(JSON.parse(JSON.stringify(selectedValue)) as InterviewPrepOutput);
     setEditError(null);
   }
 
@@ -611,8 +624,14 @@ export default function InterviewPreparationSection({ applicationId, interviewId
             </div>
             <div className="mt-5 space-y-5">
               <div>
-                <label className="text-foreground text-sm font-medium">Summary</label>
+                <label
+                  htmlFor={`prep-summary-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
+                  Summary
+                </label>
                 <textarea
+                  id={`prep-summary-${interviewId}`}
                   autoFocus
                   rows={4}
                   maxLength={3000}
@@ -622,8 +641,14 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                 />
               </div>
               <div>
-                <label className="text-foreground text-sm font-medium">Readiness summary</label>
+                <label
+                  htmlFor={`prep-readiness-summary-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
+                  Readiness summary
+                </label>
                 <textarea
+                  id={`prep-readiness-summary-${interviewId}`}
                   rows={3}
                   maxLength={2000}
                   value={editValue.readiness.summary}
@@ -640,8 +665,14 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                 </p>
               </div>
               <div>
-                <label className="text-foreground text-sm font-medium">Readiness limitations</label>
+                <label
+                  htmlFor={`prep-readiness-limitations-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
+                  Readiness limitations
+                </label>
                 <textarea
+                  id={`prep-readiness-limitations-${interviewId}`}
                   rows={3}
                   value={editValue.readiness.limitations.join("\n")}
                   onChange={(event) =>
@@ -749,8 +780,14 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                 </fieldset>
               ) : null}
               <div>
-                <label className="text-foreground text-sm font-medium">Questions to ask</label>
+                <label
+                  htmlFor={`prep-questions-to-ask-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
+                  Questions to ask
+                </label>
                 <textarea
+                  id={`prep-questions-to-ask-${interviewId}`}
                   rows={4}
                   value={editValue.questions_to_ask.join("\n")}
                   onChange={(event) =>

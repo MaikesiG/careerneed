@@ -175,6 +175,8 @@ export type AISuggestionStatus =
 export type InterviewPrepSuggestion = {
   id: string;
   interview_id: string;
+  entity_type: string;
+  entity_id: string | null;
   suggestion_type: "interview_prep";
   proposed_value: InterviewPrepOutput;
   confidence: number | null;

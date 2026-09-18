@@ -741,20 +741,23 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
             CareerNeed
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Job Sources & Ingestion</h1>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+            Job Sources & Ingestion
+          </h1>
           <p className="text-muted-foreground mt-3 max-w-3xl text-base">
-            Configure automated job boards (Ashby, Greenhouse, Lever) or paste individual job links found on LinkedIn, company sites, and referrals.
+            Configure automated job boards (Ashby, Greenhouse, Lever) or paste individual job links
+            found on LinkedIn, company sites, and referrals.
           </p>
 
           {/* Navigation Tabs */}
-          <div className="mt-6 flex border-b border-border">
+          <div className="border-border mt-6 flex border-b">
             <button
               type="button"
               onClick={() => setActiveTab("companies")}
               className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                 activeTab === "companies"
                   ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground border-transparent"
               }`}
             >
               🏢 Tracked Companies & ATS Boards ({companies.length})
@@ -765,7 +768,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                 activeTab === "manual_jobs"
                   ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground border-transparent"
               }`}
             >
               🔗 Add Individual Job Link
@@ -792,7 +795,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
         {notice ? (
           <div
-            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
+            className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400"
             role="status"
           >
             <p>{notice}</p>
@@ -818,7 +821,8 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                     <h2 className="text-lg font-bold">Quick Add Popular Companies</h2>
                   </div>
                   <p className="text-muted-foreground mt-0.5 text-sm">
-                    Pre-configured ATS slugs for top engineering & AI leaders. Add in one click without looking up tokens.
+                    Pre-configured ATS slugs for top engineering & AI leaders. Add in one click
+                    without looking up tokens.
                   </p>
                 </div>
 
@@ -866,7 +870,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                         <div className="flex items-center justify-between">
                           <span className="text-foreground text-sm font-bold">{preset.name}</span>
                           <span
-                            className={`rounded-full border px-1.5 py-0.2 text-[10px] font-semibold uppercase ${providerBadgeClass(
+                            className={`py-0.2 rounded-full border px-1.5 text-[10px] font-semibold uppercase ${providerBadgeClass(
                               preset.source_type
                             )}`}
                           >
@@ -880,7 +884,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
                       <div className="mt-3">
                         {tracked ? (
-                          <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 block w-full rounded-md border py-1 text-center text-xs font-semibold">
+                          <span className="block w-full rounded-md border border-emerald-500/30 bg-emerald-500/10 py-1 text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                             ✓ Tracked
                           </span>
                         ) : (
@@ -905,7 +909,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               <div className="mb-5">
                 <h2 className="text-lg font-semibold">Add a Custom Company Source</h2>
                 <p className="text-muted-foreground mt-1 text-sm">
-                  Paste any company’s career URL (e.g. <code>https://jobs.ashbyhq.com/vanta</code> or <code>https://job-boards.greenhouse.io/anthropic</code>). It will automatically detect the provider and token.
+                  Paste any company’s career URL (e.g. <code>https://jobs.ashbyhq.com/vanta</code>{" "}
+                  or <code>https://job-boards.greenhouse.io/anthropic</code>). It will automatically
+                  detect the provider and token.
                 </p>
               </div>
 
@@ -1006,11 +1012,12 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
             {/* Section 3: Tracked Sources List */}
             <section className="border-border bg-card rounded-2xl border p-5 shadow-xs sm:p-6">
-              <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-center">
+              <div className="border-border flex flex-col justify-between gap-4 border-b pb-5 sm:flex-row sm:items-center">
                 <div>
                   <h2 className="text-lg font-semibold">Tracked Sources</h2>
                   <p className="text-muted-foreground text-sm">
-                    {companies.length} company source{companies.length === 1 ? "" : "s"} currently tracked.
+                    {companies.length} company source{companies.length === 1 ? "" : "s"} currently
+                    tracked.
                   </p>
                 </div>
 
@@ -1057,8 +1064,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               ) : null}
 
               {companies.length === 0 ? (
-                <div className="border-border border-dashed mt-6 rounded-xl border p-8 text-center text-sm text-muted-foreground">
-                  No company sources added yet. Use the quick-add buttons above or enter a custom job board URL.
+                <div className="border-border text-muted-foreground mt-6 rounded-xl border border-dashed p-8 text-center text-sm">
+                  No company sources added yet. Use the quick-add buttons above or enter a custom
+                  job board URL.
                 </div>
               ) : (
                 <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1088,7 +1096,10 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                             {company.priority} priority
                           </span>
                           {company.board_token && (
-                            <span className="text-muted-foreground truncate" title={company.board_token}>
+                            <span
+                              className="text-muted-foreground truncate"
+                              title={company.board_token}
+                            >
                               token: {company.board_token}
                             </span>
                           )}
@@ -1099,14 +1110,14 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                             href={company.careers_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary hover:underline mt-2.5 block truncate text-xs"
+                            className="text-primary mt-2.5 block truncate text-xs hover:underline"
                           >
                             {company.careers_url} ↗
                           </a>
                         ) : null}
                       </div>
 
-                      <div className="border-border mt-4 border-t pt-3 flex items-center justify-between">
+                      <div className="border-border mt-4 flex items-center justify-between border-t pt-3">
                         <span className="text-muted-foreground text-xs">
                           {company.source_type in { ashby: 1, greenhouse: 1, lever: 1 }
                             ? "Auto-syncable"
@@ -1139,18 +1150,22 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 <h2 className="text-xl font-bold">Track an Individual Job by Link</h2>
               </div>
               <p className="text-muted-foreground mt-1 text-sm">
-                Found an interesting posting on LinkedIn, a company careers page, or through a friend? Add it directly to your job pool and personal application pipeline.
+                Found an interesting posting on LinkedIn, a company careers page, or through a
+                friend? Add it directly to your job pool and personal application pipeline.
               </p>
             </div>
 
             {addedJobNotice ? (
-              <div className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-6 rounded-xl border p-4 text-sm">
+              <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-600 dark:text-emerald-400">
                 <p className="font-semibold">{addedJobNotice}</p>
                 <div className="mt-3 flex gap-3">
-                  <Link href="/jobs" className="text-primary underline font-semibold text-xs">
+                  <Link href="/jobs" className="text-primary text-xs font-semibold underline">
                     View in Jobs Dashboard →
                   </Link>
-                  <Link href="/applications" className="text-primary underline font-semibold text-xs">
+                  <Link
+                    href="/applications"
+                    className="text-primary text-xs font-semibold underline"
+                  >
                     View in Applications Board →
                   </Link>
                 </div>
@@ -1171,13 +1186,16 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                   required
                 />
                 <span className="text-muted-foreground mt-1 block text-xs">
-                  We’ll automatically extract the company name if it’s hosted on Ashby, Greenhouse, or Lever.
+                  We’ll automatically extract the company name if it’s hosted on Ashby, Greenhouse,
+                  or Lever.
                 </span>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-foreground block text-sm font-medium">Company Name *</label>
+                  <label className="text-foreground block text-sm font-medium">
+                    Company Name *
+                  </label>
                   <input
                     type="text"
                     value={jobCompany}
@@ -1214,7 +1232,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 </div>
 
                 <div>
-                  <label className="text-foreground block text-sm font-medium">Workplace Type</label>
+                  <label className="text-foreground block text-sm font-medium">
+                    Workplace Type
+                  </label>
                   <select
                     value={jobWorkplaceType}
                     onChange={(e) => setJobWorkplaceType(e.target.value)}
@@ -1229,7 +1249,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               </div>
 
               <div>
-                <label className="text-foreground block text-sm font-medium">Notes / Referral Context</label>
+                <label className="text-foreground block text-sm font-medium">
+                  Notes / Referral Context
+                </label>
                 <input
                   type="text"
                   value={jobNotes}
@@ -1240,7 +1262,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               </div>
 
               <div>
-                <label className="text-foreground block text-sm font-medium">Job Description (optional)</label>
+                <label className="text-foreground block text-sm font-medium">
+                  Job Description (optional)
+                </label>
                 <textarea
                   rows={4}
                   value={jobDescription}
@@ -1250,7 +1274,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 />
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="flex justify-end pt-2">
                 <button
                   type="submit"
                   disabled={isAddingJob}

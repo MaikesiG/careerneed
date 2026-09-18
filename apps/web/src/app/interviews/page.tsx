@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch, getApiErrorMessage, UpcomingInterview, InterviewStatus, InterviewResult } from "@/lib/api";
+import {
+  apiFetch,
+  getApiErrorMessage,
+  UpcomingInterview,
+  InterviewStatus,
+  InterviewResult,
+} from "@/lib/api";
 
 type GroupKey = "today" | "tomorrow" | "this_week" | "later" | "past";
 
@@ -64,7 +70,8 @@ export default function InterviewsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const query = activeTab === "all" ? "?days=180&include_past=true" : "?days=60&include_past=false";
+        const query =
+          activeTab === "all" ? "?days=180&include_past=true" : "?days=60&include_past=false";
         const res = await apiFetch(`/interviews/upcoming${query}`);
         if (!res.ok) {
           throw new Error(await getApiErrorMessage(res, "Failed to load upcoming interviews"));
@@ -137,7 +144,8 @@ export default function InterviewsPage() {
               <h1 className="text-3xl font-bold tracking-tight">Interview Center</h1>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">
-              Consolidated upcoming rounds, meeting links, and preparation context across all active applications.
+              Consolidated upcoming rounds, meeting links, and preparation context across all active
+              applications.
             </p>
           </div>
 
@@ -176,7 +184,7 @@ export default function InterviewsPage() {
         ) : null}
 
         {isLoading ? (
-          <div className="py-20 text-center text-sm text-muted-foreground">
+          <div className="text-muted-foreground py-20 text-center text-sm">
             Loading interview schedule…
           </div>
         ) : interviews.length === 0 ? (
@@ -184,7 +192,8 @@ export default function InterviewsPage() {
             <span className="text-4xl">🗓️</span>
             <h2 className="mt-3 text-lg font-semibold">No interviews found</h2>
             <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">
-              When recruiters schedule rounds with you, you can paste the email invitation into any tracked Application to auto-schedule it here.
+              When recruiters schedule rounds with you, you can paste the email invitation into any
+              tracked Application to auto-schedule it here.
             </p>
             <div className="mt-6">
               <Link
@@ -203,10 +212,12 @@ export default function InterviewsPage() {
 
               return (
                 <section key={key}>
-                  <div className="flex items-center gap-2 border-b border-border pb-2.5">
+                  <div className="border-border flex items-center gap-2 border-b pb-2.5">
                     <span className="text-lg">{icon}</span>
                     <h2 className="text-lg font-bold">{label}</h2>
-                    <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}
+                    >
                       {list.length}
                     </span>
                   </div>
@@ -240,7 +251,7 @@ export default function InterviewsPage() {
                             <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
                               <span className="text-foreground">{item.title}</span>
                               <span className="text-muted-foreground">·</span>
-                              <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                              <span className="text-muted-foreground text-xs tracking-wide uppercase">
                                 {item.interview_type}
                               </span>
                             </div>
@@ -287,7 +298,7 @@ export default function InterviewsPage() {
                           <div className="border-border mt-4 flex items-center justify-between border-t pt-3">
                             <Link
                               href={`/applications/${item.application_id}`}
-                              className="text-primary hover:underline text-xs font-semibold"
+                              className="text-primary text-xs font-semibold hover:underline"
                             >
                               View Application →
                             </Link>
@@ -303,7 +314,7 @@ export default function InterviewsPage() {
                                 <span>↗</span>
                               </a>
                             ) : isOverdue ? (
-                              <span className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-md border px-2 py-1 text-xs font-semibold">
+                              <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
                                 Needs update
                               </span>
                             ) : null}

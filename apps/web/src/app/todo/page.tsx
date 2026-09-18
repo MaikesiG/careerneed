@@ -519,7 +519,8 @@ export default function TodoClient() {
                 <article className="border-border bg-card mt-5 rounded-2xl border border-dashed p-6">
                   <h3 className="text-lg font-semibold">No interviews scheduled this week</h3>
                   <p className="text-muted-foreground mt-2 text-sm leading-6">
-                    Paste interview invitations in any active application to automatically track your upcoming rounds and preparation here.
+                    Paste interview invitations in any active application to automatically track
+                    your upcoming rounds and preparation here.
                   </p>
                 </article>
               ) : (
@@ -542,9 +543,7 @@ export default function TodoClient() {
                         <h3 className="text-foreground mt-2 text-base font-bold">
                           {item.job_title}
                         </h3>
-                        <p className="text-muted-foreground text-sm font-medium">
-                          {item.title}
-                        </p>
+                        <p className="text-muted-foreground text-sm font-medium">{item.title}</p>
 
                         <div className="border-border bg-muted/20 mt-3 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium">
                           <span>⏰</span>
@@ -560,7 +559,7 @@ export default function TodoClient() {
                           <span
                             className={
                               item.preparation_notes
-                                ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                                ? "font-medium text-emerald-600 dark:text-emerald-400"
                                 : "text-muted-foreground italic"
                             }
                           >
@@ -572,7 +571,7 @@ export default function TodoClient() {
                       <div className="border-border mt-4 flex items-center justify-between border-t pt-3">
                         <Link
                           href={`/applications/${item.application_id}`}
-                          className="text-primary hover:underline text-xs font-semibold"
+                          className="text-primary text-xs font-semibold hover:underline"
                         >
                           Open prep →
                         </Link>
