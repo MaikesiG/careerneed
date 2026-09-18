@@ -86,3 +86,28 @@ export type InterviewExtraction = {
   role: string | null;
 };
 
+export type InterviewQuestionCategory =
+  | "behavioral"
+  | "technical"
+  | "coding"
+  | "system_design"
+  | "case"
+  | "product"
+  | "culture"
+  | "other";
+
+export type InterviewQuestionDifficulty = "easy" | "medium" | "hard" | "unknown";
+
+export type InterviewQuestion = {
+  id: string;
+  interview_id: string;
+  question: string;
+  category: InterviewQuestionCategory;
+  difficulty: InterviewQuestionDifficulty;
+  answer_notes: string | null;
+  reflection: string | null;
+  leetcode_url: string | null;
+  asked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};

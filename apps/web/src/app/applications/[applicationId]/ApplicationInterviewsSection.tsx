@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
-import { apiFetch, getApiErrorMessage, Interview, InterviewType, InterviewStatus, InterviewResult, InterviewExtraction } from "@/lib/api";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  apiFetch,
+  getApiErrorMessage,
+  Interview,
+  InterviewType,
+  InterviewStatus,
+  InterviewResult,
+  InterviewExtraction,
+} from "@/lib/api";
+import InterviewQuestionsSection from "./InterviewQuestionsSection";
 
 type ApplicationInterviewsSectionProps = {
   applicationId: string;
@@ -144,7 +153,7 @@ export default function ApplicationInterviewsSection({
   const [scheduleFollowUp, setScheduleFollowUp] = useState(true);
   const [isSavingCompletion, setIsSavingCompletion] = useState(false);
 
-  async function loadInterviews() {
+  const loadInterviews = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -159,11 +168,13 @@ export default function ApplicationInterviewsSection({
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [applicationId]);
 
   useEffect(() => {
-    loadInterviews();
-  }, [applicationId]);
+    // This is the canonical initial load; later CRUD actions reuse the same callback.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadInterviews();
+  }, [loadInterviews]);
 
   function openCreateForm() {
     const nextRound = interviews.length > 0 ? Math.max(...interviews.map((i) => i.round)) + 1 : 1;
@@ -245,7 +256,9 @@ export default function ApplicationInterviewsSection({
   }
 
   async function handleDelete(interview: Interview) {
-    if (!confirm(`Are you sure you want to delete "${interview.title}" (Round ${interview.round})?`)) {
+    if (
+      !confirm(`Are you sure you want to delete "${interview.title}" (Round ${interview.round})?`)
+    ) {
       return;
     }
     try {
@@ -339,15 +352,18 @@ export default function ApplicationInterviewsSection({
     if (!activeInterview) return;
     setIsSavingCompletion(true);
     try {
-      const res = await apiFetch(`/applications/${applicationId}/interviews/${activeInterview.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "completed",
-          result: completionResult,
-          notes: completionNotes,
-        }),
-      });
+      const res = await apiFetch(
+        `/applications/${applicationId}/interviews/${activeInterview.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "completed",
+            result: completionResult,
+            notes: completionNotes,
+          }),
+        }
+      );
 
       if (!res.ok) {
         throw new Error(await getApiErrorMessage(res, "Failed to update interview"));
@@ -390,7 +406,8 @@ export default function ApplicationInterviewsSection({
             </span>
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
-            Schedule rounds, manage interviewers, track prep notes, and capture details automatically.
+            Schedule rounds, manage interviewers, track prep notes, and capture details
+            automatically.
           </p>
         </div>
 
@@ -459,7 +476,7 @@ export default function ApplicationInterviewsSection({
             return (
               <div
                 key={interview.id}
-                className={`border-border bg-card hover:border-primary/40 rounded-xl border p-4 transition shadow-xs ${
+                className={`border-border bg-card hover:border-primary/40 rounded-xl border p-4 shadow-xs transition ${
                   isOverdue ? "border-amber-500/40 bg-amber-500/[0.02]" : ""
                 }`}
               >
@@ -487,7 +504,7 @@ export default function ApplicationInterviewsSection({
                         </span>
                       )}
                       {isOverdue && (
-                        <span className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border px-2 py-0.5 text-xs font-semibold">
+                        <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
                           Needs update
                         </span>
                       )}
@@ -519,7 +536,9 @@ export default function ApplicationInterviewsSection({
                           {interview.interviewer_name}
                         </span>
                         {interview.interviewer_title ? (
-                          <span className="text-muted-foreground">· {interview.interviewer_title}</span>
+                          <span className="text-muted-foreground">
+                            · {interview.interviewer_title}
+                          </span>
                         ) : null}
                         {interview.interviewer_email ? (
                           <a
@@ -566,7 +585,7 @@ export default function ApplicationInterviewsSection({
                       <button
                         type="button"
                         onClick={() => openCompleteModal(interview)}
-                        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition"
+                        className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-500/20 dark:text-emerald-400"
                       >
                         ✓ Mark Completed
                       </button>
@@ -590,6 +609,11 @@ export default function ApplicationInterviewsSection({
                     </button>
                   </div>
                 </div>
+
+                <InterviewQuestionsSection
+                  applicationId={applicationId}
+                  interviewId={interview.id}
+                />
               </div>
             );
           })}
@@ -615,16 +639,22 @@ export default function ApplicationInterviewsSection({
                     type="number"
                     min={1}
                     value={formData.round ?? 1}
-                    onChange={(e) => setFormData({ ...formData, round: parseInt(e.target.value) || 1 })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, round: parseInt(e.target.value) || 1 })
+                    }
                     className="border-border bg-muted/30 focus:border-primary mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-foreground block text-xs font-medium">Interview Type</label>
+                  <label className="text-foreground block text-xs font-medium">
+                    Interview Type
+                  </label>
                   <select
                     value={formData.interview_type ?? "technical"}
-                    onChange={(e) => setFormData({ ...formData, interview_type: e.target.value as InterviewType })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, interview_type: e.target.value as InterviewType })
+                    }
                     className="border-border bg-muted/30 focus:border-primary mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
                   >
                     {INTERVIEW_TYPE_OPTIONS.map((opt) => (
@@ -660,7 +690,9 @@ export default function ApplicationInterviewsSection({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-foreground block text-xs font-medium">Duration (min)</label>
+                    <label className="text-foreground block text-xs font-medium">
+                      Duration (min)
+                    </label>
                     <input
                       type="number"
                       step={15}
@@ -668,7 +700,10 @@ export default function ApplicationInterviewsSection({
                       max={480}
                       value={formData.duration_minutes ?? 60}
                       onChange={(e) =>
-                        setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })
+                        setFormData({
+                          ...formData,
+                          duration_minutes: parseInt(e.target.value) || 60,
+                        })
                       }
                       className="border-border bg-muted/30 focus:border-primary mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
                     />
@@ -690,7 +725,9 @@ export default function ApplicationInterviewsSection({
                   <label className="text-foreground block text-xs font-medium">Status</label>
                   <select
                     value={formData.status ?? "scheduled"}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as InterviewStatus })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, status: e.target.value as InterviewStatus })
+                    }
                     className="border-border bg-muted/30 focus:border-primary mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
                   >
                     {STATUS_OPTIONS.map((opt) => (
@@ -704,7 +741,9 @@ export default function ApplicationInterviewsSection({
                   <label className="text-foreground block text-xs font-medium">Result</label>
                   <select
                     value={formData.result ?? "pending"}
-                    onChange={(e) => setFormData({ ...formData, result: e.target.value as InterviewResult })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, result: e.target.value as InterviewResult })
+                    }
                     className="border-border bg-muted/30 focus:border-primary mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
                   >
                     {RESULT_OPTIONS.map((opt) => (
@@ -717,7 +756,9 @@ export default function ApplicationInterviewsSection({
               </div>
 
               <div>
-                <label className="text-foreground block text-xs font-medium">Meeting URL (Zoom / Google Meet)</label>
+                <label className="text-foreground block text-xs font-medium">
+                  Meeting URL (Zoom / Google Meet)
+                </label>
                 <input
                   type="url"
                   value={formData.meeting_url ?? ""}
@@ -741,7 +782,9 @@ export default function ApplicationInterviewsSection({
                   <input
                     type="text"
                     value={formData.interviewer_title ?? ""}
-                    onChange={(e) => setFormData({ ...formData, interviewer_title: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, interviewer_title: e.target.value })
+                    }
                     placeholder="Title (e.g. Staff Engineer)"
                     className="border-border bg-card focus:border-primary rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none"
                   />
@@ -756,7 +799,9 @@ export default function ApplicationInterviewsSection({
               </div>
 
               <div>
-                <label className="text-foreground block text-xs font-medium">Preparation Notes</label>
+                <label className="text-foreground block text-xs font-medium">
+                  Preparation Notes
+                </label>
                 <textarea
                   rows={2}
                   value={formData.preparation_notes ?? ""}
@@ -767,7 +812,9 @@ export default function ApplicationInterviewsSection({
               </div>
 
               <div>
-                <label className="text-foreground block text-xs font-medium">Review & Outcome Notes</label>
+                <label className="text-foreground block text-xs font-medium">
+                  Review & Outcome Notes
+                </label>
                 <textarea
                   rows={2}
                   value={formData.notes ?? ""}
@@ -815,7 +862,8 @@ export default function ApplicationInterviewsSection({
               </button>
             </div>
             <p className="text-muted-foreground mt-1 text-xs">
-              Paste your recruiter invitation, calendar email, or message. Our AI pipeline extracts structured round info for your confirmation.
+              Paste your recruiter invitation, calendar email, or message. Our AI pipeline extracts
+              structured round info for your confirmation.
             </p>
 
             {!extractedData ? (
@@ -825,7 +873,7 @@ export default function ApplicationInterviewsSection({
                   value={pasteText}
                   onChange={(e) => setPasteText(e.target.value)}
                   placeholder={`Hi candidate,\n\nWe would like to invite you to a Technical Interview on Thursday, September 24 at 2:00 PM EST (60 min).\nYou'll meet with John Smith, Senior Software Engineer.\n\nZoom: https://zoom.us/j/1234567890`}
-                  className="border-border bg-muted/20 focus:border-primary font-mono w-full rounded-xl border p-3 text-xs focus:outline-none"
+                  className="border-border bg-muted/20 focus:border-primary w-full rounded-xl border p-3 font-mono text-xs focus:outline-none"
                 />
 
                 {captureError ? (
@@ -898,26 +946,29 @@ export default function ApplicationInterviewsSection({
                     <div>
                       <dt className="text-muted-foreground font-medium">Duration & Timezone</dt>
                       <dd className="text-foreground">
-                        {extractedData.duration_minutes ?? 60} min {extractedData.timezone ? `(${extractedData.timezone})` : ""}
+                        {extractedData.duration_minutes ?? 60} min{" "}
+                        {extractedData.timezone ? `(${extractedData.timezone})` : ""}
                       </dd>
                     </div>
                     <div>
                       <dt className="text-muted-foreground font-medium">Interviewer</dt>
                       <dd className="text-foreground font-semibold">
                         {extractedData.interviewer_name ?? "Not specified"}
-                        {extractedData.interviewer_title ? ` (${extractedData.interviewer_title})` : ""}
+                        {extractedData.interviewer_title
+                          ? ` (${extractedData.interviewer_title})`
+                          : ""}
                       </dd>
                     </div>
                     <div>
                       <dt className="text-muted-foreground font-medium">Meeting URL</dt>
-                      <dd className="truncate text-foreground">
+                      <dd className="text-foreground truncate">
                         {extractedData.meeting_url ?? "None detected"}
                       </dd>
                     </div>
                   </dl>
                 </div>
 
-                <div className="flex justify-between items-center pt-2">
+                <div className="flex items-center justify-between pt-2">
                   <button
                     type="button"
                     onClick={() => setExtractedData(null)}
@@ -960,7 +1011,9 @@ export default function ApplicationInterviewsSection({
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="text-foreground block text-xs font-medium">Outcome / Result</label>
+                <label className="text-foreground block text-xs font-medium">
+                  Outcome / Result
+                </label>
                 <select
                   value={completionResult}
                   onChange={(e) => setCompletionResult(e.target.value as InterviewResult)}
@@ -973,7 +1026,9 @@ export default function ApplicationInterviewsSection({
               </div>
 
               <div>
-                <label className="text-foreground block text-xs font-medium">Debrief & Review Notes</label>
+                <label className="text-foreground block text-xs font-medium">
+                  Debrief & Review Notes
+                </label>
                 <textarea
                   rows={3}
                   value={completionNotes}
@@ -984,7 +1039,7 @@ export default function ApplicationInterviewsSection({
               </div>
 
               <div className="border-border/60 bg-muted/20 rounded-xl border p-3">
-                <label className="flex items-start gap-2.5 cursor-pointer">
+                <label className="flex cursor-pointer items-start gap-2.5">
                   <input
                     type="checkbox"
                     checked={scheduleFollowUp}
@@ -996,7 +1051,8 @@ export default function ApplicationInterviewsSection({
                       Schedule Follow-up: Send thank-you note
                     </span>
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      Sets a follow-up reminder for tomorrow on this application to send a thank-you note.
+                      Sets a follow-up reminder for tomorrow on this application to send a thank-you
+                      note.
                     </p>
                   </div>
                 </label>
@@ -1014,7 +1070,7 @@ export default function ApplicationInterviewsSection({
                   type="button"
                   onClick={handleSaveCompletion}
                   disabled={isSavingCompletion}
-                  className="bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
                 >
                   {isSavingCompletion ? "Saving…" : "Save & Complete"}
                 </button>
