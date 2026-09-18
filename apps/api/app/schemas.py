@@ -180,6 +180,46 @@ class DashboardFollowUpsOut(BaseModel):
     items: list[ApplicationWithJobOut]
 
 
+TodayPriorityGroupKey = Literal[
+    "overdue_follow_ups",
+    "interviews_today",
+    "follow_ups_due_today",
+    "upcoming_interviews",
+    "applications_needing_update",
+]
+
+TodayPriorityActionKind = Literal[
+    "follow_up",
+    "interview",
+    "application_update",
+]
+
+
+class TodayPriorityItem(BaseModel):
+    id: uuid.UUID
+    action_kind: TodayPriorityActionKind
+    title: str
+    application_id: uuid.UUID
+    company_name: str
+    job_title: str
+    interview_id: uuid.UUID | None = None
+    occurs_at: datetime | None = None
+    timezone: str | None = None
+    status: str | None = None
+
+
+class TodayPriorityGroup(BaseModel):
+    key: TodayPriorityGroupKey
+    priority: int
+    items: list[TodayPriorityItem]
+
+
+class TodayPrioritiesOut(BaseModel):
+    timezone: str
+    local_date: date
+    groups: list[TodayPriorityGroup]
+
+
 LLMProvider = Literal["openai", "groq", "anthropic"]
 
 
