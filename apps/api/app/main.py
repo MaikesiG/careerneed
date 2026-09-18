@@ -6,6 +6,7 @@ from app.routers import (
     applications,
     auth,
     companies,
+    contacts,
     connectors,
     dashboard,
     follow_ups,
@@ -34,6 +35,7 @@ app.include_router(applications.router)
 app.include_router(dashboard.router)
 app.include_router(follow_ups.router)
 app.include_router(companies.router)
+app.include_router(contacts.router)
 app.include_router(connectors.router)
 app.include_router(interviews.router)
 app.include_router(jobs.router)

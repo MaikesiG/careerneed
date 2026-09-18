@@ -378,6 +378,171 @@ class UpcomingInterviewOut(InterviewOut):
     job_title: str
 
 
+ContactRelationshipType = Literal[
+    "recruiter",
+    "interviewer",
+    "hiring_manager",
+    "referral",
+    "networking",
+    "other",
+]
+
+ParticipantRole = Literal["interviewer", "coordinator", "observer"]
+
+
+def _trim_contact_required(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Name cannot be blank")
+    return value
+
+
+def _trim_contact_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _validate_contact_email(value: str | None) -> str | None:
+    value = _trim_contact_optional(value)
+    if value is None:
+        return None
+    if value.count("@") != 1 or any(character.isspace() for character in value):
+        raise ValueError("Email must be valid")
+    local_part, domain = value.rsplit("@", 1)
+    if not local_part or "." not in domain or domain.startswith(".") or domain.endswith("."):
+        raise ValueError("Email must be valid")
+    return value
+
+
+def _validate_linkedin_url(value: str | None) -> str | None:
+    value = _trim_contact_optional(value)
+    if value is None:
+        return None
+    parsed = urlparse(value)
+    hostname = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.username
+        or parsed.password
+        or not (hostname == "linkedin.com" or hostname.endswith(".linkedin.com"))
+    ):
+        raise ValueError("LinkedIn URL must be a valid HTTPS LinkedIn URL")
+    return value
+
+
+class ContactCreate(BaseModel):
+    company_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=255, strict=True)
+    title: str | None = Field(default=None, max_length=255, strict=True)
+    email: str | None = Field(default=None, max_length=255, strict=True)
+    linkedin_url: str | None = Field(default=None, max_length=1000, strict=True)
+    relationship_type: ContactRelationshipType = "other"
+    notes: str | None = Field(default=None, max_length=10_000, strict=True)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _trim_contact_required(value)
+
+    @field_validator("title", "notes")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        return _trim_contact_optional(value)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        return _validate_contact_email(value)
+
+    @field_validator("linkedin_url")
+    @classmethod
+    def validate_linkedin(cls, value: str | None) -> str | None:
+        return _validate_linkedin_url(value)
+
+
+class ContactUpdate(BaseModel):
+    company_id: uuid.UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255, strict=True)
+    title: str | None = Field(default=None, max_length=255, strict=True)
+    email: str | None = Field(default=None, max_length=255, strict=True)
+    linkedin_url: str | None = Field(default=None, max_length=1000, strict=True)
+    relationship_type: ContactRelationshipType | None = None
+    notes: str | None = Field(default=None, max_length=10_000, strict=True)
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self) -> "ContactUpdate":
+        for field_name in ("name", "relationship_type"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        return _trim_contact_required(value) if value is not None else None
+
+    @field_validator("title", "notes")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        return _trim_contact_optional(value)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        return _validate_contact_email(value)
+
+    @field_validator("linkedin_url")
+    @classmethod
+    def validate_linkedin(cls, value: str | None) -> str | None:
+        return _validate_linkedin_url(value)
+
+
+class ContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    company_id: uuid.UUID | None
+    name: str
+    title: str | None
+    email: str | None
+    linkedin_url: str | None
+    relationship_type: ContactRelationshipType
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ParticipantCreate(BaseModel):
+    contact_id: uuid.UUID
+    role: ParticipantRole
+
+
+class ParticipantContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    title: str | None
+    email: str | None
+    linkedin_url: str | None
+    relationship_type: ContactRelationshipType
+
+
+class InterviewParticipantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    interview_id: uuid.UUID
+    contact_id: uuid.UUID
+    role: ParticipantRole
+    created_at: datetime
+    updated_at: datetime
+    contact: ParticipantContactOut
+
+
 class FastCaptureRequest(BaseModel):
     raw_text: str
     application_id: uuid.UUID | None = None
