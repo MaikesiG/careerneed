@@ -22,15 +22,18 @@ from app.models import (
 )
 from app.schemas import (
     AISuggestionOut,
+    AnalysisScope,
     BehavioralStory,
     GapWarning,
     InterviewPrepOutput,
+    InterviewOutcomeAnalysisOutput,
     LikelyQuestion,
     PrepPriority,
     ReadinessAssessment,
     ReadinessBreakdown,
     TechnicalTopic,
 )
+from app.services.interview_outcome import SAFE_LIMITATION
 from app.services.interview_prep import (
     _generate_deterministic_fallback,
     build_minimized_context,
@@ -102,6 +105,53 @@ def create_application(
     db_session.add(application)
     db_session.flush()
     return application
+
+
+def outcome_output(*, questions_considered: int = 1) -> InterviewOutcomeAnalysisOutput:
+    return InterviewOutcomeAnalysisOutput(
+        grounded_observations=[
+            {
+                "observation": "The candidate recorded a specific debugging example.",
+                "source_reference": "reflection",
+                "evidence_summary": "The reflection describes isolating a database timeout.",
+                "confidence": 0.9,
+            }
+        ],
+        possible_strengths=[
+            {
+                "title": "Structured debugging",
+                "explanation": "The recorded example may indicate a methodical approach.",
+                "evidence_summary": "The reflection lists isolation and verification steps.",
+                "confidence": 0.7,
+            }
+        ],
+        possible_growth_areas=[],
+        recurring_topics=[
+            {
+                "topic": "Debugging",
+                "occurrence_context": "Observed within this interview only.",
+                "confidence": 0.6,
+            }
+        ],
+        recommended_actions=[
+            {
+                "action": "Rehearse the debugging example with a concise result.",
+                "time_horizon": "before_next_interview",
+                "rationale": "A concise result can make the recorded evidence clearer.",
+                "related_topics": ["Debugging"],
+            }
+        ],
+        suggested_follow_up_points=["Clarify the measured impact of the fix."],
+        uncertainty_notes=["Employer feedback was not available."],
+        limitations=[SAFE_LIMITATION, "Recurring-topic scope is this interview only."],
+        analysis_scope=AnalysisScope(
+            interviews_considered=1,
+            questions_considered=questions_considered,
+            notes_available=True,
+            result_recorded=True,
+            data_limitations=["Only the current interview was considered."],
+        ),
+    )
 
 
 def test_interview_routes_require_authentication(client: TestClient) -> None:
@@ -1690,3 +1740,188 @@ def test_interview_prep_filter_supports_all_persisted_statuses(
         assert [item["status"] for item in response.json()] == [status]
 
     assert client.get(f"{endpoint}?status=unknown").status_code == 422
+
+
+def test_interview_outcome_routes_require_authentication(client: TestClient) -> None:
+    app_id, interview_id, suggestion_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    base = f"/applications/{app_id}/interviews/{interview_id}/outcome-analysis"
+    assert client.post(f"{base}/generate").status_code == 401
+    assert client.get(base).status_code == 401
+    assert client.post(f"{base}/{suggestion_id}/resolve", json={"status": "accepted"}).status_code == 401
+
+
+def test_interview_outcome_ownership_and_hierarchy_are_enforced(
+    client: TestClient, db_session: Session
+) -> None:
+    owner = register(client, "outcome-owner@example.test")
+    owner_app = create_application(db_session, user_id=owner["id"])
+    other_app = create_application(db_session, user_id=owner["id"])
+    interview = Interview(application_id=owner_app.id, title="Outcome interview")
+    db_session.add(interview)
+    db_session.commit()
+    assert client.post(
+        f"/applications/{other_app.id}/interviews/{interview.id}/outcome-analysis/generate"
+    ).status_code == 404
+    generated = client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/outcome-analysis/generate"
+    )
+    assert generated.status_code == 201
+    client.post("/auth/logout")
+    register(client, "outcome-other@example.test")
+    base = f"/applications/{owner_app.id}/interviews/{interview.id}/outcome-analysis"
+    assert client.post(f"{base}/generate").status_code == 404
+    assert client.get(base).status_code == 404
+    assert client.post(
+        f"{base}/{generated.json()['id']}/resolve", json={"status": "accepted"}
+    ).status_code == 404
+
+
+def test_interview_outcome_provider_generation_is_bounded_idempotent_and_logged_once(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = register(client, "outcome-provider@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    interview = Interview(
+        application_id=application.id,
+        title="Do not send this interview title",
+        status="completed",
+        result="advanced",
+        notes="N" * 3000,
+        preparation_notes="P" * 3000,
+        interviewer_name="Private Person",
+        interviewer_email="private@example.test",
+    )
+    db_session.add(interview)
+    db_session.flush()
+    for index in range(35):
+        db_session.add(InterviewQuestion(
+            interview_id=interview.id,
+            question=f"Question {index} " + "Q" * 1500,
+            answer_notes="A" * 3000,
+            reflection="R" * 3000,
+        ))
+    unrelated_application = create_application(db_session, user_id=user["id"])
+    unrelated_interview = Interview(
+        application_id=unrelated_application.id,
+        title="Different application interview",
+        status="completed",
+    )
+    db_session.add(unrelated_interview)
+    db_session.flush()
+    db_session.add(InterviewQuestion(
+        interview_id=unrelated_interview.id,
+        question="CROSS_APPLICATION_SECRET_MUST_NOT_BE_INCLUDED",
+    ))
+    db_session.commit()
+    captured: dict[str, object] = {}
+
+    def mock_call_llm(api_key: str, base_url: str | None, model: str, context: dict[str, object]) -> tuple[InterviewOutcomeAnalysisOutput, int]:
+        captured["context"] = context
+        return outcome_output(questions_considered=30), 42
+
+    monkeypatch.setattr("app.services.interview_outcome.get_extraction_mode", lambda *_: ("platform", 5))
+    monkeypatch.setattr("app.services.interview_outcome._get_active_provider", lambda: {
+        "api_key": "test-key", "base_url": None, "model": "test-model", "name": "openai"
+    })
+    monkeypatch.setattr("app.services.interview_outcome._call_llm_for_outcome", mock_call_llm)
+    url = f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis/generate"
+    first, second = client.post(url), client.post(url)
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert first.json()["prompt_version"] == "interview-outcome-v1"
+    assert first.json()["output_schema_version"] == "1.0"
+    assert first.json()["model_provider"] == "platform_openai"
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["scope"] == "current_interview_only"
+    assert "title" not in context["interview"]
+    assert "interviewer_name" not in context["interview"]
+    assert len(context["interview"]["notes"]) == 2000
+    assert len(context["questions"]) == 30
+    assert len(context["questions"][0]["question"]) == 1000
+    assert len(context["questions"][0]["reflection"]) == 2000
+    assert "CROSS_APPLICATION_SECRET_MUST_NOT_BE_INCLUDED" not in str(context)
+    assert db_session.scalar(select(func.count()).where(
+        UsageLog.user_id == uuid.UUID(str(user["id"])),
+        UsageLog.action == "interview_outcome_analysis_generate",
+    )) == 1
+
+
+def test_interview_outcome_provider_failure_uses_safe_sparse_fallback_without_usage(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = register(client, "outcome-fallback@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    interview = Interview(application_id=application.id, title="Sparse")
+    db_session.add(interview)
+    db_session.commit()
+    monkeypatch.setattr("app.services.interview_outcome.get_extraction_mode", lambda *_: ("platform", 5))
+    monkeypatch.setattr("app.services.interview_outcome._get_active_provider", lambda: {
+        "api_key": "test-key", "base_url": None, "model": "test-model", "name": "openai"
+    })
+
+    def fail_provider(*args: object, **kwargs: object) -> tuple[InterviewOutcomeAnalysisOutput, int]:
+        raise RuntimeError("secret provider failure")
+
+    monkeypatch.setattr("app.services.interview_outcome._call_llm_for_outcome", fail_provider)
+    response = client.post(
+        f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis/generate"
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["model_provider"] == "fallback"
+    assert body["proposed_value"]["possible_strengths"] == []
+    assert "insufficient recorded evidence" in body["proposed_value"]["uncertainty_notes"][0]
+    assert "secret provider failure" not in response.text
+    assert db_session.scalar(select(func.count()).where(
+        UsageLog.user_id == uuid.UUID(str(user["id"])),
+        UsageLog.action == "interview_outcome_analysis_generate",
+    )) == 0
+
+
+def test_interview_outcome_resolution_never_modifies_interview_notes(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = register(client, "outcome-resolve@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    interview = Interview(
+        application_id=application.id,
+        title="Resolve",
+        notes="Keep manual notes",
+        preparation_notes="Keep preparation notes",
+    )
+    db_session.add(interview)
+    db_session.commit()
+    monkeypatch.setattr("app.services.interview_outcome.get_extraction_mode", lambda *_: ("basic", 0))
+    base = f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis"
+    generated = client.post(f"{base}/generate").json()
+    accepted = client.post(f"{base}/{generated['id']}/resolve", json={"status": "accepted"})
+    assert accepted.status_code == 200
+    assert accepted.json()["resolved_value"] == generated["proposed_value"]
+    assert client.post(f"{base}/{generated['id']}/resolve", json={"status": "rejected"}).status_code == 400
+    interview.notes = "Changed context"
+    db_session.commit()
+    second = client.post(f"{base}/generate").json()
+    assert client.post(f"{base}/{second['id']}/resolve", json={"status": "edited"}).status_code == 422
+    edited_value = outcome_output(questions_considered=0).model_dump(mode="json")
+    edited = client.post(
+        f"{base}/{second['id']}/resolve",
+        json={"status": "edited", "resolved_value": edited_value},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["resolved_value"] == edited_value
+    interview.notes = "Third context"
+    db_session.commit()
+    third = client.post(f"{base}/generate").json()
+    rejected = client.post(
+        f"{base}/{third['id']}/resolve", json={"status": "rejected"}
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["resolved_value"] is None
+    db_session.refresh(interview)
+    assert interview.notes == "Third context"
+    assert interview.preparation_notes == "Keep preparation notes"
+    listed = client.get(f"{base}?status=edited")
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [second["id"]]

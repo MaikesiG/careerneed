@@ -653,6 +653,104 @@ class InterviewPrepOutput(BaseModel):
         return _bounded_text_list(values, 1000, "Text list")
 
 
+class GroundedObservation(BaseModel):
+    observation: str = Field(min_length=1, max_length=1000)
+    source_reference: Literal[
+        "interview_notes",
+        "question",
+        "answer_notes",
+        "reflection",
+        "interview_result",
+    ]
+    evidence_summary: str = Field(min_length=1, max_length=1000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class Insight(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    explanation: str = Field(min_length=1, max_length=1000)
+    evidence_summary: str = Field(min_length=1, max_length=1000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class GrowthArea(BaseModel):
+    area: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=1000)
+    suggested_action: str = Field(min_length=1, max_length=1000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class RecurringTopic(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    occurrence_context: str = Field(min_length=1, max_length=1000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @field_validator("occurrence_context")
+    @classmethod
+    def require_explicit_scope(cls, value: str) -> str:
+        value = value.strip()
+        normalized = value.casefold()
+        if "this interview" not in normalized and "multiple interviews" not in normalized:
+            raise ValueError("Occurrence context must state its interview scope")
+        return value
+
+
+class RecommendedAction(BaseModel):
+    action: str = Field(min_length=1, max_length=1000)
+    time_horizon: Literal["before_next_interview", "this_week", "ongoing"]
+    rationale: str = Field(min_length=1, max_length=1000)
+    related_topics: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("related_topics")
+    @classmethod
+    def bounded_related_topics(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 200, "Related topics")
+
+
+class AnalysisScope(BaseModel):
+    interviews_considered: int = Field(ge=1, le=20)
+    questions_considered: int = Field(ge=0, le=50)
+    notes_available: bool
+    result_recorded: bool
+    data_limitations: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("data_limitations")
+    @classmethod
+    def bounded_data_limitations(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Data limitations")
+
+
+class InterviewOutcomeAnalysisOutput(BaseModel):
+    grounded_observations: list[GroundedObservation] = Field(default_factory=list, max_length=30)
+    possible_strengths: list[Insight] = Field(default_factory=list, max_length=20)
+    possible_growth_areas: list[GrowthArea] = Field(default_factory=list, max_length=20)
+    recurring_topics: list[RecurringTopic] = Field(default_factory=list, max_length=20)
+    recommended_actions: list[RecommendedAction] = Field(default_factory=list, max_length=20)
+    suggested_follow_up_points: list[str] = Field(default_factory=list, max_length=20)
+    uncertainty_notes: list[str] = Field(default_factory=list, max_length=20)
+    limitations: list[str] = Field(min_length=1, max_length=20)
+    analysis_scope: AnalysisScope
+
+    @field_validator("suggested_follow_up_points", "uncertainty_notes", "limitations")
+    @classmethod
+    def bounded_text_lists(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Outcome analysis text")
+
+    @field_validator("limitations")
+    @classmethod
+    def require_decision_limitation(cls, values: list[str]) -> list[str]:
+        normalized = " ".join(values).casefold()
+        if not (
+            "based on user-recorded information" in normalized
+            and "does not determine employer decision-making" in normalized
+        ):
+            raise ValueError(
+                "Limitations must state that analysis is based on user-recorded "
+                "information and does not determine employer decision-making"
+            )
+        return values
+
+
 AISuggestionStatus = Literal[
     "pending",
     "accepted",
@@ -672,7 +770,7 @@ class AISuggestionOut(BaseModel):
     entity_type: str
     entity_id: uuid.UUID | None
     suggestion_type: str
-    proposed_value: InterviewPrepOutput
+    proposed_value: InterviewPrepOutput | InterviewOutcomeAnalysisOutput
     confidence: float | None
     rationale: str | None
     model_provider: str
@@ -681,7 +779,7 @@ class AISuggestionOut(BaseModel):
     output_schema_version: str
     input_snapshot_hash: str
     status: AISuggestionStatus
-    resolved_value: InterviewPrepOutput | None = None
+    resolved_value: InterviewPrepOutput | InterviewOutcomeAnalysisOutput | None = None
     resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -698,4 +796,15 @@ class InterviewPrepResolveRequest(BaseModel):
             raise ValueError("resolved_value is required when status is 'edited'")
         if self.status == "rejected" and self.apply_to_preparation_notes:
             raise ValueError("Cannot apply preparation notes when status is 'rejected'")
+        return self
+
+
+class InterviewOutcomeResolveRequest(BaseModel):
+    status: Literal["accepted", "rejected", "edited"]
+    resolved_value: InterviewOutcomeAnalysisOutput | None = None
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> "InterviewOutcomeResolveRequest":
+        if self.status == "edited" and self.resolved_value is None:
+            raise ValueError("resolved_value is required when status is 'edited'")
         return self

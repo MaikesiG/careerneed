@@ -23,6 +23,8 @@ from app.schemas import (
     InterviewCreate,
     InterviewExtraction,
     InterviewOut,
+    InterviewOutcomeAnalysisOutput,
+    InterviewOutcomeResolveRequest,
     InterviewPrepOutput,
     InterviewPrepResolveRequest,
     InterviewQuestionCreate,
@@ -35,6 +37,10 @@ from app.services.interview_extractor import extract_interview
 from app.services.interview_prep import (
     generate_interview_prep,
     resolve_interview_prep_suggestion,
+)
+from app.services.interview_outcome import (
+    generate_interview_outcome,
+    resolve_interview_outcome_suggestion,
 )
 
 router = APIRouter(tags=["interviews"])
@@ -118,6 +124,14 @@ def _validate_prep_suggestion(suggestion: AISuggestion) -> AISuggestion:
     InterviewPrepOutput.model_validate(suggestion.proposed_value)
     if suggestion.resolved_value is not None:
         InterviewPrepOutput.model_validate(suggestion.resolved_value)
+    return suggestion
+
+
+def _validate_outcome_suggestion(suggestion: AISuggestion) -> AISuggestion:
+    """Reject malformed JSONB before it reaches the outcome response contract."""
+    InterviewOutcomeAnalysisOutput.model_validate(suggestion.proposed_value)
+    if suggestion.resolved_value is not None:
+        InterviewOutcomeAnalysisOutput.model_validate(suggestion.resolved_value)
     return suggestion
 
 
@@ -397,6 +411,74 @@ def resolve_prep_suggestion(
         payload=payload,
     )
     return _validate_prep_suggestion(resolved)
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/outcome-analysis/generate",
+    response_model=AISuggestionOut,
+)
+def generate_interview_outcome_analysis(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AISuggestion:
+    application = _get_owned_application(application_id, current_user, db)
+    interview = _get_owned_interview(application_id, interview_id, current_user, db)
+    suggestion, is_new = generate_interview_outcome(
+        db, current_user, interview, application
+    )
+    response.status_code = 201 if is_new else 200
+    return _validate_outcome_suggestion(suggestion)
+
+
+@router.get(
+    "/applications/{application_id}/interviews/{interview_id}/outcome-analysis",
+    response_model=list[AISuggestionOut],
+)
+def list_interview_outcome_analyses(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    status_filter: AISuggestionStatus | None = Query(default=None, alias="status"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[AISuggestion]:
+    _get_owned_interview(application_id, interview_id, current_user, db)
+    query = (
+        select(AISuggestion)
+        .where(
+            AISuggestion.interview_id == interview_id,
+            AISuggestion.user_id == current_user.id,
+            AISuggestion.suggestion_type == "interview_outcome_analysis",
+        )
+        .order_by(AISuggestion.created_at.desc())
+    )
+    if status_filter:
+        query = query.where(AISuggestion.status == status_filter)
+    return [_validate_outcome_suggestion(item) for item in db.scalars(query).all()]
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/outcome-analysis/{suggestion_id}/resolve",
+    response_model=AISuggestionOut,
+)
+def resolve_interview_outcome_analysis(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    payload: InterviewOutcomeResolveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AISuggestion:
+    _interview, suggestion = _get_owned_suggestion(
+        application_id, interview_id, suggestion_id, current_user, db
+    )
+    if suggestion.suggestion_type != "interview_outcome_analysis":
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    return _validate_outcome_suggestion(
+        resolve_interview_outcome_suggestion(db, suggestion, payload)
+    )
 
 
 
