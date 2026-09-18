@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 JobStatus = Literal["new", "saved", "applied", "dismissed"]
 
@@ -398,6 +398,19 @@ def _validate_notes_text(v: str | None) -> str | None:
     return stripped
 
 
+def _bounded_text_list(values: list[str], max_item_length: int, field_name: str) -> list[str]:
+    """Normalize generated text arrays and cap every individual item."""
+    normalized: list[str] = []
+    for value in values:
+        value = value.strip()
+        if not value:
+            raise ValueError(f"{field_name} cannot contain blank items")
+        if len(value) > max_item_length:
+            raise ValueError(f"{field_name} items cannot exceed {max_item_length} characters")
+        normalized.append(value)
+    return normalized
+
+
 def _validate_leetcode_url(v: str | None) -> str | None:
     if v is None:
         return None
@@ -510,3 +523,179 @@ class InterviewQuestionOut(BaseModel):
     updated_at: datetime
 
 
+class PrepPriority(BaseModel):
+    title: str = Field(max_length=255)
+    reason: str = Field(max_length=2000)
+    recommended_action: str = Field(max_length=2000)
+    priority: Literal["high", "medium", "low"]
+
+    @field_validator("title", "reason", "recommended_action")
+    @classmethod
+    def non_empty_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preparation fields cannot be blank")
+        return value
+
+
+class TechnicalTopic(BaseModel):
+    topic: str = Field(max_length=255)
+    reason: str = Field(max_length=2000)
+    recommended_actions: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("topic", "reason")
+    @classmethod
+    def non_empty_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Technical topic fields cannot be blank")
+        return value
+
+    @field_validator("recommended_actions")
+    @classmethod
+    def bounded_actions(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Recommended actions")
+
+
+class BehavioralStory(BaseModel):
+    story_or_evidence: str = Field(max_length=2000)
+    relevance: str = Field(max_length=2000)
+    suggested_angle: str = Field(max_length=2000)
+
+    @field_validator("story_or_evidence", "relevance", "suggested_angle")
+    @classmethod
+    def non_empty_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Behavioral story fields cannot be blank")
+        return value
+
+
+class LikelyQuestion(BaseModel):
+    question: str = Field(max_length=2000)
+    category: QuestionCategory = "technical"
+    reason: str = Field(max_length=2000)
+    recommended_angle: str = Field(max_length=2000)
+
+    @field_validator("question", "reason", "recommended_angle")
+    @classmethod
+    def non_empty_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Likely question fields cannot be blank")
+        return value
+
+
+class GapWarning(BaseModel):
+    area: str = Field(max_length=255)
+    reason: str = Field(max_length=2000)
+    suggested_action: str = Field(max_length=2000)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("area", "reason", "suggested_action")
+    @classmethod
+    def non_empty_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Gap warning fields cannot be blank")
+        return value
+
+
+class ReadinessBreakdown(BaseModel):
+    technical_depth: int | None = Field(default=None, ge=0, le=100)
+    role_context: int | None = Field(default=None, ge=0, le=100)
+    behavioral_examples: int | None = Field(default=None, ge=0, le=100)
+    logistics_and_preparation: int | None = Field(default=None, ge=0, le=100)
+
+
+class ReadinessAssessment(BaseModel):
+    score: int | None = Field(default=None, ge=0, le=100)
+    summary: str = Field(max_length=2000)
+    breakdown: ReadinessBreakdown = Field(default_factory=ReadinessBreakdown)
+    limitations: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("summary")
+    @classmethod
+    def non_empty_summary(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Readiness summary cannot be blank")
+        return value
+
+    @field_validator("limitations")
+    @classmethod
+    def bounded_limitations(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Limitations")
+
+
+class InterviewPrepOutput(BaseModel):
+    summary: str = Field(max_length=3000)
+    preparation_priorities: list[PrepPriority] = Field(default_factory=list, max_length=20)
+    technical_topics: list[TechnicalTopic] = Field(default_factory=list, max_length=20)
+    behavioral_stories: list[BehavioralStory] = Field(default_factory=list, max_length=20)
+    likely_questions: list[LikelyQuestion] = Field(default_factory=list, max_length=30)
+    questions_to_ask: list[str] = Field(default_factory=list, max_length=20)
+    gap_warnings: list[GapWarning] = Field(default_factory=list, max_length=20)
+    limitations_or_uncertainties: list[str] = Field(default_factory=list, max_length=20)
+    readiness: ReadinessAssessment
+
+    @field_validator("summary")
+    @classmethod
+    def non_empty_summary(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Summary cannot be blank")
+        return value
+
+    @field_validator("questions_to_ask", "limitations_or_uncertainties")
+    @classmethod
+    def bounded_text_lists(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Text list")
+
+
+AISuggestionStatus = Literal[
+    "pending",
+    "accepted",
+    "rejected",
+    "edited",
+    "expired",
+    "failed",
+    "superseded",
+]
+
+
+class AISuggestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    interview_id: uuid.UUID
+    entity_type: str
+    entity_id: uuid.UUID | None
+    suggestion_type: str
+    proposed_value: InterviewPrepOutput
+    confidence: float | None
+    rationale: str | None
+    model_provider: str
+    model_version: str
+    prompt_version: str
+    output_schema_version: str
+    input_snapshot_hash: str
+    status: AISuggestionStatus
+    resolved_value: InterviewPrepOutput | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InterviewPrepResolveRequest(BaseModel):
+    status: Literal["accepted", "rejected", "edited"]
+    resolved_value: InterviewPrepOutput | None = None
+    apply_to_preparation_notes: bool = False
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> "InterviewPrepResolveRequest":
+        if self.status == "edited" and self.resolved_value is None:
+            raise ValueError("resolved_value is required when status is 'edited'")
+        if self.status == "rejected" and self.apply_to_preparation_notes:
+            raise ValueError("Cannot apply preparation notes when status is 'rejected'")
+        return self

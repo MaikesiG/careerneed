@@ -1,15 +1,40 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
 from app.main import app
-from app.models import AISuggestion, Application, Interview, InterviewQuestion, Job, User
+from app.models import (
+    AISuggestion,
+    Application,
+    Interview,
+    InterviewQuestion,
+    Job,
+    Resume,
+    UsageLog,
+    User,
+)
+from app.schemas import (
+    AISuggestionOut,
+    BehavioralStory,
+    GapWarning,
+    InterviewPrepOutput,
+    LikelyQuestion,
+    PrepPriority,
+    ReadinessAssessment,
+    ReadinessBreakdown,
+    TechnicalTopic,
+)
+from app.services.interview_prep import (
+    _generate_deterministic_fallback,
+    build_minimized_context,
+)
 
 
 @pytest.fixture
@@ -886,3 +911,782 @@ def test_parent_interview_delete_cascades_to_questions(
     ).status_code == 404
 
 
+def test_interview_prep_routes_require_authentication(client: TestClient) -> None:
+    app_id = uuid.uuid4()
+    int_id = uuid.uuid4()
+    sugg_id = uuid.uuid4()
+
+    assert client.post(f"/applications/{app_id}/interviews/{int_id}/prep/generate").status_code == 401
+    assert client.get(f"/applications/{app_id}/interviews/{int_id}/prep").status_code == 401
+    assert client.post(f"/applications/{app_id}/interviews/{int_id}/prep/{sugg_id}/resolve", json={"status": "accepted"}).status_code == 401
+
+
+def test_interview_prep_cross_user_isolation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "prep-owner@example.test")
+    owner_app = create_application(db_session, user_id=uuid.UUID(owner["id"]))
+    interview = Interview(
+        application_id=owner_app.id,
+        title="Owner Technical Interview",
+        interview_type="technical",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    gen_resp = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert gen_resp.status_code == 201
+    sugg_id = gen_resp.json()["id"]
+
+    other_client = TestClient(app)
+    try:
+        register(other_client, "prep-intruder@example.test")
+
+        # User B cannot generate prep for User A's interview
+        assert other_client.post(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate"
+        ).status_code == 404
+
+        # User B cannot list User A's prep suggestions
+        assert other_client.get(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/prep"
+        ).status_code == 404
+
+        # User B cannot resolve User A's suggestion
+        assert other_client.post(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
+            json={"status": "accepted"},
+        ).status_code == 404
+    finally:
+        other_client.close()
+
+
+def test_interview_prep_hierarchy_mismatch_returns_404(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-hierarchy-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    app1 = create_application(db_session, user_id=user_id, company_name="Company 1")
+    app2 = create_application(db_session, user_id=user_id, company_name="Company 2")
+
+    int1 = Interview(application_id=app1.id, title="Int 1")
+    int2 = Interview(application_id=app2.id, title="Int 2")
+    db_session.add_all([int1, int2])
+    db_session.flush()
+
+    gen_resp = client.post(f"/applications/{app1.id}/interviews/{int1.id}/prep/generate")
+    assert gen_resp.status_code == 201
+    sugg_id = gen_resp.json()["id"]
+
+    # Wrong application_id for int1 generate
+    assert client.post(
+        f"/applications/{app2.id}/interviews/{int1.id}/prep/generate"
+    ).status_code == 404
+
+    # Wrong application_id for int1 list
+    assert client.get(
+        f"/applications/{app2.id}/interviews/{int1.id}/prep"
+    ).status_code == 404
+
+    # Wrong application_id for int1 resolve
+    assert client.post(
+        f"/applications/{app2.id}/interviews/{int1.id}/prep/{sugg_id}/resolve",
+        json={"status": "accepted"},
+    ).status_code == 404
+
+    # Wrong interview_id for sugg_id resolve
+    assert client.post(
+        f"/applications/{app1.id}/interviews/{int2.id}/prep/{sugg_id}/resolve",
+        json={"status": "accepted"},
+    ).status_code == 404
+
+    # Non-existent suggestion_id resolve
+    assert client.post(
+        f"/applications/{app1.id}/interviews/{int1.id}/prep/{uuid.uuid4()}/resolve",
+        json={"status": "accepted"},
+    ).status_code == 404
+
+
+def test_interview_prep_structured_llm_generation_and_usage_logging(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = register(client, "prep-llm-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    owner_app = create_application(
+        db_session,
+        user_id=user_id,
+        title="Staff Software Engineer",
+        company_name="OpenAI",
+    )
+    owner_app.job.description = "Design and maintain high-throughput distributed message brokers."
+    db_session.flush()
+
+    interview = Interview(
+        application_id=owner_app.id,
+        title="System Architecture Round",
+        interview_type="system_design",
+        duration_minutes=60,
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    mock_output = InterviewPrepOutput(
+        summary="Targeted preparation plan for Staff Software Engineer at OpenAI.",
+        preparation_priorities=[
+            PrepPriority(
+                title="Distributed Message Brokers",
+                reason="Directly aligned with core role requirements",
+                recommended_action="Review Kafka partition rebalance internals and zero-copy transfer",
+                priority="high",
+            )
+        ],
+        technical_topics=[
+            TechnicalTopic(
+                topic="Consensus Algorithms",
+                reason="Crucial for distributed coordinator state",
+                recommended_actions=["Review Raft log replication and election safety"],
+            )
+        ],
+        behavioral_stories=[
+            BehavioralStory(
+                story_or_evidence="Architected multi-region failover cluster",
+                relevance="Demonstrates system resilience and leadership",
+                suggested_angle="Focus on SLO preservation and automated recovery validation",
+            )
+        ],
+        likely_questions=[
+            LikelyQuestion(
+                question="How would you ensure strict ordering in a multi-partition topic during broker failover?",
+                category="system_design",
+                reason="Evaluates edge-case understanding in event streaming",
+                recommended_angle="Discuss partition leader epochs, idempotent producers, and consumer offsets",
+            )
+        ],
+        questions_to_ask=[
+            "What is the current p99 replication latency across availability zones?"
+        ],
+        gap_warnings=[
+            GapWarning(
+                area="Network Topologies",
+                reason="Limited context on cross-region link guarantees",
+                suggested_action="Inquire about multi-region networking constraints during the interview",
+                confidence=0.82,
+            )
+        ],
+        limitations_or_uncertainties=[
+            "Based on available job description excerpt and candidate profile"
+        ],
+        readiness=ReadinessAssessment(
+            score=88,
+            summary="Based on the available preparation context, candidate shows strong architectural alignment.",
+            breakdown=ReadinessBreakdown(
+                technical_depth=90,
+                role_context=85,
+                behavioral_examples=85,
+                logistics_and_preparation=92,
+            ),
+            limitations=["Evaluation is limited to candidate-provided context"],
+        ),
+    )
+
+    def mock_call_llm(api_key: str, base_url: str | None, model: str, context: dict) -> tuple[InterviewPrepOutput, int]:
+        return mock_output, 240
+
+    monkeypatch.setattr("app.services.interview_prep._call_llm_for_prep", mock_call_llm)
+
+    # Save BYOK credential for user
+    save_cred = client.post(
+        "/settings/llm-credentials",
+        json={
+            "provider": "openai",
+            "api_key": "sk-mock-openai-secret-key-12345",
+        },
+    )
+    assert save_cred.status_code == 201
+
+    # Generate preparation plan
+    resp = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert resp.status_code == 201
+    body = resp.json()
+
+    assert body["status"] == "pending"
+    assert body["suggestion_type"] == "interview_prep"
+    assert body["model_provider"] == "byok_openai"
+    assert body["model_version"] == "gpt-4o-mini"
+    assert body["prompt_version"] == "interview-prep-v1"
+    assert body["output_schema_version"] == "1.0"
+    assert body["confidence"] == 0.88
+    assert body["proposed_value"]["summary"] == "Targeted preparation plan for Staff Software Engineer at OpenAI."
+    assert body["proposed_value"]["readiness"]["score"] == 88
+
+    # Verify UsageLog recorded
+    db_session.expire_all()
+    usage = db_session.scalar(
+        select(UsageLog).where(
+            UsageLog.user_id == user_id,
+            UsageLog.action == "interview_prep_generate",
+        )
+    )
+    assert usage is not None
+    assert usage.tokens_used == 240
+    assert usage.provider == "byok_openai"
+
+    # Verify no raw secrets in response
+    assert "sk-mock-openai" not in resp.text
+
+
+def test_interview_prep_idempotency_and_quota_preservation(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = register(client, "prep-idempotency-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    owner_app = create_application(db_session, user_id=user_id)
+    interview = Interview(application_id=owner_app.id, title="Round 1")
+    db_session.add(interview)
+    db_session.flush()
+
+    call_count = 0
+
+    def mock_call_llm(api_key: str, base_url: str | None, model: str, context: dict) -> tuple[InterviewPrepOutput, int]:
+        nonlocal call_count
+        call_count += 1
+        return InterviewPrepOutput(
+            summary="Mock summary",
+            readiness=ReadinessAssessment(
+                score=75,
+                summary="Ready",
+                breakdown=ReadinessBreakdown(),
+            ),
+        ), 100
+
+    monkeypatch.setattr("app.services.interview_prep._call_llm_for_prep", mock_call_llm)
+
+    client.post(
+        "/settings/llm-credentials",
+        json={"provider": "openai", "api_key": "sk-byok-test-key-12345"},
+    )
+
+    # First request creates new suggestion (201 Created)
+    resp1 = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert resp1.status_code == 201
+    sugg1_id = resp1.json()["id"]
+    assert call_count == 1
+
+    # Second request with identical context returns existing pending suggestion (200 OK)
+    resp2 = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert resp2.status_code == 200
+    assert resp2.json()["id"] == sugg1_id
+    # Provider was not called a second time
+    assert call_count == 1
+
+    # UsageLog count for this action remains 1
+    db_session.expire_all()
+    usage_count = db_session.scalar(
+        select(func.count()).where(
+            UsageLog.user_id == user_id,
+            UsageLog.action == "interview_prep_generate",
+        )
+    )
+    assert usage_count == 1
+
+
+def test_interview_prep_deterministic_fallback_and_readiness_rules(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-fallback-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    owner_app = create_application(db_session, user_id=user_id, title="Backend Engineer", company_name="Stripe")
+    interview = Interview(
+        application_id=owner_app.id,
+        title="Coding Assessment",
+        interview_type="coding",
+        scheduled_at=datetime.now(timezone.utc) + timedelta(days=3),
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    # Exhaust free-tier platform calls so user is in basic mode
+    for _ in range(5):
+        db_session.add(
+            UsageLog(
+                user_id=user_id,
+                provider="platform_openai",
+                action="dummy_action",
+                tokens_used=10,
+            )
+        )
+    db_session.commit()
+
+    resp = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert resp.status_code == 201
+    data = resp.json()
+
+    assert data["model_provider"] == "fallback"
+    assert data["model_version"] == "deterministic-v1"
+    assert data["confidence"] is None
+
+    prep = data["proposed_value"]
+    assert "Backend Engineer" in prep["summary"]
+    assert "Stripe" in prep["summary"]
+    assert len(prep["preparation_priorities"]) >= 1
+    assert len(prep["likely_questions"]) >= 1
+    assert len(prep["questions_to_ask"]) >= 1
+
+    # Readiness rules adherence: score is null, breakdown has limitations
+    readiness = prep["readiness"]
+    assert readiness["score"] is None
+    assert readiness["breakdown"]["technical_depth"] is None
+    assert readiness["breakdown"]["logistics_and_preparation"] == 70
+    assert any("fallback mode" in lim for lim in readiness["limitations"])
+
+    # Fallback consumes no quota
+    fallback_usage = db_session.scalar(
+        select(UsageLog).where(
+            UsageLog.user_id == user_id,
+            UsageLog.action == "interview_prep_generate",
+        )
+    )
+    assert fallback_usage is None
+
+
+def test_interview_prep_provider_failure_falls_back_without_output_or_quota_debit(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    user = register(client, "prep-provider-failure@example.test")
+    user_id = uuid.UUID(user["id"])
+    application = create_application(db_session, user_id=user_id)
+    interview = Interview(
+        application_id=application.id,
+        title="Provider Failure Round",
+        preparation_notes="private preparation context marker",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.interview_prep._get_active_provider",
+        lambda: {
+            "api_key": "test-provider-key",
+            "base_url": None,
+            "model": "test-model",
+            "name": "openai",
+        },
+    )
+
+    def fail_provider(*args: object, **kwargs: object) -> tuple[InterviewPrepOutput, int]:
+        raise RuntimeError("sensitive provider body marker")
+
+    monkeypatch.setattr(
+        "app.services.interview_prep._call_llm_for_prep",
+        fail_provider,
+    )
+
+    response = client.post(
+        f"/applications/{application.id}/interviews/{interview.id}/prep/generate"
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["model_provider"] == "fallback"
+    assert body["model_version"] == "deterministic-v1"
+    InterviewPrepOutput.model_validate(body["proposed_value"])
+
+    captured = capsys.readouterr()
+    combined_output = captured.out + captured.err
+    assert "sensitive provider body marker" not in combined_output
+    assert "private preparation context marker" not in combined_output
+    assert "test-provider-key" not in combined_output
+
+    usage_count = db_session.scalar(
+        select(func.count()).where(
+            UsageLog.user_id == user_id,
+            UsageLog.action == "interview_prep_generate",
+        )
+    )
+    assert usage_count == 0
+
+
+def test_interview_prep_resolve_accepted_with_notes_application(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-resolve-user@example.test")
+    owner_app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(
+        application_id=owner_app.id,
+        title="Technical Screen",
+        preparation_notes="Candidate notes: Review past Kafka projects.",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    gen_resp = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
+    assert gen_resp.status_code == 201
+    sugg_id = gen_resp.json()["id"]
+
+    # Resolve with accepted and apply_to_preparation_notes = True
+    resolve_resp = client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
+        json={
+            "status": "accepted",
+            "apply_to_preparation_notes": True,
+        },
+    )
+    assert resolve_resp.status_code == 200
+    res_data = resolve_resp.json()
+    assert res_data["status"] == "accepted"
+    assert res_data["resolved_at"] is not None
+    assert res_data["resolved_value"] is not None
+
+    # Check that interview.preparation_notes preserved user notes and appended delimited block
+    db_session.expire_all()
+    updated_interview = db_session.get(Interview, interview.id)
+    assert updated_interview is not None
+    assert "Candidate notes: Review past Kafka projects." in updated_interview.preparation_notes
+    assert f"--- [AI Preparation Plan (Suggestion: {sugg_id})] ---" in updated_interview.preparation_notes
+    assert f"--- [End AI Preparation Plan (Suggestion: {sugg_id})] ---" in updated_interview.preparation_notes
+
+    # Resolving an already-resolved suggestion returns 400
+    retry_resolve = client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
+        json={"status": "accepted", "apply_to_preparation_notes": True},
+    )
+    assert retry_resolve.status_code == 400
+    assert "Only pending suggestions can be resolved" in retry_resolve.json()["detail"]
+    db_session.expire_all()
+    notes_after_retry = db_session.get(Interview, interview.id).preparation_notes
+    assert notes_after_retry.count(
+        f"--- [AI Preparation Plan (Suggestion: {sugg_id})] ---"
+    ) == 1
+    assert notes_after_retry.count(
+        f"--- [End AI Preparation Plan (Suggestion: {sugg_id})] ---"
+    ) == 1
+
+
+def test_interview_prep_resolve_rejected_and_edited_validation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-resolve-types@example.test")
+    user_id = uuid.UUID(user["id"])
+    owner_app = create_application(db_session, user_id=user_id)
+    int1 = Interview(application_id=owner_app.id, title="Round 1", preparation_notes="Pre-existing notes")
+    db_session.add(int1)
+    db_session.flush()
+
+    # Generate suggestion
+    sugg1 = client.post(f"/applications/{owner_app.id}/interviews/{int1.id}/prep/generate").json()
+
+    # Reject with apply_to_notes=True is rejected with 422
+    rej_invalid = client.post(
+        f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg1['id']}/resolve",
+        json={"status": "rejected", "apply_to_preparation_notes": True},
+    )
+    assert rej_invalid.status_code == 422
+
+    # Reject cleanly with 200
+    rej_valid = client.post(
+        f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg1['id']}/resolve",
+        json={"status": "rejected", "apply_to_preparation_notes": False},
+    )
+    assert rej_valid.status_code == 200
+    assert rej_valid.json()["status"] == "rejected"
+
+    # Notes were not touched
+    db_session.expire_all()
+    assert db_session.get(Interview, int1.id).preparation_notes == "Pre-existing notes"
+
+    # After rejection, a new generation is permitted (not blocked by rejected suggestion)
+    sugg2 = client.post(f"/applications/{owner_app.id}/interviews/{int1.id}/prep/generate").json()
+    assert sugg2["id"] != sugg1["id"]
+    assert sugg2["status"] == "pending"
+
+    # Edited status without resolved_value is rejected with 422
+    edit_invalid = client.post(
+        f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg2['id']}/resolve",
+        json={"status": "edited"},
+    )
+    assert edit_invalid.status_code == 422
+
+    # Edited with valid InterviewPrepOutput payload
+    custom_prep = sugg2["proposed_value"]
+    custom_prep["summary"] = "Human-tailored preparation focus on live database migrations."
+
+    edit_valid = client.post(
+        f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg2['id']}/resolve",
+        json={
+            "status": "edited",
+            "resolved_value": custom_prep,
+            "apply_to_preparation_notes": True,
+        },
+    )
+    assert edit_valid.status_code == 200
+    assert edit_valid.json()["status"] == "edited"
+    assert edit_valid.json()["resolved_value"]["summary"] == "Human-tailored preparation focus on live database migrations."
+
+    # Delimited block appended with custom summary
+    db_session.expire_all()
+    assert "Human-tailored preparation focus on live database migrations." in db_session.get(Interview, int1.id).preparation_notes
+
+
+def test_interview_prep_list_and_filtering(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-list-user@example.test")
+    owner_app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(application_id=owner_app.id, title="List Round")
+    db_session.add(interview)
+    db_session.flush()
+
+    # Generate first suggestion and accept it
+    s1 = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate").json()
+    client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{s1['id']}/resolve",
+        json={"status": "accepted"},
+    )
+
+    # Change context (e.g. interviewer_title) and generate second suggestion (pending)
+    interview.interviewer_title = "VP of Engineering"
+    db_session.commit()
+
+    s2 = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate").json()
+    assert s2["id"] != s1["id"]
+
+    # List all suggestions
+    all_list = client.get(f"/applications/{owner_app.id}/interviews/{interview.id}/prep").json()
+    assert len(all_list) == 2
+    assert all_list[0]["id"] == s2["id"]  # newest first
+    assert all_list[1]["id"] == s1["id"]
+
+    # Filter by pending
+    pending_list = client.get(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep?status=pending"
+    ).json()
+    assert len(pending_list) == 1
+    assert pending_list[0]["id"] == s2["id"]
+
+    # Filter by accepted
+    accepted_list = client.get(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep?status=accepted"
+    ).json()
+    assert len(accepted_list) == 1
+    assert accepted_list[0]["id"] == s1["id"]
+
+
+def test_interview_prep_response_schema_rejects_unstructured_json() -> None:
+    valid_prep = InterviewPrepOutput(
+        summary="Structured plan",
+        readiness=ReadinessAssessment(
+            summary="Based on the available preparation context, review the plan.",
+        ),
+    )
+    suggestion_data = {
+        "id": uuid.uuid4(),
+        "interview_id": uuid.uuid4(),
+        "entity_type": "interview",
+        "entity_id": uuid.uuid4(),
+        "suggestion_type": "interview_prep",
+        "proposed_value": valid_prep.model_dump(mode="json"),
+        "confidence": None,
+        "rationale": None,
+        "model_provider": "fallback",
+        "model_version": "deterministic-v1",
+        "prompt_version": "interview-prep-v1",
+        "output_schema_version": "1.0",
+        "input_snapshot_hash": "a" * 64,
+        "status": "pending",
+        "resolved_value": None,
+        "resolved_at": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    assert AISuggestionOut.model_validate(suggestion_data).proposed_value == valid_prep
+
+    invalid_proposed = {**suggestion_data, "proposed_value": {"arbitrary": "json"}}
+    with pytest.raises(ValidationError):
+        AISuggestionOut.model_validate(invalid_proposed)
+
+    invalid_resolved = {**suggestion_data, "resolved_value": {"arbitrary": "json"}}
+    with pytest.raises(ValidationError):
+        AISuggestionOut.model_validate(invalid_resolved)
+
+
+def test_interview_prep_context_minimizes_interviewer_identity_and_bounds_title(
+    db_session: Session,
+) -> None:
+    user = User(email="prep-context@example.test")
+    db_session.add(user)
+    db_session.flush()
+    application = create_application(db_session, user_id=user.id)
+    application.notes = "n" * 1_500
+    application.job.description = "d" * 4_000
+    resume = Resume(
+        user_id=user.id,
+        filename="bounded-resume.txt",
+        raw_text="not sent to provider",
+        label="l" * 100,
+        skills=", ".join(f"skill-{index}-" + ("s" * 120) for index in range(60)),
+    )
+    db_session.add(resume)
+    db_session.flush()
+    application.resume_id = resume.id
+    application.resume = resume
+    prior_interview = Interview(
+        application_id=application.id,
+        title="Completed Round",
+        status="completed",
+    )
+    db_session.add(prior_interview)
+    db_session.flush()
+    for index in range(25):
+        db_session.add(
+            InterviewQuestion(
+                interview_id=prior_interview.id,
+                question=f"Question {index} " + ("q" * 600),
+                answer_notes="a" * 600,
+                reflection="r" * 600,
+            )
+        )
+    db_session.flush()
+    interview = Interview(
+        id=uuid.uuid4(),
+        application_id=application.id,
+        title="Technical Round",
+        interviewer_name="Private Person",
+        interviewer_email="private.person@example.test",
+        interviewer_title="Principal Engineer " + ("x" * 300),
+        preparation_notes="p" * 2_500,
+    )
+
+    context = build_minimized_context(db_session, application, interview)
+    interview_context = context["interview"]
+
+    assert "interviewer_name" not in interview_context
+    assert "interviewer_email" not in interview_context
+    assert "Private Person" not in str(context)
+    assert "private.person@example.test" not in str(context)
+    assert interview_context["interviewer_title"].startswith("Principal Engineer")
+    assert len(interview_context["interviewer_title"]) == 200
+    assert len(interview_context["preparation_notes"]) == 2_000
+    assert len(context["application"]["notes"]) == 1_000
+    assert len(context["application"]["job_description"]) == 3_000
+    assert len(context["application"]["resume_label"]) == 100
+    assert len(context["application"]["resume_skills"]) == 50
+    assert all(
+        len(skill) <= 100 for skill in context["application"]["resume_skills"]
+    )
+    assert len(context["prior_questions"]) == 20
+    assert all(len(item["question"]) <= 500 for item in context["prior_questions"])
+    assert all(len(item["answer_notes"]) <= 500 for item in context["prior_questions"])
+    assert all(len(item["reflection"]) <= 500 for item in context["prior_questions"])
+    assert "not sent to provider" not in str(context)
+
+
+def test_interview_prep_serializes_naive_and_aware_scheduled_times_safely(
+    db_session: Session,
+) -> None:
+    user = User(email="prep-time-context@example.test")
+    db_session.add(user)
+    db_session.flush()
+    application = create_application(db_session, user_id=user.id)
+
+    naive_interview = Interview(
+        id=uuid.uuid4(),
+        application_id=application.id,
+        title="Naive Time Round",
+        scheduled_at=datetime(2026, 9, 20, 14, 30),
+        timezone="America/New_York",
+    )
+    naive_context = build_minimized_context(db_session, application, naive_interview)
+    naive_time = naive_context["interview"]["scheduled_at"]
+
+    assert naive_time["value"] == "2026-09-20T14:30:00"
+    assert naive_time["timezone_awareness"] == "naive"
+    assert naive_time["timezone_context"] == "America/New_York"
+    assert "without a UTC offset" in naive_time["limitation"]
+    fallback = _generate_deterministic_fallback(naive_context)
+    assert naive_time["limitation"] in fallback.limitations_or_uncertainties
+    assert naive_time["limitation"] in fallback.readiness.limitations
+
+    aware_interview = Interview(
+        id=uuid.uuid4(),
+        application_id=application.id,
+        title="Aware Time Round",
+        scheduled_at=datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc),
+        timezone="UTC",
+    )
+    aware_context = build_minimized_context(db_session, application, aware_interview)
+    aware_time = aware_context["interview"]["scheduled_at"]
+
+    assert aware_time["value"] == "2026-09-20T18:30:00+00:00"
+    assert aware_time["timezone_awareness"] == "aware"
+    assert aware_time["timezone_context"] == "UTC"
+    assert aware_time["limitation"] is None
+
+
+def test_interview_prep_filter_supports_all_persisted_statuses(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "prep-statuses@example.test")
+    user_id = uuid.UUID(user["id"])
+    application = create_application(db_session, user_id=user_id)
+    interview = Interview(application_id=application.id, title="Status Filter Round")
+    db_session.add(interview)
+    db_session.flush()
+    prep = InterviewPrepOutput(
+        summary="Status filter plan",
+        readiness=ReadinessAssessment(
+            summary="Based on the available preparation context, review the plan.",
+        ),
+    ).model_dump(mode="json")
+    statuses = [
+        "pending",
+        "accepted",
+        "rejected",
+        "edited",
+        "expired",
+        "failed",
+        "superseded",
+    ]
+    for index, status in enumerate(statuses):
+        db_session.add(
+            AISuggestion(
+                user_id=user_id,
+                interview_id=interview.id,
+                entity_id=interview.id,
+                suggestion_type="interview_prep",
+                proposed_value=prep,
+                model_provider="fallback",
+                model_version="deterministic-v1",
+                prompt_version="interview-prep-v1",
+                output_schema_version="1.0",
+                input_snapshot_hash=f"{index:064x}",
+                status=status,
+            )
+        )
+    db_session.commit()
+
+    endpoint = f"/applications/{application.id}/interviews/{interview.id}/prep"
+    all_response = client.get(endpoint)
+    assert all_response.status_code == 200
+    assert {item["status"] for item in all_response.json()} == set(statuses)
+
+    for status in statuses:
+        response = client.get(f"{endpoint}?status={status}")
+        assert response.status_code == 200
+        assert [item["status"] for item in response.json()] == [status]
+
+    assert client.get(f"{endpoint}?status=unknown").status_code == 422

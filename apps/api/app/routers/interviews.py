@@ -7,12 +7,24 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, Interview, InterviewQuestion, Job, User, utcnow
+from app.models import (
+    AISuggestion,
+    Application,
+    Interview,
+    InterviewQuestion,
+    Job,
+    User,
+    utcnow,
+)
 from app.schemas import (
+    AISuggestionOut,
+    AISuggestionStatus,
     FastCaptureRequest,
     InterviewCreate,
     InterviewExtraction,
     InterviewOut,
+    InterviewPrepOutput,
+    InterviewPrepResolveRequest,
     InterviewQuestionCreate,
     InterviewQuestionOut,
     InterviewQuestionUpdate,
@@ -20,6 +32,10 @@ from app.schemas import (
     UpcomingInterviewOut,
 )
 from app.services.interview_extractor import extract_interview
+from app.services.interview_prep import (
+    generate_interview_prep,
+    resolve_interview_prep_suggestion,
+)
 
 router = APIRouter(tags=["interviews"])
 
@@ -75,6 +91,34 @@ def _get_owned_question(
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
     return question
+
+
+def _get_owned_suggestion(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    current_user: User,
+    db: Session,
+) -> tuple[Interview, AISuggestion]:
+    interview = _get_owned_interview(application_id, interview_id, current_user, db)
+    suggestion = db.scalar(
+        select(AISuggestion).where(
+            AISuggestion.id == suggestion_id,
+            AISuggestion.interview_id == interview_id,
+            AISuggestion.user_id == current_user.id,
+        )
+    )
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    return interview, suggestion
+
+
+def _validate_prep_suggestion(suggestion: AISuggestion) -> AISuggestion:
+    """Reject malformed JSONB before it reaches the prep response contract."""
+    InterviewPrepOutput.model_validate(suggestion.proposed_value)
+    if suggestion.resolved_value is not None:
+        InterviewPrepOutput.model_validate(suggestion.resolved_value)
+    return suggestion
 
 
 @router.get(
@@ -272,6 +316,87 @@ def delete_interview_question(
     db.delete(question)
     db.commit()
     return Response(status_code=204)
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/prep/generate",
+    response_model=AISuggestionOut,
+)
+def generate_interview_prep_plan(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AISuggestion:
+    application = _get_owned_application(application_id, current_user, db)
+    interview = _get_owned_interview(application_id, interview_id, current_user, db)
+
+    suggestion, is_new = generate_interview_prep(db, current_user, interview, application)
+    if is_new:
+        response.status_code = 201
+    else:
+        response.status_code = 200
+    return _validate_prep_suggestion(suggestion)
+
+
+@router.get(
+    "/applications/{application_id}/interviews/{interview_id}/prep",
+    response_model=list[AISuggestionOut],
+)
+def list_interview_prep_suggestions(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    status_filter: AISuggestionStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[AISuggestion]:
+    """Return all prep suggestions newest-first unless a status is supplied."""
+    _get_owned_interview(application_id, interview_id, current_user, db)
+
+    query = (
+        select(AISuggestion)
+        .where(
+            AISuggestion.interview_id == interview_id,
+            AISuggestion.user_id == current_user.id,
+            AISuggestion.suggestion_type == "interview_prep",
+        )
+        .order_by(AISuggestion.created_at.desc())
+    )
+    if status_filter:
+        query = query.where(AISuggestion.status == status_filter)
+
+    suggestions = list(db.scalars(query).all())
+    return [_validate_prep_suggestion(item) for item in suggestions]
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/prep/{suggestion_id}/resolve",
+    response_model=AISuggestionOut,
+)
+def resolve_prep_suggestion(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    payload: InterviewPrepResolveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AISuggestion:
+    interview, suggestion = _get_owned_suggestion(
+        application_id, interview_id, suggestion_id, current_user, db
+    )
+
+    resolved = resolve_interview_prep_suggestion(
+        db=db,
+        current_user=current_user,
+        interview=interview,
+        suggestion=suggestion,
+        payload=payload,
+    )
+    return _validate_prep_suggestion(resolved)
 
 
 
