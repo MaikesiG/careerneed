@@ -2,11 +2,13 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
 from app.main import app
-from app.models import Application, Interview, Job
+from app.models import Application, ApplicationContact, Interview, InterviewParticipant, Job
 
 
 @pytest.fixture
@@ -293,3 +295,149 @@ def test_deleting_contact_removes_participant_link_not_interview(
     assert client.get(
         f"/applications/{application.id}/interviews/{interview.id}"
     ).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("role", "expected_contact_type"),
+    [
+        ("interviewer", "interviewer"),
+        ("coordinator", "other"),
+        ("observer", "other"),
+    ],
+)
+def test_adding_participant_creates_linked_application_contact_snapshot(
+    client: TestClient,
+    db_session: Session,
+    role: str,
+    expected_contact_type: str,
+) -> None:
+    user = register(client, f"participant-snapshot-{role}@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Engineer")
+    interview = create_interview(db_session, application=application, title="Interview")
+    contact = client.post("/contacts", json=contact_payload()).json()
+
+    response = client.post(
+        participant_path(application, interview),
+        json={"contact_id": contact["id"], "role": role},
+    )
+    assert response.status_code == 201
+
+    link = db_session.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.application_id == application.id,
+            ApplicationContact.contact_id == uuid.UUID(contact["id"]),
+        )
+    )
+    assert link is not None
+    assert link.name == "Avery Recruiter"
+    assert link.email == "avery@example.com"
+    assert link.linkedin_url == "https://www.linkedin.com/in/avery-recruiter"
+    assert link.notes is None
+    assert link.contact_type == expected_contact_type
+
+
+def test_reusing_contact_in_application_does_not_duplicate_or_overwrite_link(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "participant-existing-link@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Engineer")
+    first_interview = create_interview(db_session, application=application, title="First")
+    second_interview = create_interview(db_session, application=application, title="Second")
+    contact = client.post("/contacts", json=contact_payload()).json()
+    existing_link = ApplicationContact(
+        application_id=application.id,
+        contact_id=uuid.UUID(contact["id"]),
+        name="Preserved snapshot",
+        contact_type="recruiter",
+        email="preserved@example.test",
+        linkedin_url=None,
+        notes="Preserved notes",
+    )
+    db_session.add(existing_link)
+    db_session.flush()
+
+    for interview, role in ((first_interview, "interviewer"), (second_interview, "observer")):
+        response = client.post(
+            participant_path(application, interview),
+            json={"contact_id": contact["id"], "role": role},
+        )
+        assert response.status_code == 201
+
+    links = list(
+        db_session.scalars(
+            select(ApplicationContact).where(
+                ApplicationContact.application_id == application.id,
+                ApplicationContact.contact_id == uuid.UUID(contact["id"]),
+            )
+        )
+    )
+    assert len(links) == 1
+    assert links[0].id == existing_link.id
+    assert links[0].name == "Preserved snapshot"
+    assert links[0].contact_type == "recruiter"
+    assert links[0].email == "preserved@example.test"
+    assert links[0].notes == "Preserved notes"
+
+
+def test_duplicate_participant_conflict_does_not_create_application_contact(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "participant-duplicate-link@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Engineer")
+    interview = create_interview(db_session, application=application, title="Interview")
+    contact = client.post("/contacts", json=contact_payload()).json()
+    existing_participant = InterviewParticipant(
+        interview_id=interview.id,
+        contact_id=uuid.UUID(contact["id"]),
+        role="observer",
+    )
+    db_session.add(existing_participant)
+    db_session.flush()
+
+    response = client.post(
+        participant_path(application, interview),
+        json={"contact_id": contact["id"], "role": "interviewer"},
+    )
+    assert response.status_code == 409
+    assert db_session.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.application_id == application.id,
+            ApplicationContact.contact_id == uuid.UUID(contact["id"]),
+        )
+    ) is None
+
+
+def test_participant_and_application_contact_creation_are_atomic_on_commit_failure(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = register(client, "participant-atomic@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Engineer")
+    interview = create_interview(db_session, application=application, title="Interview")
+    contact = client.post("/contacts", json=contact_payload()).json()
+
+    def fail_commit() -> None:
+        db_session.flush()
+        raise IntegrityError("forced failure", params=None, orig=RuntimeError("forced"))
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    response = client.post(
+        participant_path(application, interview),
+        json={"contact_id": contact["id"], "role": "interviewer"},
+    )
+    assert response.status_code == 409
+    assert db_session.scalar(
+        select(InterviewParticipant).where(
+            InterviewParticipant.interview_id == interview.id,
+            InterviewParticipant.contact_id == uuid.UUID(contact["id"]),
+        )
+    ) is None
+    assert db_session.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.application_id == application.id,
+            ApplicationContact.contact_id == uuid.UUID(contact["id"]),
+        )
+    ) is None

@@ -3,11 +3,11 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   apiFetch,
-  Contact,
+  ApplicationContact,
   ContactRelationshipType,
   InterviewParticipant,
+  isApplicationContactArray,
   isContact,
-  isContactArray,
   isInterviewParticipant,
   isInterviewParticipantArray,
   ParticipantRole,
@@ -32,6 +32,30 @@ const RELATIONSHIP_OPTIONS: { value: ContactRelationshipType; label: string }[] 
   { value: "networking", label: "Networking" },
   { value: "other", label: "Other" },
 ];
+
+type ParticipantContactOption = {
+  contactId: string;
+  name: string;
+  title: string | null;
+  relationshipType: ContactRelationshipType;
+};
+
+function toContactOptions(items: ApplicationContact[]): ParticipantContactOption[] {
+  const seen = new Set<string>();
+  const options: ParticipantContactOption[] = [];
+  for (const item of items) {
+    if (!item.contact_id || !item.contact) continue;
+    if (seen.has(item.contact_id)) continue;
+    seen.add(item.contact_id);
+    options.push({
+      contactId: item.contact_id,
+      name: item.contact.name,
+      title: item.contact.title,
+      relationshipType: item.contact.relationship_type,
+    });
+  }
+  return options.sort((a, b) => a.name.localeCompare(b.name));
+}
 
 const controlClass =
   "border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 mt-1 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:ring-2";
@@ -98,7 +122,7 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactOptions, setContactOptions] = useState<ParticipantContactOption[]>([]);
   const [hasLoadedContacts, setHasLoadedContacts] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
@@ -128,6 +152,14 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
   const deleteInFlight = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const participantsEndpoint = `/applications/${applicationId}/interviews/${interviewId}/participants`;
 
@@ -161,22 +193,32 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
   const loadContacts = useCallback(async () => {
     if (loadContactsInFlight.current) return;
     loadContactsInFlight.current = true;
-    setIsLoadingContacts(true);
-    setContactsError(null);
+    if (isMountedRef.current) {
+      setIsLoadingContacts(true);
+      setContactsError(null);
+    }
     try {
-      const response = await apiFetch("/contacts");
+      const response = await apiFetch(
+        `/applications/${encodeURIComponent(applicationId)}/contacts`
+      );
+      if (!isMountedRef.current) return;
       if (!response.ok) throw new Error("request failed");
       const data: unknown = await response.json();
-      if (!isContactArray(data)) throw new Error("invalid data");
-      setContacts(data);
+      if (!isApplicationContactArray(data)) throw new Error("invalid data");
+      if (!isMountedRef.current) return;
+      setContactOptions(toContactOptions(data));
       setHasLoadedContacts(true);
     } catch {
-      setContactsError("Unable to load contacts. Please try again.");
+      if (isMountedRef.current) {
+        setContactsError("Unable to load contacts. Please try again.");
+      }
     } finally {
       loadContactsInFlight.current = false;
-      setIsLoadingContacts(false);
+      if (isMountedRef.current) {
+        setIsLoadingContacts(false);
+      }
     }
-  }, []);
+  }, [applicationId]);
 
   useEffect(() => {
     if (!isDialogOpen || hasLoadedContacts || contactsError) return;
@@ -207,6 +249,8 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
     setNewContactLinkedIn("");
     setCreateContactError(null);
     setActionError(null);
+    setContactsError(null);
+    setHasLoadedContacts(false);
     setIsDialogOpen(true);
   }
 
@@ -281,9 +325,56 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
       const data: unknown = await response.json();
       if (!isContact(data)) throw new Error("invalid data");
 
-      // Add to local contacts cache and auto-select while retaining chosen participant role
-      setContacts((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
+      if (!isMountedRef.current) return;
+
+      const linkContactType =
+        newContactRelationship === "recruiter" ||
+        newContactRelationship === "interviewer" ||
+        newContactRelationship === "hiring_manager" ||
+        newContactRelationship === "referral"
+          ? newContactRelationship
+          : "other";
+
+      const linkResponse = await apiFetch(
+        `/applications/${encodeURIComponent(applicationId)}/contacts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contact_id: data.id,
+            name: data.name,
+            contact_type: linkContactType,
+            email: data.email,
+            linkedin_url: data.linkedin_url,
+          }),
+        }
+      );
+
+      if (!linkResponse.ok) throw new Error("request failed");
+
+      if (!isMountedRef.current) return;
+
+      const listResponse = await apiFetch(
+        `/applications/${encodeURIComponent(applicationId)}/contacts`
+      );
+      if (!listResponse.ok) throw new Error("request failed");
+      const listData: unknown = await listResponse.json();
+      if (!isApplicationContactArray(listData)) throw new Error("invalid data");
+
+      if (!isMountedRef.current) return;
+
+      setContactOptions(toContactOptions(listData));
+      setHasLoadedContacts(true);
       setSelectedContactId(data.id);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("careerneed:application-contacts-refresh", {
+            detail: { applicationId },
+          })
+        );
+      }
+
       setIsCreatingContact(false);
       setNewContactName("");
       setNewContactTitle("");
@@ -293,10 +384,14 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
       setCreateContactError(null);
       setAddError(null);
     } catch {
-      setCreateContactError("Unable to create contact. Please try again.");
+      if (isMountedRef.current) {
+        setCreateContactError("Unable to create contact. Please try again.");
+      }
     } finally {
       createInFlight.current = false;
-      setIsCreating(false);
+      if (isMountedRef.current) {
+        setIsCreating(false);
+      }
     }
   }
 
@@ -342,6 +437,14 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
       setHasLoaded(true);
       setIsDialogOpen(false);
       setSelectedContactId("");
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("careerneed:application-contacts-refresh", {
+            detail: { applicationId },
+          })
+        );
+      }
     } catch {
       setAddError("Unable to add participant. Please try again.");
     } finally {
@@ -606,12 +709,15 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
                   className={controlClass}
                 >
                   <option value="">Select a contact…</option>
-                  {contacts.map((contact) => {
-                    const isAlready = existingContactIds.has(contact.id);
+                  {contactOptions.map((option) => {
+                    const isAlready = existingContactIds.has(option.contactId);
                     return (
-                      <option key={contact.id} value={contact.id} disabled={isAlready}>
-                        {contact.name}
-                        {contact.title ? ` (${contact.title})` : ""}
+                      <option key={option.contactId} value={option.contactId} disabled={isAlready}>
+                        {option.name}
+                        {option.title ? ` (${option.title})` : ""}
+                        {option.relationshipType
+                          ? ` · ${relationshipLabel(option.relationshipType)}`
+                          : ""}
                         {isAlready ? " — Already added" : ""}
                       </option>
                     );
@@ -638,7 +744,7 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
                 {!isLoadingContacts &&
                 !contactsError &&
                 hasLoadedContacts &&
-                contacts.length === 0 ? (
+                contactOptions.length === 0 ? (
                   <p className="text-muted-foreground mt-1 text-xs">
                     No contacts found. Create one below to attach as a participant.
                   </p>

@@ -332,6 +332,7 @@ export type Contact = {
   id: string;
   user_id: string;
   company_id: string | null;
+  company_name?: string | null;
   name: string;
   title: string | null;
   email: string | null;
@@ -390,6 +391,7 @@ export function isContact(value: unknown): value is Contact {
     typeof value.id === "string" &&
     typeof value.user_id === "string" &&
     isNullableString(value.company_id) &&
+    (value.company_name === undefined || isNullableString(value.company_name)) &&
     typeof value.name === "string" &&
     isNullableString(value.title) &&
     isNullableString(value.email) &&
@@ -432,4 +434,64 @@ export function isInterviewParticipant(value: unknown): value is InterviewPartic
 
 export function isInterviewParticipantArray(value: unknown): value is InterviewParticipant[] {
   return Array.isArray(value) && value.every(isInterviewParticipant);
+}
+
+export type ApplicationContactCanonicalSummary = {
+  id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+  relationship_type: ContactRelationshipType;
+};
+
+export type ApplicationContact = {
+  id: string;
+  application_id: string;
+  contact_id: string | null;
+  name: string;
+  contact_type: string;
+  email: string | null;
+  linkedin_url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  contact: ApplicationContactCanonicalSummary | null;
+};
+
+export function isApplicationContactCanonicalSummary(
+  value: unknown
+): value is ApplicationContactCanonicalSummary {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isNullableString(value.title) &&
+    isNullableString(value.email) &&
+    isNullableString(value.linkedin_url) &&
+    isContactRelationshipType(value.relationship_type)
+  );
+}
+
+export function isApplicationContact(value: unknown): value is ApplicationContact {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.application_id === "string" &&
+    isNullableString(value.contact_id) &&
+    typeof value.name === "string" &&
+    typeof value.contact_type === "string" &&
+    isNullableString(value.email) &&
+    isNullableString(value.linkedin_url) &&
+    isNullableString(value.notes) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string" &&
+    (value.contact === null ||
+      value.contact === undefined ||
+      isApplicationContactCanonicalSummary(value.contact))
+  );
+}
+
+export function isApplicationContactArray(value: unknown): value is ApplicationContact[] {
+  return Array.isArray(value) && value.every(isApplicationContact);
 }

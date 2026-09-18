@@ -303,6 +303,7 @@ def create_application_contact(
     db: Session = Depends(get_db),
 ) -> ApplicationContact:
     _get_owned_application(application_id, current_user, db)
+    reusable_contact: Contact | None = None
     if payload.contact_id is not None:
         reusable_contact = db.scalar(
             select(Contact).where(
@@ -313,9 +314,34 @@ def create_application_contact(
         if reusable_contact is None:
             raise HTTPException(status_code=404, detail="Contact not found")
 
+        existing_link = db.scalar(
+            select(ApplicationContact).where(
+                ApplicationContact.application_id == application_id,
+                ApplicationContact.contact_id == payload.contact_id,
+            )
+        )
+        if existing_link is not None:
+            return existing_link
+
+    contact_data = payload.model_dump()
+    if payload.contact_id is not None and reusable_contact is not None:
+        if not contact_data.get("name"):
+            contact_data["name"] = reusable_contact.name
+        if contact_data.get("contact_type") == "other" and reusable_contact.relationship_type in (
+            "recruiter",
+            "interviewer",
+            "hiring_manager",
+            "referral",
+        ):
+            contact_data["contact_type"] = reusable_contact.relationship_type
+        if contact_data.get("email") is None:
+            contact_data["email"] = reusable_contact.email
+        if contact_data.get("linkedin_url") is None:
+            contact_data["linkedin_url"] = reusable_contact.linkedin_url
+
     contact = ApplicationContact(
         application_id=application_id,
-        **payload.model_dump(),
+        **contact_data,
     )
     db.add(contact)
     db.commit()
@@ -390,6 +416,64 @@ def delete_application_contact(
     db.delete(contact)
     db.commit()
     return Response(status_code=204)
+
+
+SUPPORTED_CANONICAL_RELATIONSHIPS = {
+    "recruiter",
+    "hiring_manager",
+    "interviewer",
+    "referral",
+    "other",
+}
+
+
+@router.post(
+    "/{application_id}/contacts/{contact_id}/make-reusable",
+    response_model=ApplicationContactOut,
+)
+def make_application_contact_reusable(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, current_user, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    if contact.contact_id is not None:
+        return contact
+
+    relationship_type = (
+        contact.contact_type
+        if contact.contact_type in SUPPORTED_CANONICAL_RELATIONSHIPS
+        else "other"
+    )
+
+    canonical_contact = Contact(
+        user_id=current_user.id,
+        name=contact.name,
+        title=None,
+        email=contact.email,
+        linkedin_url=contact.linkedin_url,
+        relationship_type=relationship_type,
+        notes=None,
+    )
+    db.add(canonical_contact)
+    db.flush()
+
+    contact.contact_id = canonical_contact.id
+    db.commit()
+    db.refresh(contact)
+    return contact
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)

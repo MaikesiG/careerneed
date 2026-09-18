@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import (
     AISuggestion,
     Application,
+    ApplicationContact,
     Contact,
     Interview,
     InterviewParticipant,
@@ -246,6 +247,25 @@ def add_interview_participant(
     )
     if existing is not None:
         raise HTTPException(status_code=409, detail="Contact is already a participant")
+
+    application_contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.application_id == application_id,
+            ApplicationContact.contact_id == payload.contact_id,
+        )
+    )
+    if application_contact is None:
+        db.add(
+            ApplicationContact(
+                application_id=application_id,
+                contact_id=contact.id,
+                name=contact.name,
+                contact_type="interviewer" if payload.role == "interviewer" else "other",
+                email=contact.email,
+                linkedin_url=contact.linkedin_url,
+                notes=None,
+            )
+        )
 
     participant = InterviewParticipant(
         interview_id=interview_id,

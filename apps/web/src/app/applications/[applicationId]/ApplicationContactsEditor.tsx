@@ -1,22 +1,16 @@
 "use client";
 
-import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import {
+  apiFetch,
+  ApplicationContact,
+  ContactRelationshipType,
+  isApplicationContact,
+  isApplicationContactArray,
+} from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type ContactType = "recruiter" | "hiring_manager" | "interviewer" | "referral" | "other";
-
-type ApplicationContact = {
-  id: string;
-  application_id: string;
-  name: string;
-  contact_type: string;
-  email: string | null;
-  linkedin_url: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
 
 type ContactDraft = {
   name: string;
@@ -46,9 +40,40 @@ const CONTACT_TYPE_OPTIONS: { value: ContactType; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const CANONICAL_RELATIONSHIP_LABELS: Record<ContactRelationshipType, string> = {
+  recruiter: "Recruiter",
+  interviewer: "Interviewer",
+  hiring_manager: "Hiring manager",
+  referral: "Referral",
+  networking: "Networking",
+  other: "Other",
+};
+
 function contactTypeLabel(contactType: string): string {
   const option = CONTACT_TYPE_OPTIONS.find((candidate) => candidate.value === contactType);
   return option?.label ?? contactType;
+}
+
+function canonicalRelationshipLabel(type: ContactRelationshipType): string {
+  return CANONICAL_RELATIONSHIP_LABELS[type] ?? type;
+}
+
+function isValidLinkedInUrl(value: string | null): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    const hostname = (parsed.hostname || "").toLowerCase();
+    return (
+      parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password &&
+      (hostname === "linkedin.com" || hostname.endsWith(".linkedin.com"))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function toDraft(contact: ApplicationContact): ContactDraft {
@@ -75,26 +100,6 @@ function draftPayload(draft: ContactDraft) {
   };
 }
 
-function isApplicationContact(value: unknown): value is ApplicationContact {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const contact = value as Record<string, unknown>;
-
-  return (
-    typeof contact.id === "string" &&
-    typeof contact.application_id === "string" &&
-    typeof contact.name === "string" &&
-    typeof contact.contact_type === "string" &&
-    (contact.email === null || typeof contact.email === "string") &&
-    (contact.linkedin_url === null || typeof contact.linkedin_url === "string") &&
-    (contact.notes === null || typeof contact.notes === "string") &&
-    typeof contact.created_at === "string" &&
-    typeof contact.updated_at === "string"
-  );
-}
-
 export default function ApplicationContactsEditor({
   applicationId,
 }: ApplicationContactsEditorProps) {
@@ -106,56 +111,94 @@ export default function ApplicationContactsEditor({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+  const [convertingContactId, setConvertingContactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isCurrent = true;
+  const loadInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const hasLoadedRef = useRef(false);
 
-    async function loadContacts() {
+  const loadContacts = useCallback(async () => {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    if (mountedRef.current && !hasLoadedRef.current) {
       setIsLoading(true);
       setError(null);
-      const encodedApplicationId = encodeURIComponent(applicationId);
-      try {
-        const response = await apiFetch(`/applications/${encodedApplicationId}/contacts`, {
-          cache: "no-store",
-        });
+    }
 
-        if (response.status === 401) {
-          router.replace(`/login?next=/applications/${encodedApplicationId}`);
-          return;
-        }
+    const encodedApplicationId = encodeURIComponent(applicationId);
+    try {
+      const response = await apiFetch(`/applications/${encodedApplicationId}/contacts`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          throw new Error(await getApiErrorMessage(response, "Unable to load contacts."));
-        }
+      if (controller.signal.aborted || !mountedRef.current) return;
 
-        const data = (await response.json()) as unknown;
+      if (response.status === 401) {
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
+        return;
+      }
 
-        if (!Array.isArray(data) || !data.every(isApplicationContact)) {
-          throw new Error("Unable to load contacts.");
-        }
+      if (!response.ok) {
+        throw new Error("Unable to load contacts.");
+      }
 
-        if (isCurrent) {
-          setContacts(data as ApplicationContact[]);
-        }
-      } catch (caughtError) {
-        if (isCurrent) {
-          setError(caughtError instanceof Error ? caughtError.message : "Unable to load contacts.");
-        }
-      } finally {
-        if (isCurrent) {
+      const data: unknown = await response.json();
+
+      if (!isApplicationContactArray(data)) {
+        throw new Error("Unable to load contacts.");
+      }
+
+      if (!controller.signal.aborted && mountedRef.current) {
+        setContacts(data);
+        hasLoadedRef.current = true;
+      }
+    } catch (caughtError) {
+      if (caughtError instanceof DOMException && caughtError.name === "AbortError") return;
+      if (!controller.signal.aborted && mountedRef.current) {
+        setError("Unable to load contacts. Please try again.");
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        loadInFlightRef.current = false;
+        if (!controller.signal.aborted && mountedRef.current) {
           setIsLoading(false);
         }
       }
     }
+  }, [applicationId, router]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadContacts();
 
     return () => {
-      isCurrent = false;
+      mountedRef.current = false;
+      abortControllerRef.current?.abort();
+      loadInFlightRef.current = false;
     };
-  }, [applicationId, router]);
+  }, [loadContacts]);
+
+  useEffect(() => {
+    function handleRefresh(event: Event) {
+      const customEvent = event as CustomEvent<{ applicationId?: string }>;
+      if (customEvent.detail?.applicationId === applicationId) {
+        void loadContacts();
+      }
+    }
+
+    window.addEventListener("careerneed:application-contacts-refresh", handleRefresh);
+    return () => {
+      window.removeEventListener("careerneed:application-contacts-refresh", handleRefresh);
+    };
+  }, [applicationId, loadContacts]);
 
   function updateDraft<Field extends keyof ContactDraft>(field: Field, value: ContactDraft[Field]) {
     setDraft((previous) => ({
@@ -232,43 +275,92 @@ export default function ApplicationContactsEditor({
       }
 
       if (!response.ok) {
-        throw new Error(
-          await getApiErrorMessage(
-            response,
-            isEditing ? "Unable to update contact." : "Unable to add contact."
-          )
-        );
+        throw new Error(isEditing ? "Unable to update contact." : "Unable to add contact.");
       }
 
-      const savedContact = (await response.json()) as ApplicationContact;
+      const rawSaved: unknown = await response.json();
+      if (!isApplicationContact(rawSaved)) {
+        throw new Error(isEditing ? "Unable to update contact." : "Unable to add contact.");
+      }
 
       setContacts((previous) => {
         if (!isEditing) {
-          return [savedContact, ...previous];
+          return [rawSaved, ...previous];
         }
 
-        return previous.map((contact) => (contact.id === savedContact.id ? savedContact : contact));
+        return previous.map((contact) => (contact.id === rawSaved.id ? rawSaved : contact));
       });
 
       setDraft(EMPTY_DRAFT);
       setEditingContactId(null);
       setIsFormOpen(false);
       setNotice(isEditing ? "Contact updated." : "Contact added.");
-    } catch (caughtError) {
+    } catch {
       setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : isEditing
-            ? "Unable to update contact."
-            : "Unable to add contact."
+        isEditing
+          ? "Unable to update contact. Please try again."
+          : "Unable to add contact. Please try again."
       );
     } finally {
       setIsSaving(false);
     }
   }
 
+  async function handleMakeReusable(contact: ApplicationContact) {
+    if (convertingContactId !== null || isSaving || deletingContactId !== null) {
+      return;
+    }
+
+    setConvertingContactId(contact.id);
+    setError(null);
+    setNotice(null);
+
+    const encodedApplicationId = encodeURIComponent(applicationId);
+    const encodedContactId = encodeURIComponent(contact.id);
+
+    try {
+      const response = await apiFetch(
+        `/applications/${encodedApplicationId}/contacts/${encodedContactId}/make-reusable`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.status === 401) {
+        router.replace(`/login?next=/applications/${encodedApplicationId}`);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Unable to make contact reusable.");
+      }
+
+      const rawSaved: unknown = await response.json();
+      if (!isApplicationContact(rawSaved)) {
+        throw new Error("Unable to make contact reusable.");
+      }
+
+      setContacts((previous) =>
+        previous.map((item) => (item.id === rawSaved.id ? rawSaved : item))
+      );
+      setNotice("Contact is now reusable.");
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("careerneed:application-contacts-refresh", {
+            detail: { applicationId },
+          })
+        );
+      }
+    } catch {
+      setError("Unable to make contact reusable. Please try again.");
+    } finally {
+      setConvertingContactId(null);
+    }
+  }
+
   async function deleteContact(contact: ApplicationContact) {
-    if (deletingContactId !== null || isSaving) {
+    if (deletingContactId !== null || isSaving || convertingContactId !== null) {
       return;
     }
 
@@ -297,7 +389,7 @@ export default function ApplicationContactsEditor({
       }
 
       if (!response.ok) {
-        throw new Error(await getApiErrorMessage(response, "Unable to delete contact."));
+        throw new Error("Unable to delete contact.");
       }
 
       setContacts((previous) => previous.filter((candidate) => candidate.id !== contact.id));
@@ -307,8 +399,8 @@ export default function ApplicationContactsEditor({
       }
 
       setNotice("Contact deleted.");
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to delete contact.");
+    } catch {
+      setError("Unable to delete contact. Please try again.");
     } finally {
       setDeletingContactId(null);
     }
@@ -511,12 +603,75 @@ export default function ApplicationContactsEditor({
                       {contact.notes}
                     </p>
                   ) : null}
+
+                  {contact.contact_id && contact.contact ? (
+                    <div className="border-border/70 bg-muted/30 mt-3 rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-foreground text-xs font-semibold">
+                          Linked reusable contact
+                        </span>
+                        <span className="border-border bg-muted/60 text-muted-foreground inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                          {canonicalRelationshipLabel(contact.contact.relationship_type)}
+                        </span>
+                      </div>
+
+                      <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+                        <span className="text-foreground font-medium">{contact.contact.name}</span>
+                        {contact.contact.title ? <span>· {contact.contact.title}</span> : null}
+                        {contact.contact.email ? (
+                          <>
+                            <span aria-hidden="true" className="text-muted-foreground/50">
+                              ·
+                            </span>
+                            <a
+                              href={`mailto:${contact.contact.email}`}
+                              className="text-primary hover:underline"
+                            >
+                              {contact.contact.email}
+                            </a>
+                          </>
+                        ) : null}
+                        {isValidLinkedInUrl(contact.contact.linkedin_url) ? (
+                          <>
+                            <span aria-hidden="true" className="text-muted-foreground/50">
+                              ·
+                            </span>
+                            <a
+                              href={contact.contact.linkedin_url!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary inline-flex items-center gap-0.5 font-medium hover:underline"
+                            >
+                              LinkedIn <span aria-hidden="true">↗</span>
+                            </a>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                  {!contact.contact_id || !contact.contact ? (
+                    <button
+                      className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={
+                        isSaving || deletingContactId !== null || convertingContactId !== null
+                      }
+                      onClick={() => {
+                        void handleMakeReusable(contact);
+                      }}
+                      type="button"
+                    >
+                      {convertingContactId === contact.id ? "Making reusable…" : "Make reusable"}
+                    </button>
+                  ) : null}
+
                   <button
                     className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isSaving || deletingContactId !== null}
+                    disabled={
+                      isSaving || deletingContactId !== null || convertingContactId !== null
+                    }
                     onClick={() => openEditForm(contact)}
                     type="button"
                   >
@@ -525,7 +680,9 @@ export default function ApplicationContactsEditor({
 
                   <button
                     className="border-error-border bg-error-background text-destructive rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isSaving || deletingContactId !== null}
+                    disabled={
+                      isSaving || deletingContactId !== null || convertingContactId !== null
+                    }
                     onClick={() => {
                       void deleteContact(contact);
                     }}

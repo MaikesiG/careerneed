@@ -251,11 +251,17 @@ ContactRelationshipType = Literal[
 
 class ApplicationContactCreate(BaseModel):
     contact_id: uuid.UUID | None = None
-    name: str
+    name: str | None = None
     contact_type: str = "other"
     email: str | None = None
     linkedin_url: str | None = None
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_name_present_if_no_contact_id(self) -> "ApplicationContactCreate":
+        if self.contact_id is None and not (self.name and self.name.strip()):
+            raise ValueError("name is required when contact_id is not provided")
+        return self
 
 
 class ApplicationContactUpdate(BaseModel):
