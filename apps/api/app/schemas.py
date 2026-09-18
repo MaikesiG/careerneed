@@ -1,7 +1,8 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -808,3 +809,141 @@ class InterviewOutcomeResolveRequest(BaseModel):
         if self.status == "edited" and self.resolved_value is None:
             raise ValueError("resolved_value is required when status is 'edited'")
         return self
+
+
+FollowUpType = Literal[
+    "thank_you",
+    "status_check",
+    "recruiter_reply",
+    "preparation",
+    "custom",
+]
+
+
+def _validate_follow_up_title(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Title cannot be blank")
+    return value
+
+
+def _validate_follow_up_notes(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _validate_iana_timezone(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Timezone cannot be blank")
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise ValueError("Timezone must be a valid IANA timezone") from error
+    return value
+
+
+def _normalize_aware_utc(value: datetime | None, field_name: str) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be a timezone-aware datetime")
+    return value.astimezone(timezone.utc)
+
+
+class FollowUpCreate(BaseModel):
+    interview_id: uuid.UUID | None = None
+    type: FollowUpType
+    title: str = Field(min_length=1, max_length=255, strict=True)
+    due_at_utc: datetime
+    timezone: str = Field(min_length=1, max_length=100, strict=True)
+    completed_at: datetime | None = None
+    notes: str | None = Field(default=None, max_length=10_000, strict=True)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        return _validate_follow_up_title(value)
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, value: str | None) -> str | None:
+        return _validate_follow_up_notes(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return _validate_iana_timezone(value)
+
+    @field_validator("due_at_utc")
+    @classmethod
+    def validate_due_at(cls, value: datetime) -> datetime:
+        normalized = _normalize_aware_utc(value, "due_at_utc")
+        assert normalized is not None
+        return normalized
+
+    @field_validator("completed_at")
+    @classmethod
+    def validate_completed_at(cls, value: datetime | None) -> datetime | None:
+        return _normalize_aware_utc(value, "completed_at")
+
+
+class FollowUpUpdate(BaseModel):
+    interview_id: uuid.UUID | None = None
+    type: FollowUpType | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255, strict=True)
+    due_at_utc: datetime | None = None
+    timezone: str | None = Field(default=None, min_length=1, max_length=100, strict=True)
+    completed_at: datetime | None = None
+    notes: str | None = Field(default=None, max_length=10_000, strict=True)
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self) -> "FollowUpUpdate":
+        for field_name in ("type", "title", "due_at_utc", "timezone"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        return _validate_follow_up_title(value) if value is not None else None
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, value: str | None) -> str | None:
+        return _validate_follow_up_notes(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        return _validate_iana_timezone(value) if value is not None else None
+
+    @field_validator("due_at_utc")
+    @classmethod
+    def validate_due_at(cls, value: datetime | None) -> datetime | None:
+        return _normalize_aware_utc(value, "due_at_utc")
+
+    @field_validator("completed_at")
+    @classmethod
+    def validate_completed_at(cls, value: datetime | None) -> datetime | None:
+        return _normalize_aware_utc(value, "completed_at")
+
+
+class FollowUpOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    application_id: uuid.UUID
+    interview_id: uuid.UUID | None
+    type: FollowUpType
+    title: str
+    due_at_utc: datetime
+    timezone: str
+    completed_at: datetime | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime

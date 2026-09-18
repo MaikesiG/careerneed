@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,6 +34,10 @@ class User(Base):
         cascade="all, delete-orphan",
     )
     ai_suggestions: Mapped[list["AISuggestion"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -203,6 +207,10 @@ class Application(Base):
         cascade="all, delete-orphan",
         order_by="Interview.round",
     )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApplicationContact(Base):
@@ -356,6 +364,7 @@ class Interview(Base):
         cascade="all, delete-orphan",
         order_by="AISuggestion.created_at.desc()",
     )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(back_populates="interview")
 
 
 class InterviewQuestion(Base):
@@ -389,6 +398,54 @@ class InterviewQuestion(Base):
     )
 
     interview: Mapped["Interview"] = relationship(back_populates="questions")
+
+
+class FollowUp(Base):
+    __tablename__ = "follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('thank_you', 'status_check', 'recruiter_reply', 'preparation', 'custom')",
+            name="ck_follow_ups_type",
+        ),
+        Index("ix_follow_ups_application_due", "application_id", "due_at_utc"),
+        Index("ix_follow_ups_application_interview", "application_id", "interview_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    interview_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    due_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="follow_ups")
+    application: Mapped["Application"] = relationship(back_populates="follow_ups")
+    interview: Mapped["Interview | None"] = relationship(back_populates="follow_ups")
 
 
 class AISuggestion(Base):
@@ -451,5 +508,4 @@ class AISuggestion(Base):
 
     user: Mapped["User"] = relationship(back_populates="ai_suggestions")
     interview: Mapped["Interview"] = relationship(back_populates="ai_suggestions")
-
 

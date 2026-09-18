@@ -8,6 +8,7 @@ from app.routers import (
     companies,
     connectors,
     dashboard,
+    follow_ups,
     interviews,
     jobs,
     resumes,
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(applications.router)
 app.include_router(dashboard.router)
+app.include_router(follow_ups.router)
 app.include_router(companies.router)
 app.include_router(connectors.router)
 app.include_router(interviews.router)
