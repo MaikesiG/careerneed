@@ -1020,16 +1020,15 @@ class AISuggestionOut(BaseModel):
 
 
 class InterviewPrepResolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: Literal["accepted", "rejected", "edited"]
     resolved_value: InterviewPrepOutput | None = None
-    apply_to_preparation_notes: bool = False
 
     @model_validator(mode="after")
     def validate_resolution(self) -> "InterviewPrepResolveRequest":
         if self.status == "edited" and self.resolved_value is None:
             raise ValueError("resolved_value is required when status is 'edited'")
-        if self.status == "rejected" and self.apply_to_preparation_notes:
-            raise ValueError("Cannot apply preparation notes when status is 'rejected'")
         return self
 
 

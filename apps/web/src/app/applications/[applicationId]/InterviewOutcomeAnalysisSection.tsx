@@ -178,6 +178,10 @@ function formatConfidence(value: number | null): string | null {
 }
 
 function displayStatus(status: InterviewOutcomeSuggestion["status"]): string {
+  if (status === "pending") return "Draft";
+  if (status === "accepted") return "Applied";
+  if (status === "edited") return "Applied (edited)";
+  if (status === "rejected") return "Discarded";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -385,12 +389,15 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
   const [error, setError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openSuggestionIds, setOpenSuggestionIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<InterviewOutcomeSuggestion | null>(null);
   const [editValue, setEditValue] = useState<InterviewOutcomeAnalysisOutput | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const loadInFlightRef = useRef(false);
   const generateInFlightRef = useRef(false);
   const resolveInFlightRef = useRef(false);
+  const deleteInFlightRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const sectionToggleRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -475,7 +482,7 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
 
   async function resolveSuggestion(
     suggestion: InterviewOutcomeSuggestion,
-    status: "accepted" | "rejected" | "edited",
+    status: "accepted" | "edited",
     resolvedValue?: InterviewOutcomeAnalysisOutput
   ) {
     if (resolveInFlightRef.current || suggestion.status !== "pending") return;
@@ -511,6 +518,39 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
     setEditing(suggestion);
     setEditValue(structuredClone(selectedValue));
     setEditError(null);
+  }
+
+  function toggleSuggestion(suggestionId: string) {
+    setOpenSuggestionIds((current) => {
+      const next = new Set(current);
+      if (next.has(suggestionId)) next.delete(suggestionId);
+      else next.add(suggestionId);
+      return next;
+    });
+  }
+
+  async function deleteSuggestion(suggestion: InterviewOutcomeSuggestion) {
+    if (deleteInFlightRef.current || resolveInFlightRef.current) return;
+    if (!window.confirm("Delete this outcome analysis draft? This cannot be undone.")) return;
+    deleteInFlightRef.current = true;
+    setDeletingId(suggestion.id);
+    setError(null);
+    try {
+      const response = await apiFetch(`${endpoint}/${suggestion.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      setSuggestions((current) => current.filter((item) => item.id !== suggestion.id));
+      setOpenSuggestionIds((current) => {
+        const next = new Set(current);
+        next.delete(suggestion.id);
+        return next;
+      });
+      if (editing?.id === suggestion.id) setEditing(null);
+    } catch {
+      setError("Unable to delete this outcome analysis draft. Please try again.");
+    } finally {
+      deleteInFlightRef.current = false;
+      setDeletingId(null);
+    }
   }
 
   function submitEdit() {
@@ -684,6 +724,8 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
         <div className="mt-3">
           <p className="border-border bg-muted/20 text-muted-foreground mb-3 rounded-lg border px-3 py-2 text-xs">
             This does not determine the employer’s decision-making or predict hiring outcomes.
+            Applying an analysis only saves the selected version here; it does not change the
+            interview result or application status.
           </p>
           {error ? (
             <div className="border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
@@ -724,6 +766,7 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
           <div className="space-y-3">
             {suggestions.map((suggestion) => {
               const output = suggestion.resolved_value ?? suggestion.proposed_value;
+              const isOpen = openSuggestionIds.has(suggestion.id);
               return (
                 <article key={suggestion.id} className="border-border rounded-xl border p-3 sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -742,46 +785,71 @@ export default function InterviewOutcomeAnalysisSection({ applicationId, intervi
                         </span>
                       ) : null}
                     </div>
-                    <span className="text-muted-foreground text-xs">
-                      Generated {formatTimestamp(suggestion.created_at)}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        Generated {formatTimestamp(suggestion.created_at)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleSuggestion(suggestion.id)}
+                        aria-expanded={isOpen}
+                        aria-controls={`outcome-draft-${suggestion.id}`}
+                        className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-10 items-center rounded-lg border px-3 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        {isOpen ? "Hide" : "View"}
+                      </button>
+                    </div>
                   </div>
-                  <OutcomeContent output={output} />
+                  {isOpen ? (
+                    <div id={`outcome-draft-${suggestion.id}`}>
+                      <OutcomeContent output={output} />
+                    </div>
+                  ) : null}
                   {suggestion.status === "pending" ? (
                     <div className="border-border mt-4 flex flex-wrap gap-2 border-t pt-3">
                       <button
                         type="button"
-                        disabled={resolvingId !== null}
+                        disabled={resolvingId !== null || deletingId !== null}
                         onClick={() => void resolveSuggestion(suggestion, "accepted")}
                         className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold disabled:opacity-50"
                       >
-                        {resolvingId === suggestion.id ? "Saving…" : "Accept"}
+                        {resolvingId === suggestion.id ? "Applying…" : "Apply analysis"}
                       </button>
                       <button
                         type="button"
-                        disabled={resolvingId !== null}
+                        disabled={resolvingId !== null || deletingId !== null}
                         onClick={() => startEditing(suggestion)}
                         className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-4 text-sm font-medium disabled:opacity-50"
                       >
-                        Edit
+                        Edit and apply
                       </button>
                       <button
                         type="button"
-                        disabled={resolvingId !== null}
-                        onClick={() => void resolveSuggestion(suggestion, "rejected")}
-                        className="border-border text-muted-foreground hover:text-destructive h-10 rounded-lg border px-4 text-sm font-medium disabled:opacity-50"
+                        disabled={resolvingId !== null || deletingId !== null}
+                        onClick={() => void deleteSuggestion(suggestion)}
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive h-10 rounded-lg border px-4 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
                       >
-                        Reject
+                        {deletingId === suggestion.id ? "Deleting…" : "Delete draft"}
                       </button>
                     </div>
                   ) : (
-                    <p className="text-muted-foreground border-border mt-4 border-t pt-3 text-xs">
-                      Resolved as {displayStatus(suggestion.status)}
-                      {suggestion.resolved_at
-                        ? ` on ${formatTimestamp(suggestion.resolved_at)}`
-                        : ""}
-                      . This is history and is no longer awaiting review.
-                    </p>
+                    <div className="border-border mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                      <p className="text-muted-foreground text-xs">
+                        {displayStatus(suggestion.status)}
+                        {suggestion.resolved_at
+                          ? ` on ${formatTimestamp(suggestion.resolved_at)}`
+                          : ""}
+                        . This is saved history and is no longer awaiting review.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={deletingId !== null || resolvingId !== null}
+                        onClick={() => void deleteSuggestion(suggestion)}
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive inline-flex h-10 items-center rounded-lg border px-3 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        {deletingId === suggestion.id ? "Deleting…" : "Delete output"}
+                      </button>
+                    </div>
                   )}
                 </article>
               );

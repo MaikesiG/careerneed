@@ -529,7 +529,7 @@ def list_interview_prep_suggestions(
             AISuggestion.user_id == current_user.id,
             AISuggestion.suggestion_type == "interview_prep",
         )
-        .order_by(AISuggestion.created_at.desc())
+        .order_by(AISuggestion.created_at.desc(), AISuggestion.id.desc())
     )
     if status_filter:
         query = query.where(AISuggestion.status == status_filter)
@@ -550,18 +550,37 @@ def resolve_prep_suggestion(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AISuggestion:
-    interview, suggestion = _get_owned_suggestion(
+    _interview, suggestion = _get_owned_suggestion(
         application_id, interview_id, suggestion_id, current_user, db
     )
 
     resolved = resolve_interview_prep_suggestion(
         db=db,
-        current_user=current_user,
-        interview=interview,
         suggestion=suggestion,
         payload=payload,
     )
     return _validate_prep_suggestion(resolved)
+
+
+@router.delete(
+    "/applications/{application_id}/interviews/{interview_id}/prep/{suggestion_id}",
+    status_code=204,
+)
+def delete_prep_suggestion(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    _interview, suggestion = _get_owned_suggestion(
+        application_id, interview_id, suggestion_id, current_user, db
+    )
+    if suggestion.suggestion_type != "interview_prep":
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    db.delete(suggestion)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post(
@@ -603,7 +622,7 @@ def list_interview_outcome_analyses(
             AISuggestion.user_id == current_user.id,
             AISuggestion.suggestion_type == "interview_outcome_analysis",
         )
-        .order_by(AISuggestion.created_at.desc())
+        .order_by(AISuggestion.created_at.desc(), AISuggestion.id.desc())
     )
     if status_filter:
         query = query.where(AISuggestion.status == status_filter)
@@ -631,6 +650,26 @@ def resolve_interview_outcome_analysis(
         resolve_interview_outcome_suggestion(db, suggestion, payload)
     )
 
+
+@router.delete(
+    "/applications/{application_id}/interviews/{interview_id}/outcome-analysis/{suggestion_id}",
+    status_code=204,
+)
+def delete_interview_outcome_analysis(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    _interview, suggestion = _get_owned_suggestion(
+        application_id, interview_id, suggestion_id, current_user, db
+    )
+    if suggestion.suggestion_type != "interview_outcome_analysis":
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    db.delete(suggestion)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get(

@@ -14,6 +14,8 @@ import {
   PrepPriority,
   TechnicalTopic,
   GapWarning,
+  isInterviewPrepSuggestion,
+  isInterviewPrepSuggestionArray,
 } from "@/lib/api";
 
 type Props = {
@@ -46,6 +48,10 @@ function statusClass(status: InterviewPrepSuggestion["status"]): string {
 }
 
 function displayStatus(status: InterviewPrepSuggestion["status"]): string {
+  if (status === "pending") return "Draft";
+  if (status === "accepted") return "Applied";
+  if (status === "edited") return "Applied (edited)";
+  if (status === "rejected") return "Discarded";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -234,7 +240,8 @@ export default function InterviewPreparationSection({ applicationId, interviewId
   const [error, setError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [applyToNotes, setApplyToNotes] = useState<Record<string, boolean>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openSuggestionIds, setOpenSuggestionIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<InterviewPrepSuggestion | null>(null);
   const [editValue, setEditValue] = useState<InterviewPrepOutput | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -242,6 +249,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
   const loadInFlightRef = useRef(false);
   const generateInFlightRef = useRef(false);
   const resolveInFlightRef = useRef(false);
+  const deleteInFlightRef = useRef(false);
 
   const loadSuggestions = useCallback(async () => {
     if (loadInFlightRef.current) return;
@@ -251,7 +259,9 @@ export default function InterviewPreparationSection({ applicationId, interviewId
     try {
       const response = await apiFetch(endpoint);
       if (!response.ok) throw new Error();
-      setSuggestions((await response.json()) as InterviewPrepSuggestion[]);
+      const data: unknown = await response.json();
+      if (!isInterviewPrepSuggestionArray(data)) throw new Error();
+      setSuggestions(data);
       setHasLoaded(true);
     } catch {
       setError("Unable to load preparation plans. Please try again.");
@@ -284,7 +294,9 @@ export default function InterviewPreparationSection({ applicationId, interviewId
     try {
       const response = await apiFetch(`${endpoint}/generate`, { method: "POST" });
       if (!response.ok) throw new Error();
-      const suggestion = (await response.json()) as InterviewPrepSuggestion;
+      const data: unknown = await response.json();
+      if (!isInterviewPrepSuggestion(data)) throw new Error();
+      const suggestion = data;
       setSuggestions((current) => [
         suggestion,
         ...current.filter((item) => item.id !== suggestion.id),
@@ -300,7 +312,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
 
   async function resolveSuggestion(
     suggestion: InterviewPrepSuggestion,
-    status: "accepted" | "rejected" | "edited",
+    status: "accepted" | "edited",
     resolvedValue?: InterviewPrepOutput
   ) {
     if (resolveInFlightRef.current || suggestion.status !== "pending") return;
@@ -311,15 +323,12 @@ export default function InterviewPreparationSection({ applicationId, interviewId
       const response = await apiFetch(`${endpoint}/${suggestion.id}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          resolved_value: resolvedValue,
-          apply_to_preparation_notes:
-            status === "rejected" ? false : Boolean(applyToNotes[suggestion.id]),
-        }),
+        body: JSON.stringify({ status, resolved_value: resolvedValue }),
       });
       if (!response.ok) throw new Error();
-      const updated = (await response.json()) as InterviewPrepSuggestion;
+      const data: unknown = await response.json();
+      if (!isInterviewPrepSuggestion(data)) throw new Error();
+      const updated = data;
       setSuggestions((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setEditing(null);
     } catch {
@@ -335,8 +344,41 @@ export default function InterviewPreparationSection({ applicationId, interviewId
   function startEditing(suggestion: InterviewPrepSuggestion) {
     setEditing(suggestion);
     const selectedValue = suggestion.resolved_value ?? suggestion.proposed_value;
-    setEditValue(JSON.parse(JSON.stringify(selectedValue)) as InterviewPrepOutput);
+    setEditValue(structuredClone(selectedValue));
     setEditError(null);
+  }
+
+  function toggleSuggestion(suggestionId: string) {
+    setOpenSuggestionIds((current) => {
+      const next = new Set(current);
+      if (next.has(suggestionId)) next.delete(suggestionId);
+      else next.add(suggestionId);
+      return next;
+    });
+  }
+
+  async function deleteSuggestion(suggestion: InterviewPrepSuggestion) {
+    if (deleteInFlightRef.current || resolveInFlightRef.current) return;
+    if (!window.confirm("Delete this preparation draft? This cannot be undone.")) return;
+    deleteInFlightRef.current = true;
+    setDeletingId(suggestion.id);
+    setError(null);
+    try {
+      const response = await apiFetch(`${endpoint}/${suggestion.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      setSuggestions((current) => current.filter((item) => item.id !== suggestion.id));
+      setOpenSuggestionIds((current) => {
+        const next = new Set(current);
+        next.delete(suggestion.id);
+        return next;
+      });
+      if (editing?.id === suggestion.id) setEditing(null);
+    } catch {
+      setError("Unable to delete this preparation draft. Please try again.");
+    } finally {
+      deleteInFlightRef.current = false;
+      setDeletingId(null);
+    }
   }
 
   function submitEdit() {
@@ -437,7 +479,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
         <div>
           <h4 className="text-foreground text-sm font-semibold">AI interview preparation</h4>
           <p className="text-muted-foreground mt-0.5 text-xs">
-            Review structured preparation suggestions before applying them.
+            Review managed AI drafts and explicitly choose which plan to apply.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -502,6 +544,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
           <div className="space-y-3">
             {suggestions.map((suggestion) => {
               const prep = suggestion.resolved_value ?? suggestion.proposed_value;
+              const isOpen = openSuggestionIds.has(suggestion.id);
               return (
                 <article key={suggestion.id} className="border-border rounded-xl border p-3 sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -520,66 +563,76 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                         </span>
                       ) : null}
                     </div>
-                    <span className="text-muted-foreground text-xs">
-                      Generated {formatTimestamp(suggestion.created_at)}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        Generated {formatTimestamp(suggestion.created_at)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleSuggestion(suggestion.id)}
+                        aria-expanded={isOpen}
+                        aria-controls={`prep-draft-${suggestion.id}`}
+                        className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-10 items-center rounded-lg border px-3 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        {isOpen ? "Hide" : "View"}
+                      </button>
+                    </div>
                   </div>
-                  <PrepContent prep={prep} />
+                  {isOpen ? (
+                    <div id={`prep-draft-${suggestion.id}`}>
+                      <PrepContent prep={prep} />
+                      <p className="text-muted-foreground mt-3 text-xs">
+                        This managed plan remains separate from your preparation notes.
+                      </p>
+                    </div>
+                  ) : null}
                   {suggestion.status === "pending" ? (
                     <div className="border-border mt-4 border-t pt-3">
-                      <label className="text-foreground flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(applyToNotes[suggestion.id])}
-                          onChange={(event) =>
-                            setApplyToNotes((current) => ({
-                              ...current,
-                              [suggestion.id]: event.target.checked,
-                            }))
-                          }
-                          className="mt-0.5 size-4"
-                        />
-                        <span>Add accepted plan to my preparation notes</span>
-                      </label>
-                      <p className="text-muted-foreground mt-1 ml-6 text-xs">
-                        Your existing preparation notes will be preserved; the accepted plan is
-                        appended by the server.
-                      </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
-                          disabled={resolvingId === suggestion.id}
+                          disabled={resolvingId !== null || deletingId !== null}
                           onClick={() => void resolveSuggestion(suggestion, "accepted")}
                           className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold disabled:opacity-50"
                         >
-                          {resolvingId === suggestion.id ? "Saving…" : "Accept"}
+                          {resolvingId === suggestion.id ? "Applying…" : "Apply plan"}
                         </button>
                         <button
                           type="button"
-                          disabled={resolvingId === suggestion.id}
+                          disabled={resolvingId !== null || deletingId !== null}
                           onClick={() => startEditing(suggestion)}
                           className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-4 text-sm font-medium disabled:opacity-50"
                         >
-                          Edit
+                          Edit and apply
                         </button>
                         <button
                           type="button"
-                          disabled={resolvingId === suggestion.id}
-                          onClick={() => void resolveSuggestion(suggestion, "rejected")}
-                          className="border-border text-muted-foreground hover:text-destructive h-10 rounded-lg border px-4 text-sm font-medium disabled:opacity-50"
+                          disabled={resolvingId !== null || deletingId !== null}
+                          onClick={() => void deleteSuggestion(suggestion)}
+                          className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive h-10 rounded-lg border px-4 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
                         >
-                          Reject
+                          {deletingId === suggestion.id ? "Deleting…" : "Delete draft"}
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-muted-foreground border-border mt-4 border-t pt-3 text-xs">
-                      Resolved as {displayStatus(suggestion.status)}
-                      {suggestion.resolved_at
-                        ? ` on ${formatTimestamp(suggestion.resolved_at)}`
-                        : ""}
-                      . This is history and is no longer awaiting review.
-                    </p>
+                    <div className="border-border mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                      <p className="text-muted-foreground text-xs">
+                        {displayStatus(suggestion.status)}
+                        {suggestion.resolved_at
+                          ? ` on ${formatTimestamp(suggestion.resolved_at)}`
+                          : ""}
+                        . This is saved history and is no longer awaiting review.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={deletingId !== null || resolvingId !== null}
+                        onClick={() => void deleteSuggestion(suggestion)}
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive inline-flex h-10 items-center rounded-lg border px-3 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        {deletingId === suggestion.id ? "Deleting…" : "Delete output"}
+                      </button>
+                    </div>
                   )}
                 </article>
               );
@@ -836,20 +889,10 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                   {editError}
                 </div>
               ) : null}
-              <label className="text-foreground flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={Boolean(applyToNotes[editing.id])}
-                  onChange={(event) =>
-                    setApplyToNotes((current) => ({
-                      ...current,
-                      [editing.id]: event.target.checked,
-                    }))
-                  }
-                  className="mt-0.5 size-4"
-                />
-                <span>Add my edited plan to preparation notes</span>
-              </label>
+              <p className="text-muted-foreground text-xs">
+                Applying saves this edited version as the managed plan. Your preparation notes are
+                not changed.
+              </p>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -865,7 +908,7 @@ export default function InterviewPreparationSection({ applicationId, interviewId
                   disabled={resolvingId !== null}
                   className="bg-primary text-primary-foreground h-10 rounded-lg px-4 text-sm font-semibold disabled:opacity-50"
                 >
-                  {resolvingId ? "Saving…" : "Save edited plan"}
+                  {resolvingId ? "Applying…" : "Apply edited plan"}
                 </button>
               </div>
             </div>

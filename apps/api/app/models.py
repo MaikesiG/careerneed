@@ -1,7 +1,17 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -562,14 +572,6 @@ class AISuggestion(Base):
             "suggestion_type",
             "status",
             "created_at",
-        ),
-        Index(
-            "ix_ai_suggestions_pending_idempotency",
-            "interview_id",
-            "suggestion_type",
-            "input_snapshot_hash",
-            unique=True,
-            postgresql_where=text("status = 'pending'"),
         ),
     )
 

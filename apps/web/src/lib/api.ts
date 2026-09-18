@@ -370,6 +370,140 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isNullableBoundedNumber(
+  value: unknown,
+  minimum: number,
+  maximum: number
+): value is number | null {
+  return (
+    value === null ||
+    (typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum)
+  );
+}
+
+export function isAISuggestionStatus(value: unknown): value is AISuggestionStatus {
+  return (
+    value === "pending" ||
+    value === "accepted" ||
+    value === "rejected" ||
+    value === "edited" ||
+    value === "expired" ||
+    value === "failed" ||
+    value === "superseded"
+  );
+}
+
+function isInterviewQuestionCategoryValue(
+  value: unknown
+): value is InterviewQuestionCategory {
+  return (
+    value === "behavioral" ||
+    value === "technical" ||
+    value === "coding" ||
+    value === "system_design" ||
+    value === "case" ||
+    value === "product" ||
+    value === "culture" ||
+    value === "other"
+  );
+}
+
+export function isInterviewPrepOutput(value: unknown): value is InterviewPrepOutput {
+  if (!isRecord(value) || !isRecord(value.readiness)) return false;
+  const readiness = value.readiness;
+  if (!isRecord(readiness.breakdown)) return false;
+  const breakdown = readiness.breakdown;
+  return (
+    typeof value.summary === "string" &&
+    Array.isArray(value.preparation_priorities) &&
+    value.preparation_priorities.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.title === "string" &&
+        typeof item.reason === "string" &&
+        typeof item.recommended_action === "string" &&
+        (item.priority === "high" || item.priority === "medium" || item.priority === "low")
+    ) &&
+    Array.isArray(value.technical_topics) &&
+    value.technical_topics.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.topic === "string" &&
+        typeof item.reason === "string" &&
+        isStringArray(item.recommended_actions)
+    ) &&
+    Array.isArray(value.behavioral_stories) &&
+    value.behavioral_stories.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.story_or_evidence === "string" &&
+        typeof item.relevance === "string" &&
+        typeof item.suggested_angle === "string"
+    ) &&
+    Array.isArray(value.likely_questions) &&
+    value.likely_questions.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.question === "string" &&
+        isInterviewQuestionCategoryValue(item.category) &&
+        typeof item.reason === "string" &&
+        typeof item.recommended_angle === "string"
+    ) &&
+    isStringArray(value.questions_to_ask) &&
+    Array.isArray(value.gap_warnings) &&
+    value.gap_warnings.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.area === "string" &&
+        typeof item.reason === "string" &&
+        typeof item.suggested_action === "string" &&
+        isNullableBoundedNumber(item.confidence, 0, 1)
+    ) &&
+    isStringArray(value.limitations_or_uncertainties) &&
+    isNullableBoundedNumber(readiness.score, 0, 100) &&
+    typeof readiness.summary === "string" &&
+    isNullableBoundedNumber(breakdown.technical_depth, 0, 100) &&
+    isNullableBoundedNumber(breakdown.role_context, 0, 100) &&
+    isNullableBoundedNumber(breakdown.behavioral_examples, 0, 100) &&
+    isNullableBoundedNumber(breakdown.logistics_and_preparation, 0, 100) &&
+    isStringArray(readiness.limitations)
+  );
+}
+
+export function isInterviewPrepSuggestion(value: unknown): value is InterviewPrepSuggestion {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.interview_id === "string" &&
+    typeof value.entity_type === "string" &&
+    isNullableString(value.entity_id) &&
+    value.suggestion_type === "interview_prep" &&
+    isInterviewPrepOutput(value.proposed_value) &&
+    (value.resolved_value === null || isInterviewPrepOutput(value.resolved_value)) &&
+    isNullableBoundedNumber(value.confidence, 0, 1) &&
+    isNullableString(value.rationale) &&
+    typeof value.model_provider === "string" &&
+    typeof value.model_version === "string" &&
+    typeof value.prompt_version === "string" &&
+    typeof value.output_schema_version === "string" &&
+    typeof value.input_snapshot_hash === "string" &&
+    isAISuggestionStatus(value.status) &&
+    isNullableString(value.resolved_at) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string"
+  );
+}
+
+export function isInterviewPrepSuggestionArray(
+  value: unknown
+): value is InterviewPrepSuggestion[] {
+  return Array.isArray(value) && value.every(isInterviewPrepSuggestion);
+}
+
 export function isContactRelationshipType(value: unknown): value is ContactRelationshipType {
   return (
     value === "recruiter" ||

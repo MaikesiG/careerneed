@@ -1,13 +1,11 @@
 import hashlib
 import json
 import re
-import uuid
 from typing import Any
 
 from fastapi import HTTPException
 from openai import OpenAI
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.crypto import decrypt_secret
@@ -447,22 +445,7 @@ def generate_interview_prep(
     context = build_minimized_context(db, application, interview)
     context_hash = compute_context_hash(context)
 
-    # 1. Check if a pending suggestion with this hash already exists
-    existing_pending = db.scalar(
-        select(AISuggestion).where(
-            AISuggestion.interview_id == interview.id,
-            AISuggestion.suggestion_type == SUGGESTION_TYPE,
-            AISuggestion.input_snapshot_hash == context_hash,
-            AISuggestion.status == "pending",
-        )
-    )
-    if existing_pending is not None:
-        InterviewPrepOutput.model_validate(existing_pending.proposed_value)
-        if existing_pending.resolved_value is not None:
-            InterviewPrepOutput.model_validate(existing_pending.resolved_value)
-        return existing_pending, False
-
-    # 2. Determine provider execution mode
+    # Each explicit generation creates an independent draft, even when context is unchanged.
     mode, _ = get_extraction_mode(db, current_user.id)
     prep_output: InterviewPrepOutput | None = None
     provider_label = "fallback"
@@ -513,7 +496,7 @@ def generate_interview_prep(
             except Exception:
                 prep_output = None
 
-    # 3. Fallback to deterministic generation if LLM was skipped or failed
+    # Fallback to deterministic generation if LLM was skipped or failed
     if prep_output is None:
         prep_output = _generate_deterministic_fallback(context)
         provider_label = "fallback"
@@ -542,60 +525,14 @@ def generate_interview_prep(
         status="pending",
     )
 
-    # 4. Safe persistence handling concurrent idempotency races
-    try:
-        savepoint = db.begin_nested()
-        db.add(suggestion)
-        db.flush()
-        savepoint.commit()
-        db.commit()
-        db.refresh(suggestion)
-        return suggestion, True
-    except IntegrityError:
-        savepoint.rollback()
-        # Concurrent request inserted pending suggestion with same hash
-        existing = db.scalar(
-            select(AISuggestion).where(
-                AISuggestion.interview_id == interview.id,
-                AISuggestion.suggestion_type == SUGGESTION_TYPE,
-                AISuggestion.input_snapshot_hash == context_hash,
-                AISuggestion.status == "pending",
-            )
-        )
-        if existing is not None:
-            return existing, False
-        raise
-
-
-def _format_prep_notes_block(suggestion_id: uuid.UUID, prep: InterviewPrepOutput) -> str:
-    """Format delimited attribution block for interview preparation notes."""
-    lines = [
-        f"--- [AI Preparation Plan (Suggestion: {suggestion_id})] ---",
-        f"Summary: {prep.summary}",
-        "",
-        "Top Priorities:",
-    ]
-    for p in prep.preparation_priorities[:5]:
-        lines.append(f"- [{p.priority.upper()}] {p.title}: {p.recommended_action}")
-
-    if prep.likely_questions:
-        lines.append("\nLikely Questions:")
-        for q in prep.likely_questions[:5]:
-            lines.append(f"- ({q.category}) {q.question}")
-
-    if prep.questions_to_ask:
-        lines.append("\nQuestions to Ask:")
-        for qa in prep.questions_to_ask[:5]:
-            lines.append(f"- {qa}")
-
-    lines.append(f"--- [End AI Preparation Plan (Suggestion: {suggestion_id})] ---")
-    return "\n".join(lines)
+    db.add(suggestion)
+    db.commit()
+    db.refresh(suggestion)
+    return suggestion, True
 
 
 def resolve_interview_prep_suggestion(
     db: Session,
-    current_user: User,
-    interview: Interview,
     suggestion: AISuggestion,
     payload: InterviewPrepResolveRequest,
 ) -> AISuggestion:
@@ -630,29 +567,6 @@ def resolve_interview_prep_suggestion(
     elif payload.status == "rejected":
         suggestion.status = "rejected"
         suggestion.resolved_at = utcnow()
-
-    # Apply to preparation notes if requested and allowed
-    if payload.apply_to_preparation_notes:
-        if payload.status == "rejected":
-            raise HTTPException(
-                status_code=422,
-                detail="Cannot apply preparation notes when status is 'rejected'",
-            )
-
-        prep_data = resolved_dict or suggestion.proposed_value
-        prep = InterviewPrepOutput.model_validate(prep_data)
-        block = _format_prep_notes_block(suggestion.id, prep)
-
-        existing_notes = interview.preparation_notes or ""
-        marker = f"Suggestion: {suggestion.id}"
-
-        # Idempotently append delimited block if not already present
-        if marker not in existing_notes:
-            if existing_notes.strip():
-                interview.preparation_notes = f"{existing_notes.rstrip()}\n\n{block}"
-            else:
-                interview.preparation_notes = block
-            interview.updated_at = utcnow()
 
     suggestion.updated_at = utcnow()
     db.commit()

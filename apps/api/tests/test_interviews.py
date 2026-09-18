@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
@@ -533,7 +532,7 @@ def test_cascade_delete_interview_removes_questions_and_suggestions(
     assert db_session.get(AISuggestion, s_id) is None
 
 
-def test_ai_suggestion_pending_idempotency_constraint(
+def test_ai_suggestion_allows_multiple_pending_drafts_for_same_context(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -563,7 +562,6 @@ def test_ai_suggestion_pending_idempotency_constraint(
     db_session.add(sugg1)
     db_session.flush()
 
-    savepoint = db_session.begin_nested()
     sugg2 = AISuggestion(
         user_id=user_id,
         interview_id=interview.id,
@@ -577,29 +575,9 @@ def test_ai_suggestion_pending_idempotency_constraint(
         status="pending",
     )
     db_session.add(sugg2)
-    with pytest.raises(IntegrityError):
-        db_session.flush()
-    savepoint.rollback()
-
-    # After first suggestion is accepted (or rejected/superseded), creating a new suggestion with same hash succeeds
-    sugg1.status = "accepted"
     db_session.flush()
-
-    sugg3 = AISuggestion(
-        user_id=user_id,
-        interview_id=interview.id,
-        suggestion_type="interview_prep",
-        proposed_value={"version": 3},
-        model_provider="openai",
-        model_version="gpt-4o-mini",
-        prompt_version="v1",
-        output_schema_version="1.0",
-        input_snapshot_hash="same-hash-12345",
-        status="pending",
-    )
-    db_session.add(sugg3)
-    db_session.flush()
-    assert sugg3.id is not None
+    assert sugg1.id is not None
+    assert sugg2.id is not None
 
 
 def test_interview_question_routes_require_authentication(client: TestClient) -> None:
@@ -969,6 +947,9 @@ def test_interview_prep_routes_require_authentication(client: TestClient) -> Non
     assert client.post(f"/applications/{app_id}/interviews/{int_id}/prep/generate").status_code == 401
     assert client.get(f"/applications/{app_id}/interviews/{int_id}/prep").status_code == 401
     assert client.post(f"/applications/{app_id}/interviews/{int_id}/prep/{sugg_id}/resolve", json={"status": "accepted"}).status_code == 401
+    assert client.delete(
+        f"/applications/{app_id}/interviews/{int_id}/prep/{sugg_id}"
+    ).status_code == 401
 
 
 def test_interview_prep_cross_user_isolation(
@@ -1007,6 +988,9 @@ def test_interview_prep_cross_user_isolation(
         assert other_client.post(
             f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
             json={"status": "accepted"},
+        ).status_code == 404
+        assert other_client.delete(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}"
         ).status_code == 404
     finally:
         other_client.close()
@@ -1050,6 +1034,13 @@ def test_interview_prep_hierarchy_mismatch_returns_404(
     assert client.post(
         f"/applications/{app1.id}/interviews/{int2.id}/prep/{sugg_id}/resolve",
         json={"status": "accepted"},
+    ).status_code == 404
+
+    assert client.delete(
+        f"/applications/{app2.id}/interviews/{int1.id}/prep/{sugg_id}"
+    ).status_code == 404
+    assert client.delete(
+        f"/applications/{app1.id}/interviews/{int2.id}/prep/{sugg_id}"
     ).status_code == 404
 
     # Non-existent suggestion_id resolve
@@ -1189,7 +1180,7 @@ def test_interview_prep_structured_llm_generation_and_usage_logging(
     assert "sk-mock-openai" not in resp.text
 
 
-def test_interview_prep_idempotency_and_quota_preservation(
+def test_interview_prep_multiple_generations_create_independent_drafts(
     client: TestClient,
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1228,14 +1219,17 @@ def test_interview_prep_idempotency_and_quota_preservation(
     sugg1_id = resp1.json()["id"]
     assert call_count == 1
 
-    # Second request with identical context returns existing pending suggestion (200 OK)
+    # A second explicit request with identical context creates another draft.
     resp2 = client.post(f"/applications/{owner_app.id}/interviews/{interview.id}/prep/generate")
-    assert resp2.status_code == 200
-    assert resp2.json()["id"] == sugg1_id
-    # Provider was not called a second time
-    assert call_count == 1
+    assert resp2.status_code == 201
+    assert resp2.json()["id"] != sugg1_id
+    assert call_count == 2
 
-    # UsageLog count for this action remains 1
+    listed = client.get(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep"
+    ).json()
+    assert {item["id"] for item in listed} == {sugg1_id, resp2.json()["id"]}
+
     db_session.expire_all()
     usage_count = db_session.scalar(
         select(func.count()).where(
@@ -1243,7 +1237,7 @@ def test_interview_prep_idempotency_and_quota_preservation(
             UsageLog.action == "interview_prep_generate",
         )
     )
-    assert usage_count == 1
+    assert usage_count == 2
 
 
 def test_interview_prep_deterministic_fallback_and_readiness_rules(
@@ -1366,7 +1360,7 @@ def test_interview_prep_provider_failure_falls_back_without_output_or_quota_debi
     assert usage_count == 0
 
 
-def test_interview_prep_resolve_accepted_with_notes_application(
+def test_interview_prep_apply_and_delete_preserve_existing_notes(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -1384,13 +1378,15 @@ def test_interview_prep_resolve_accepted_with_notes_application(
     assert gen_resp.status_code == 201
     sugg_id = gen_resp.json()["id"]
 
-    # Resolve with accepted and apply_to_preparation_notes = True
+    legacy_apply_response = client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
+        json={"status": "accepted", "apply_to_preparation_notes": True},
+    )
+    assert legacy_apply_response.status_code == 422
+
     resolve_resp = client.post(
         f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
-        json={
-            "status": "accepted",
-            "apply_to_preparation_notes": True,
-        },
+        json={"status": "accepted"},
     )
     assert resolve_resp.status_code == 200
     res_data = resolve_resp.json()
@@ -1398,29 +1394,37 @@ def test_interview_prep_resolve_accepted_with_notes_application(
     assert res_data["resolved_at"] is not None
     assert res_data["resolved_value"] is not None
 
-    # Check that interview.preparation_notes preserved user notes and appended delimited block
+    # Applying marks the managed artifact without mixing AI text into user notes.
     db_session.expire_all()
     updated_interview = db_session.get(Interview, interview.id)
     assert updated_interview is not None
-    assert "Candidate notes: Review past Kafka projects." in updated_interview.preparation_notes
-    assert f"--- [AI Preparation Plan (Suggestion: {sugg_id})] ---" in updated_interview.preparation_notes
-    assert f"--- [End AI Preparation Plan (Suggestion: {sugg_id})] ---" in updated_interview.preparation_notes
+    assert updated_interview.preparation_notes == "Candidate notes: Review past Kafka projects."
 
     # Resolving an already-resolved suggestion returns 400
     retry_resolve = client.post(
         f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}/resolve",
-        json={"status": "accepted", "apply_to_preparation_notes": True},
+        json={"status": "accepted"},
     )
     assert retry_resolve.status_code == 400
     assert "Only pending suggestions can be resolved" in retry_resolve.json()["detail"]
     db_session.expire_all()
-    notes_after_retry = db_session.get(Interview, interview.id).preparation_notes
-    assert notes_after_retry.count(
-        f"--- [AI Preparation Plan (Suggestion: {sugg_id})] ---"
-    ) == 1
-    assert notes_after_retry.count(
-        f"--- [End AI Preparation Plan (Suggestion: {sugg_id})] ---"
-    ) == 1
+    assert (
+        db_session.get(Interview, interview.id).preparation_notes
+        == "Candidate notes: Review past Kafka projects."
+    )
+
+    delete_response = client.delete(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep/{sugg_id}"
+    )
+    assert delete_response.status_code == 204
+    assert client.get(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/prep"
+    ).json() == []
+    db_session.expire_all()
+    assert (
+        db_session.get(Interview, interview.id).preparation_notes
+        == "Candidate notes: Review past Kafka projects."
+    )
 
 
 def test_interview_prep_resolve_rejected_and_edited_validation(
@@ -1437,17 +1441,17 @@ def test_interview_prep_resolve_rejected_and_edited_validation(
     # Generate suggestion
     sugg1 = client.post(f"/applications/{owner_app.id}/interviews/{int1.id}/prep/generate").json()
 
-    # Reject with apply_to_notes=True is rejected with 422
+    # The retired preparation-note append flag is rejected.
     rej_invalid = client.post(
         f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg1['id']}/resolve",
         json={"status": "rejected", "apply_to_preparation_notes": True},
     )
     assert rej_invalid.status_code == 422
 
-    # Reject cleanly with 200
+    # Reject cleanly with 200 without touching notes.
     rej_valid = client.post(
         f"/applications/{owner_app.id}/interviews/{int1.id}/prep/{sugg1['id']}/resolve",
-        json={"status": "rejected", "apply_to_preparation_notes": False},
+        json={"status": "rejected"},
     )
     assert rej_valid.status_code == 200
     assert rej_valid.json()["status"] == "rejected"
@@ -1477,16 +1481,15 @@ def test_interview_prep_resolve_rejected_and_edited_validation(
         json={
             "status": "edited",
             "resolved_value": custom_prep,
-            "apply_to_preparation_notes": True,
         },
     )
     assert edit_valid.status_code == 200
     assert edit_valid.json()["status"] == "edited"
     assert edit_valid.json()["resolved_value"]["summary"] == "Human-tailored preparation focus on live database migrations."
 
-    # Delimited block appended with custom summary
+    # Applying an edited draft does not modify user-authored preparation notes.
     db_session.expire_all()
-    assert "Human-tailored preparation focus on live database migrations." in db_session.get(Interview, int1.id).preparation_notes
+    assert db_session.get(Interview, int1.id).preparation_notes == "Pre-existing notes"
 
 
 def test_interview_prep_list_and_filtering(
@@ -1748,6 +1751,7 @@ def test_interview_outcome_routes_require_authentication(client: TestClient) -> 
     assert client.post(f"{base}/generate").status_code == 401
     assert client.get(base).status_code == 401
     assert client.post(f"{base}/{suggestion_id}/resolve", json={"status": "accepted"}).status_code == 401
+    assert client.delete(f"{base}/{suggestion_id}").status_code == 401
 
 
 def test_interview_outcome_ownership_and_hierarchy_are_enforced(
@@ -1774,9 +1778,10 @@ def test_interview_outcome_ownership_and_hierarchy_are_enforced(
     assert client.post(
         f"{base}/{generated.json()['id']}/resolve", json={"status": "accepted"}
     ).status_code == 404
+    assert client.delete(f"{base}/{generated.json()['id']}").status_code == 404
 
 
-def test_interview_outcome_provider_generation_is_bounded_idempotent_and_logged_once(
+def test_interview_outcome_provider_generation_creates_independent_drafts(
     client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     user = register(client, "outcome-provider@example.test")
@@ -1827,8 +1832,8 @@ def test_interview_outcome_provider_generation_is_bounded_idempotent_and_logged_
     url = f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis/generate"
     first, second = client.post(url), client.post(url)
     assert first.status_code == 201
-    assert second.status_code == 200
-    assert first.json()["id"] == second.json()["id"]
+    assert second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
     assert first.json()["prompt_version"] == "interview-outcome-v1"
     assert first.json()["output_schema_version"] == "1.0"
     assert first.json()["model_provider"] == "platform_openai"
@@ -1845,7 +1850,16 @@ def test_interview_outcome_provider_generation_is_bounded_idempotent_and_logged_
     assert db_session.scalar(select(func.count()).where(
         UsageLog.user_id == uuid.UUID(str(user["id"])),
         UsageLog.action == "interview_outcome_analysis_generate",
-    )) == 1
+    )) == 2
+
+    listed = client.get(
+        f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis"
+    )
+    assert listed.status_code == 200
+    assert {item["id"] for item in listed.json()} == {
+        first.json()["id"],
+        second.json()["id"],
+    }
 
 
 def test_interview_outcome_provider_failure_uses_safe_sparse_fallback_without_usage(
@@ -1925,3 +1939,44 @@ def test_interview_outcome_resolution_never_modifies_interview_notes(
     listed = client.get(f"{base}?status=edited")
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [second["id"]]
+
+
+def test_interview_ai_drafts_delete_independently_without_note_side_effects(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = register(client, "ai-draft-delete@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    interview = Interview(
+        application_id=application.id,
+        title="Managed drafts",
+        preparation_notes="Keep this user-authored preparation text.",
+    )
+    db_session.add(interview)
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.services.interview_prep.get_extraction_mode", lambda *_: ("basic", 0)
+    )
+    monkeypatch.setattr(
+        "app.services.interview_outcome.get_extraction_mode", lambda *_: ("basic", 0)
+    )
+
+    prep_base = f"/applications/{application.id}/interviews/{interview.id}/prep"
+    outcome_base = (
+        f"/applications/{application.id}/interviews/{interview.id}/outcome-analysis"
+    )
+    first_prep = client.post(f"{prep_base}/generate").json()
+    second_prep = client.post(f"{prep_base}/generate").json()
+    outcome = client.post(f"{outcome_base}/generate").json()
+
+    assert client.delete(f"{prep_base}/{first_prep['id']}").status_code == 204
+    assert [item["id"] for item in client.get(prep_base).json()] == [second_prep["id"]]
+    assert [item["id"] for item in client.get(outcome_base).json()] == [outcome["id"]]
+    assert client.delete(f"{prep_base}/{outcome['id']}").status_code == 404
+    assert client.delete(f"{outcome_base}/{second_prep['id']}").status_code == 404
+
+    assert client.delete(f"{outcome_base}/{outcome['id']}").status_code == 204
+    assert client.get(outcome_base).json() == []
+    db_session.refresh(interview)
+    assert interview.preparation_notes == "Keep this user-authored preparation text."

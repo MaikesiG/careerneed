@@ -5,7 +5,6 @@ from typing import Any
 from fastapi import HTTPException
 from openai import OpenAI
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.crypto import decrypt_secret
@@ -186,18 +185,6 @@ def generate_interview_outcome(
 ) -> tuple[AISuggestion, bool]:
     context = build_minimized_context(db, application, interview)
     context_hash = compute_context_hash(context)
-    existing = db.scalar(
-        select(AISuggestion).where(
-            AISuggestion.interview_id == interview.id,
-            AISuggestion.suggestion_type == SUGGESTION_TYPE,
-            AISuggestion.input_snapshot_hash == context_hash,
-            AISuggestion.status == "pending",
-        )
-    )
-    if existing is not None:
-        InterviewOutcomeAnalysisOutput.model_validate(existing.proposed_value)
-        return existing, False
-
     output: InterviewOutcomeAnalysisOutput | None = None
     provider_label = "fallback"
     model_version = "deterministic-v1"
@@ -256,29 +243,12 @@ def generate_interview_outcome(
         input_snapshot_hash=context_hash,
         status="pending",
     )
-    try:
-        savepoint = db.begin_nested()
-        db.add(suggestion)
-        if usage is not None:
-            db.add(usage)
-        db.flush()
-        savepoint.commit()
-        db.commit()
-        db.refresh(suggestion)
-        return suggestion, True
-    except IntegrityError:
-        savepoint.rollback()
-        existing = db.scalar(
-            select(AISuggestion).where(
-                AISuggestion.interview_id == interview.id,
-                AISuggestion.suggestion_type == SUGGESTION_TYPE,
-                AISuggestion.input_snapshot_hash == context_hash,
-                AISuggestion.status == "pending",
-            )
-        )
-        if existing is not None:
-            return existing, False
-        raise
+    db.add(suggestion)
+    if usage is not None:
+        db.add(usage)
+    db.commit()
+    db.refresh(suggestion)
+    return suggestion, True
 
 
 def resolve_interview_outcome_suggestion(
