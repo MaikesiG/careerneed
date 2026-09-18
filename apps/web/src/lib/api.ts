@@ -113,11 +113,7 @@ export type InterviewQuestion = {
 };
 
 export type FollowUpType =
-  | "thank_you"
-  | "status_check"
-  | "recruiter_reply"
-  | "preparation"
-  | "custom";
+  "thank_you" | "status_check" | "recruiter_reply" | "preparation" | "custom";
 
 export type InterviewFollowUp = {
   id: string;
@@ -132,6 +128,40 @@ export type InterviewFollowUp = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TodayPriorityGroupKey =
+  | "overdue_follow_ups"
+  | "interviews_today"
+  | "follow_ups_due_today"
+  | "upcoming_interviews"
+  | "applications_needing_update";
+
+export type TodayPriorityActionKind = "follow_up" | "interview" | "application_update";
+
+export type TodayPriorityItem = {
+  id: string;
+  action_kind: TodayPriorityActionKind;
+  title: string;
+  application_id: string;
+  company_name: string;
+  job_title: string;
+  interview_id: string | null;
+  occurs_at: string | null;
+  timezone: string | null;
+  status: string | null;
+};
+
+export type TodayPriorityGroup = {
+  key: TodayPriorityGroupKey;
+  priority: number;
+  items: TodayPriorityItem[];
+};
+
+export type TodayPrioritiesResponse = {
+  timezone: string;
+  local_date: string;
+  groups: TodayPriorityGroup[];
 };
 
 export type PrepPriority = {
