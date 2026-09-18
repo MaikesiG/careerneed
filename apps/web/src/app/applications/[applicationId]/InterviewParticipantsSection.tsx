@@ -119,6 +119,9 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState<ParticipantRole>("interviewer");
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -150,6 +153,8 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
   const addInFlight = useRef(false);
   const createInFlight = useRef(false);
   const deleteInFlight = useRef(false);
+  const saveRoleInFlight = useRef(false);
+  const editReturnFocusIdRef = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const isMountedRef = useRef(true);
@@ -236,6 +241,13 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
     firstControl?.focus();
     return () => previousFocusRef.current?.focus();
   }, [isDialogOpen]);
+
+  useEffect(() => {
+    if (editingId !== null || editReturnFocusIdRef.current === null) return;
+    const participantId = editReturnFocusIdRef.current;
+    editReturnFocusIdRef.current = null;
+    document.getElementById(`edit-participant-${participantId}`)?.focus();
+  }, [editingId]);
 
   function openDialog() {
     setSelectedContactId("");
@@ -480,6 +492,47 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
     }
   }
 
+  function startEditingRole(participant: InterviewParticipant) {
+    if (saveRoleInFlight.current || deleteInFlight.current) return;
+    setEditingId(participant.id);
+    setEditRole(participant.role);
+    setActionError(null);
+  }
+
+  function cancelEditingRole() {
+    if (saveRoleInFlight.current) return;
+    editReturnFocusIdRef.current = editingId;
+    setEditingId(null);
+    setActionError(null);
+  }
+
+  async function handleSaveRole(participant: InterviewParticipant) {
+    if (saveRoleInFlight.current) return;
+    saveRoleInFlight.current = true;
+    setSavingId(participant.id);
+    setActionError(null);
+    try {
+      const response = await apiFetch(`${participantsEndpoint}/${participant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: editRole }),
+      });
+      if (!response.ok) throw new Error("request failed");
+      const data: unknown = await response.json();
+      if (!isInterviewParticipant(data)) throw new Error("invalid data");
+      setParticipants((current) =>
+        current.map((item) => (item.id === participant.id ? data : item))
+      );
+      editReturnFocusIdRef.current = participant.id;
+      setEditingId(null);
+    } catch {
+      setActionError("Unable to update participant role. Please try again.");
+    } finally {
+      saveRoleInFlight.current = false;
+      setSavingId(null);
+    }
+  }
+
   return (
     <div className="border-border mt-3 border-t pt-3">
       {/* Collapsed/Expanded Toggle Header */}
@@ -601,16 +654,70 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center">
-                    <button
-                      type="button"
-                      disabled={deletingId === participant.id}
-                      onClick={() => void handleRemoveParticipant(participant)}
-                      className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive inline-flex h-10 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-                    >
-                      {deletingId === participant.id ? "Removing…" : "Remove"}
-                    </button>
-                  </div>
+                  {editingId === participant.id ? (
+                    <div className="flex w-full shrink-0 flex-wrap items-end gap-2 sm:w-auto">
+                      <div className="min-w-40 flex-1 sm:flex-none">
+                        <label
+                          htmlFor={`edit-participant-role-${participant.id}`}
+                          className="text-foreground text-xs font-medium"
+                        >
+                          Interview role
+                        </label>
+                        <select
+                          id={`edit-participant-role-${participant.id}`}
+                          autoFocus
+                          value={editRole}
+                          onChange={(event) =>
+                            setEditRole(event.target.value as ParticipantRole)
+                          }
+                          disabled={savingId === participant.id}
+                          className={controlClass}
+                        >
+                          {ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        id={`edit-participant-${participant.id}`}
+                        type="button"
+                        onClick={() => void handleSaveRole(participant)}
+                        disabled={savingId === participant.id}
+                        className="bg-primary text-primary-foreground focus-visible:ring-primary inline-flex h-10 items-center justify-center rounded-lg px-3 text-xs font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        {savingId === participant.id ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditingRole}
+                        disabled={savingId === participant.id}
+                        className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-10 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={deletingId !== null || savingId !== null}
+                        onClick={() => startEditingRole(participant)}
+                        className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-10 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        Edit role
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId !== null || savingId !== null}
+                        onClick={() => void handleRemoveParticipant(participant)}
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive inline-flex h-10 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                      >
+                        {deletingId === participant.id ? "Removing…" : "Remove"}
+                      </button>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>

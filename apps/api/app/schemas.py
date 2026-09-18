@@ -542,6 +542,12 @@ class ParticipantCreate(BaseModel):
     role: ParticipantRole
 
 
+class ParticipantUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: ParticipantRole
+
+
 class ParticipantContactOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

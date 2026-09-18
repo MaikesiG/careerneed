@@ -215,6 +215,99 @@ def test_add_list_remove_and_reuse_participant(
     assert len(client.get(participant_path(application, second_interview)).json()) == 1
 
 
+def test_update_participant_role_changes_only_assignment(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "participant-update@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Engineer")
+    interview = create_interview(db_session, application=application, title="Panel")
+    contact = client.post("/contacts", json=contact_payload()).json()
+    created = client.post(
+        participant_path(application, interview),
+        json={"contact_id": contact["id"], "role": "interviewer"},
+    ).json()
+    application_contact = db_session.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.application_id == application.id,
+            ApplicationContact.contact_id == uuid.UUID(contact["id"]),
+        )
+    )
+    assert application_contact is not None
+    original_application_contact = (
+        application_contact.id,
+        application_contact.contact_type,
+        application_contact.name,
+        application_contact.email,
+        application_contact.notes,
+    )
+
+    response = client.patch(
+        f"{participant_path(application, interview)}/{created['id']}",
+        json={"role": "coordinator"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["id"] == created["id"]
+    assert updated["role"] == "coordinator"
+    assert updated["contact"] == created["contact"]
+    assert updated["contact_id"] == contact["id"]
+    db_session.refresh(application_contact)
+    assert (
+        application_contact.id,
+        application_contact.contact_type,
+        application_contact.name,
+        application_contact.email,
+        application_contact.notes,
+    ) == original_application_contact
+
+
+def test_update_participant_rejects_wrong_interview_foreign_user_and_invalid_role(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "participant-update-owner@example.test")
+    application = create_application(db_session, user_id=owner["id"], title="Owner role")
+    interview = create_interview(db_session, application=application, title="Owner interview")
+    other_interview = create_interview(
+        db_session, application=application, title="Other interview"
+    )
+    contact = client.post("/contacts", json=contact_payload()).json()
+    created = client.post(
+        participant_path(application, interview),
+        json={"contact_id": contact["id"], "role": "observer"},
+    ).json()
+
+    wrong_interview_response = client.patch(
+        f"{participant_path(application, other_interview)}/{created['id']}",
+        json={"role": "coordinator"},
+    )
+    assert wrong_interview_response.status_code == 404
+
+    invalid_role_response = client.patch(
+        f"{participant_path(application, interview)}/{created['id']}",
+        json={"role": "manager"},
+    )
+    assert invalid_role_response.status_code == 422
+
+    other_client = TestClient(app)
+    try:
+        register(other_client, "participant-update-other@example.test")
+        foreign_response = other_client.patch(
+            f"{participant_path(application, interview)}/{created['id']}",
+            json={"role": "interviewer"},
+        )
+        assert foreign_response.status_code == 404
+    finally:
+        other_client.close()
+
+    unchanged = client.get(participant_path(application, interview)).json()
+    assert len(unchanged) == 1
+    assert unchanged[0]["role"] == "observer"
+    assert unchanged[0]["contact_id"] == contact["id"]
+
+
 def test_participant_links_reject_foreign_missing_and_deleted_resources(
     client: TestClient,
     db_session: Session,

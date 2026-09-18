@@ -37,6 +37,7 @@ from app.schemas import (
     InterviewQuestionUpdate,
     InterviewUpdate,
     ParticipantCreate,
+    ParticipantUpdate,
     UpcomingInterviewOut,
 )
 from app.services.interview_extractor import extract_interview
@@ -282,6 +283,34 @@ def add_interview_participant(
             status_code=409,
             detail="Contact is already a participant",
         ) from error
+    db.refresh(participant)
+    return participant
+
+
+@router.patch(
+    "/applications/{application_id}/interviews/{interview_id}/participants/{participant_id}",
+    response_model=InterviewParticipantOut,
+)
+def update_interview_participant(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    participant_id: uuid.UUID,
+    payload: ParticipantUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InterviewParticipant:
+    _get_owned_interview(application_id, interview_id, current_user, db)
+    participant = db.scalar(
+        select(InterviewParticipant).where(
+            InterviewParticipant.id == participant_id,
+            InterviewParticipant.interview_id == interview_id,
+        )
+    )
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    participant.role = payload.role
+    db.commit()
     db.refresh(participant)
     return participant
 
