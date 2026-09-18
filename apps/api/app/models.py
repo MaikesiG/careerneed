@@ -228,6 +228,12 @@ class ApplicationContact(Base):
         nullable=False,
         index=True,
     )
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     contact_type: Mapped[str] = mapped_column(String(50), nullable=False, default="other")
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -241,6 +247,7 @@ class ApplicationContact(Base):
     )
 
     application: Mapped["Application"] = relationship(back_populates="contacts")
+    contact: Mapped["Contact | None"] = relationship(back_populates="application_contacts")
 
 
 class LLMCredential(Base):
@@ -418,6 +425,10 @@ class Contact(Base):
     participants: Mapped[list["InterviewParticipant"]] = relationship(
         back_populates="contact",
         cascade="all, delete-orphan",
+    )
+    application_contacts: Mapped[list["ApplicationContact"]] = relationship(
+        back_populates="contact",
+        passive_deletes=True,
     )
 
 

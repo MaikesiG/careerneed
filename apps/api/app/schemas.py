@@ -239,7 +239,18 @@ class ExtractionModeOut(BaseModel):
     free_calls_remaining: int | None
 
 
+ContactRelationshipType = Literal[
+    "recruiter",
+    "interviewer",
+    "hiring_manager",
+    "referral",
+    "networking",
+    "other",
+]
+
+
 class ApplicationContactCreate(BaseModel):
+    contact_id: uuid.UUID | None = None
     name: str
     contact_type: str = "other"
     email: str | None = None
@@ -248,6 +259,7 @@ class ApplicationContactCreate(BaseModel):
 
 
 class ApplicationContactUpdate(BaseModel):
+    contact_id: uuid.UUID | None = None
     name: str | None = None
     contact_type: str | None = None
     email: str | None = None
@@ -255,11 +267,23 @@ class ApplicationContactUpdate(BaseModel):
     notes: str | None = None
 
 
+class ApplicationContactCanonicalSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    title: str | None
+    email: str | None
+    linkedin_url: str | None
+    relationship_type: ContactRelationshipType
+
+
 class ApplicationContactOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     application_id: uuid.UUID
+    contact_id: uuid.UUID | None
     name: str
     contact_type: str
     email: str | None
@@ -267,6 +291,7 @@ class ApplicationContactOut(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+    contact: ApplicationContactCanonicalSummary | None
 
 
 class AuthCredentials(BaseModel):
@@ -377,15 +402,6 @@ class UpcomingInterviewOut(InterviewOut):
     company_name: str
     job_title: str
 
-
-ContactRelationshipType = Literal[
-    "recruiter",
-    "interviewer",
-    "hiring_manager",
-    "referral",
-    "networking",
-    "other",
-]
 
 ParticipantRole = Literal["interviewer", "coordinator", "observer"]
 

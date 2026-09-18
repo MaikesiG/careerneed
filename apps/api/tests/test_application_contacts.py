@@ -99,6 +99,27 @@ def create_contact(
     return contact
 
 
+def create_reusable_contact(
+    client: TestClient,
+    *,
+    email: str = "reusable@example.com",
+    notes: str = "Private canonical notes.",
+) -> dict[str, object]:
+    response = client.post(
+        "/contacts",
+        json={
+            "name": "Canonical Avery",
+            "title": "Senior Recruiter",
+            "email": email,
+            "linkedin_url": "https://www.linkedin.com/in/canonical-avery",
+            "relationship_type": "recruiter",
+            "notes": notes,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_application_contact_routes_require_authentication(client: TestClient) -> None:
     application_id = uuid.uuid4()
 
@@ -161,6 +182,8 @@ def test_create_and_list_application_contact(
     assert created["email"] == "jordan@example.test"
     assert created["linkedin_url"] == "https://www.linkedin.com/in/jordanlee"
     assert created["notes"] == "Connected after applying."
+    assert created["contact_id"] is None
+    assert created["contact"] is None
 
     list_response = client.get(f"/applications/{application.id}/contacts")
 
@@ -302,3 +325,142 @@ def test_deleting_application_cascades_to_contacts(
     )
 
     assert remaining_contact is None
+
+
+def test_create_and_update_can_link_owner_reusable_contact_safely(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "application-contact-link@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    reusable = create_reusable_contact(client)
+
+    create_response = client.post(
+        f"/applications/{application.id}/contacts",
+        json={
+            "contact_id": reusable["id"],
+            "name": "Legacy display name",
+            "contact_type": "other",
+            "email": "legacy@example.test",
+            "linkedin_url": "https://example.test/legacy",
+            "notes": "Independent legacy notes.",
+        },
+    )
+    assert create_response.status_code == 201
+    linked = create_response.json()
+    assert linked["contact_id"] == reusable["id"]
+    assert linked["name"] == "Legacy display name"
+    assert linked["email"] == "legacy@example.test"
+    assert linked["notes"] == "Independent legacy notes."
+    assert linked["contact"] == {
+        "id": reusable["id"],
+        "name": "Canonical Avery",
+        "title": "Senior Recruiter",
+        "email": "reusable@example.com",
+        "linkedin_url": "https://www.linkedin.com/in/canonical-avery",
+        "relationship_type": "recruiter",
+    }
+    assert "notes" not in linked["contact"]
+    assert "user_id" not in linked["contact"]
+
+    unlinked = create_contact(
+        db_session,
+        application_id=application.id,
+        name="Second legacy contact",
+    )
+    update_response = client.patch(
+        f"/applications/{application.id}/contacts/{unlinked.id}",
+        json={"contact_id": reusable["id"]},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["contact_id"] == reusable["id"]
+    assert updated["name"] == "Second legacy contact"
+    assert updated["notes"] == "Initial outreach."
+
+
+def test_update_null_clears_only_reusable_contact_link(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "application-contact-unlink@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    reusable = create_reusable_contact(client)
+    created = client.post(
+        f"/applications/{application.id}/contacts",
+        json={
+            "contact_id": reusable["id"],
+            "name": "Legacy snapshot",
+            "notes": "Keep this note.",
+        },
+    ).json()
+
+    response = client.patch(
+        f"/applications/{application.id}/contacts/{created['id']}",
+        json={"contact_id": None},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == created["id"]
+    assert body["contact_id"] is None
+    assert body["contact"] is None
+    assert body["name"] == "Legacy snapshot"
+    assert body["notes"] == "Keep this note."
+
+
+def test_foreign_and_missing_reusable_contact_links_return_generic_not_found(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "application-contact-owner@example.test")
+    application = create_application(db_session, user_id=owner["id"])
+    legacy = create_contact(db_session, application_id=application.id)
+
+    other_client = TestClient(app)
+    try:
+        register(other_client, "application-contact-foreign@example.test")
+        foreign = create_reusable_contact(other_client, email="foreign@example.com")
+
+        for contact_id in (foreign["id"], str(uuid.uuid4())):
+            create_response = client.post(
+                f"/applications/{application.id}/contacts",
+                json={"name": "Attempted link", "contact_id": contact_id},
+            )
+            update_response = client.patch(
+                f"/applications/{application.id}/contacts/{legacy.id}",
+                json={"contact_id": contact_id},
+            )
+            assert create_response.status_code == 404
+            assert create_response.json()["detail"] == "Contact not found"
+            assert update_response.status_code == 404
+            assert update_response.json()["detail"] == "Contact not found"
+    finally:
+        other_client.close()
+
+    db_session.refresh(legacy)
+    assert legacy.contact_id is None
+
+
+def test_deleting_reusable_contact_clears_link_and_preserves_legacy_contact(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "application-contact-delete-link@example.test")
+    application = create_application(db_session, user_id=user["id"])
+    reusable = create_reusable_contact(client)
+    created = client.post(
+        f"/applications/{application.id}/contacts",
+        json={
+            "contact_id": reusable["id"],
+            "name": "Preserved legacy contact",
+            "notes": "Preserved legacy notes.",
+        },
+    ).json()
+
+    assert client.delete(f"/contacts/{reusable['id']}").status_code == 204
+    items = client.get(f"/applications/{application.id}/contacts").json()
+    preserved = next(item for item in items if item["id"] == created["id"])
+    assert preserved["contact_id"] is None
+    assert preserved["contact"] is None
+    assert preserved["name"] == "Preserved legacy contact"
+    assert preserved["notes"] == "Preserved legacy notes."

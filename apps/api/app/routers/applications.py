@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, ApplicationContact, Job, Resume, User
+from app.models import Application, ApplicationContact, Contact, Job, Resume, User
 from app.schemas import (
     ApplicationByJobUpdate,
     ApplicationContactCreate,
@@ -303,6 +303,15 @@ def create_application_contact(
     db: Session = Depends(get_db),
 ) -> ApplicationContact:
     _get_owned_application(application_id, current_user, db)
+    if payload.contact_id is not None:
+        reusable_contact = db.scalar(
+            select(Contact).where(
+                Contact.id == payload.contact_id,
+                Contact.user_id == current_user.id,
+            )
+        )
+        if reusable_contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
 
     contact = ApplicationContact(
         application_id=application_id,
@@ -337,7 +346,18 @@ def update_application_contact(
     if contact is None:
         raise HTTPException(status_code=404, detail="Application contact not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("contact_id") is not None:
+        reusable_contact = db.scalar(
+            select(Contact).where(
+                Contact.id == update_data["contact_id"],
+                Contact.user_id == current_user.id,
+            )
+        )
+        if reusable_contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+    for field, value in update_data.items():
         setattr(contact, field, value)
 
     db.commit()
