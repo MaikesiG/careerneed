@@ -10,6 +10,7 @@ import {
   InterviewResult,
   InterviewExtraction,
 } from "@/lib/api";
+import InterviewParticipantsSection from "./InterviewParticipantsSection";
 import InterviewQuestionsSection from "./InterviewQuestionsSection";
 import InterviewPreparationSection from "./InterviewPreparationSection";
 import InterviewOutcomeAnalysisSection from "./InterviewOutcomeAnalysisSection";
@@ -613,6 +614,10 @@ export default function ApplicationInterviewsSection({
                   </div>
                 </div>
 
+                <InterviewParticipantsSection
+                  applicationId={applicationId}
+                  interviewId={interview.id}
+                />
                 <InterviewQuestionsSection
                   applicationId={applicationId}
                   interviewId={interview.id}

@@ -322,3 +322,114 @@ export type InterviewOutcomeSuggestion = {
   created_at: string;
   updated_at: string;
 };
+
+export type ContactRelationshipType =
+  "recruiter" | "interviewer" | "hiring_manager" | "referral" | "networking" | "other";
+
+export type ParticipantRole = "interviewer" | "coordinator" | "observer";
+
+export type Contact = {
+  id: string;
+  user_id: string;
+  company_id: string | null;
+  name: string;
+  title: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+  relationship_type: ContactRelationshipType;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ParticipantContact = {
+  id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+  relationship_type: ContactRelationshipType;
+};
+
+export type InterviewParticipant = {
+  id: string;
+  interview_id: string;
+  contact_id: string;
+  role: ParticipantRole;
+  created_at: string;
+  updated_at: string;
+  contact: ParticipantContact;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+export function isContactRelationshipType(value: unknown): value is ContactRelationshipType {
+  return (
+    value === "recruiter" ||
+    value === "interviewer" ||
+    value === "hiring_manager" ||
+    value === "referral" ||
+    value === "networking" ||
+    value === "other"
+  );
+}
+
+export function isParticipantRole(value: unknown): value is ParticipantRole {
+  return value === "interviewer" || value === "coordinator" || value === "observer";
+}
+
+export function isContact(value: unknown): value is Contact {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.user_id === "string" &&
+    isNullableString(value.company_id) &&
+    typeof value.name === "string" &&
+    isNullableString(value.title) &&
+    isNullableString(value.email) &&
+    isNullableString(value.linkedin_url) &&
+    isContactRelationshipType(value.relationship_type) &&
+    isNullableString(value.notes) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string"
+  );
+}
+
+export function isContactArray(value: unknown): value is Contact[] {
+  return Array.isArray(value) && value.every(isContact);
+}
+
+export function isParticipantContact(value: unknown): value is ParticipantContact {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isNullableString(value.title) &&
+    isNullableString(value.email) &&
+    isNullableString(value.linkedin_url) &&
+    isContactRelationshipType(value.relationship_type)
+  );
+}
+
+export function isInterviewParticipant(value: unknown): value is InterviewParticipant {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.interview_id === "string" &&
+    typeof value.contact_id === "string" &&
+    isParticipantRole(value.role) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string" &&
+    isParticipantContact(value.contact)
+  );
+}
+
+export function isInterviewParticipantArray(value: unknown): value is InterviewParticipant[] {
+  return Array.isArray(value) && value.every(isInterviewParticipant);
+}
