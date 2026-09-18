@@ -112,6 +112,28 @@ export type InterviewQuestion = {
   updated_at: string;
 };
 
+export type FollowUpType =
+  | "thank_you"
+  | "status_check"
+  | "recruiter_reply"
+  | "preparation"
+  | "custom";
+
+export type InterviewFollowUp = {
+  id: string;
+  user_id: string;
+  application_id: string;
+  interview_id: string | null;
+  type: FollowUpType;
+  title: string;
+  due_at_utc: string;
+  timezone: string;
+  completed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PrepPriority = {
   title: string;
   reason: string;
