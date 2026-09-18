@@ -1,106 +1,81 @@
-HIGH_PRIORITY_KEYWORDS = [
-    "mlops",
-    "ml infrastructure",
-    "ai infrastructure",
-    "ml platform",
-    "ai platform",
-    "machine learning infrastructure",
-    "machine learning engineer",
-    "ml engineer",
-    "ai engineer",
-    "research scientist",
-    "research engineer",
-    "applied scientist",
-    "applied ai engineer",
-]
-HARDWARE_INFRA_KEYWORDS = [
-    "kernel",
-    "gpu",
-    "tpu",
-    "compiler",
-    "distributed training",
-    "inference optimization",
-    "cluster",
-    "cuda",
-]
-MEDIUM_PRIORITY_KEYWORDS = [
-    "site reliability",
-    "sre",
-    "platform engineer",
-    "infrastructure engineer",
-]
-LOW_PRIORITY_KEYWORDS = [
-    "ai agent",
-    "agent engineer",
-    "llm",
-    "prompt engineering",
-]
-AI_ML_CONTEXT_KEYWORDS = [
-    "ai",
-    "ml",
-    "machine learning",
-    "model",
-    "llm",
-    "inference",
-    "gpu",
-]
-BASE_KEYWORDS = ["software engineer", "backend engineer", "platform"]
+"""Universal Candidate-Job Matching and Scoring Engine.
 
-EXCLUDE_TITLE_PATTERNS = [
-    "account executive",
-    "recruiter",
-    "economist",
-    "counsel",
-    "paralegal",
-    "warehouse",
-    "applied ai architect",
-    "program manager",
-    "director",
-]
-ENGINEERING_MANAGER_ALLOW = [
-    "engineering manager",
-    "infrastructure manager",
-    "platform manager",
-    "sre manager",
-    "site reliability manager",
-]
+Designed to be profession-agnostic: evaluates fit across software, data,
+design, product, finance, marketing, operations, healthcare, and other professions.
+"""
+
+# Universal role indicators across career categories
+PROFESSIONAL_ROLE_KEYWORDS = {
+    # Engineering & Tech
+    "software", "engineer", "developer", "backend", "frontend", "fullstack",
+    "full stack", "devops", "sre", "infrastructure", "platform", "cloud",
+    # Data & AI
+    "data", "analyst", "scientist", "machine learning", "ai", "deep learning",
+    "bi", "analytics", "statistician", "data engineer", "mlops", "nlp",
+    # Product & Design
+    "product", "product manager", "designer", "ux", "ui", "researcher",
+    "product design", "design system", "product ops",
+    # Business & Operations
+    "operations", "bizops", "strategy", "consultant", "supply chain", "logistics",
+    "procurement", "business analyst", "project manager", "program manager",
+    # Marketing & Sales
+    "marketing", "growth", "seo", "content", "sales", "account executive",
+    "business development", "sdr", "sales engineer",
+    # Finance, People & Legal
+    "finance", "financial", "fp&a", "accountant", "recruiter", "talent",
+    "hr", "people ops", "legal", "counsel", "compliance",
+    # Healthcare & Science
+    "healthcare", "clinical", "research", "scientist", "laboratory",
+}
+
+SENIORITY_KEYWORDS = {
+    "intern": 10,
+    "new grad": 15,
+    "junior": 20,
+    "associate": 25,
+    "mid": 30,
+    "senior": 40,
+    "lead": 45,
+    "staff": 50,
+    "principal": 55,
+    "manager": 45,
+    "director": 50,
+    "head": 55,
+    "vp": 60,
+}
 
 
-def is_non_engineering_title(title_lower: str) -> bool:
-    if any(allow in title_lower for allow in ENGINEERING_MANAGER_ALLOW):
-        return False
-    if "manager" in title_lower:
-        return True
-    return any(p in title_lower for p in EXCLUDE_TITLE_PATTERNS)
+def calculate_match_score(title: str, description: str = "") -> int:
+    """Calculate a baseline role relevance score (0-100) based on title clarity and description depth.
 
+    Future iterations will compare against the authenticated candidate's CareerProfile skills and experience.
+    """
+    if not title or not title.strip():
+        return 0
 
-def calculate_match_score(title: str, description: str) -> int:
-    text = f"{title} {description}".lower()
     title_lower = title.lower()
-    score = 0
+    desc_lower = (description or "").lower()
+    full_text = f"{title_lower} {desc_lower}"
+    score = 30  # Baseline confidence for a valid job posting
 
-    if is_non_engineering_title(title_lower):
-        return min(score, 15)
+    # Match professional role domain keywords in title
+    matched_role_kws = sum(1 for kw in PROFESSIONAL_ROLE_KEYWORDS if kw in title_lower)
+    score += min(matched_role_kws * 15, 30)
 
-    for kw in HIGH_PRIORITY_KEYWORDS + HARDWARE_INFRA_KEYWORDS:
-        if kw in text:
-            score += 40
-            break
+    # Detect clear seniority / career level specification
+    has_seniority = any(lvl in title_lower for lvl in SENIORITY_KEYWORDS)
+    if has_seniority:
+        score += 15
 
-    for kw in MEDIUM_PRIORITY_KEYWORDS:
-        if kw in text:
-            has_ai_context = any(ctx in text for ctx in AI_ML_CONTEXT_KEYWORDS)
-            score += 30 if has_ai_context else 15
-            break
+    # Description quality and requirements completeness
+    desc_words = len(desc_lower.split())
+    if desc_words > 150:
+        score += 15
+    elif desc_words > 50:
+        score += 10
 
-    for kw in LOW_PRIORITY_KEYWORDS:
-        if kw in text:
-            score += 20
-            break
+    # Mentions responsibilities / requirements sections
+    if any(section in desc_lower for section in ("requirements", "responsibilities", "qualifications", "what you'll do", "what you need")):
+        score += 10
 
-    for kw in BASE_KEYWORDS:
-        if kw in text:
-            score += 10
-            break
-
-    return min(score, 100)
+    return min(max(score, 20), 100)

@@ -1,20 +1,22 @@
-# CareerNeed
+# CareerNeed — AI-Powered Career Operating System
 
 <p align="center">
   <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-CareerNeed is an AI-assisted career operating system and privacy-aware job-search workspace for technical professionals. It is designed to **eliminate repetitive job-search administration**, connect the full job-seeking lifecycle, and help candidates spend more time preparing and improving.
+> **CareerNeed helps professionals discover opportunities, manage applications, prepare for interviews, and continuously improve their careers.**
+
+CareerNeed is an AI-powered Career Operating System designed to eliminate repetitive job-search administration and connect the full career growth lifecycle for professionals across all domains — Software, Data, AI/ML, Design, Product, Finance, Marketing, Sales, Operations, Healthcare, and beyond.
 
 ```text
-Upload Resume & AI Analysis
-  ↳ Discover Target Companies & Auto-Sync Jobs
-    ↳ Evaluate Fit & Career Gap Analysis
-      ↳ Track Applications (List & Pipeline Board)
-        ↳ Manage Interview Schedule & Fast Capture
-          ↳ AI Interview Prep & Actionable Practice
-            ↳ Post-Interview Failure/Outcome Analysis
-              ↳ Continuous Career Growth
+Career Profile & Direction (Skills, Experience, Goals)
+  ↳ Job Discovery & Universal Ingestion (ATS Boards & Direct Links)
+    ↳ Candidate ↔ Job Matching & Gap Analysis
+      ↳ Application Tracking (Table List & Kanban Pipeline)
+        ↳ Interview Management & Fast Capture (Multi-Round, Schedule, Prep Notes)
+          ↳ AI Career Coach & Preparation
+            ↳ Outcome & Failure Analysis
+              ↳ Continuous Career Growth & Intelligence
 ```
 
 ---

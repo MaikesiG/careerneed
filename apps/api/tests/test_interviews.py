@@ -4,11 +4,12 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
 from app.main import app
-from app.models import Application, Interview, Job, User
+from app.models import AISuggestion, Application, Interview, InterviewQuestion, Job, User
 
 
 @pytest.fixture
@@ -306,3 +307,222 @@ def test_fast_capture_interview_deterministic_extraction(
     assert data["role"] == "Software Engineer"
     assert data["timezone"] == "EST"
     assert data["scheduled_at"] is not None
+
+
+def test_interview_question_model_creation_and_defaults(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "question-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(
+        application_id=app.id,
+        title="Coding Round",
+        interview_type="coding",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    question = InterviewQuestion(
+        interview_id=interview.id,
+        question="Implement an LRU cache in O(1) time.",
+        leetcode_url="https://leetcode.com/problems/lru-cache/",
+    )
+    db_session.add(question)
+    db_session.flush()
+
+    assert question.id is not None
+    assert question.category == "technical"
+    assert question.difficulty == "unknown"
+    assert question.answer_notes is None
+    assert question.reflection is None
+    assert question.leetcode_url == "https://leetcode.com/problems/lru-cache/"
+    assert question.asked_at is None
+    assert question.created_at is not None
+    assert question.created_at.tzinfo is not None
+    assert question.updated_at is not None
+    assert question.updated_at.tzinfo is not None
+    assert question.interview_id == interview.id
+    assert question in interview.questions
+
+
+def test_ai_suggestion_model_creation_and_defaults(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "suggestion-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    app = create_application(db_session, user_id=user_id)
+    interview = Interview(
+        application_id=app.id,
+        title="System Design",
+        interview_type="system_design",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    suggestion = AISuggestion(
+        user_id=user_id,
+        interview_id=interview.id,
+        suggestion_type="interview_prep",
+        proposed_value={"readiness_score": 85, "topics": ["Rate Limiting", "Consistent Hashing"]},
+        model_provider="openai",
+        model_version="gpt-4o-mini",
+        prompt_version="interview-prep-v1",
+        output_schema_version="1.0",
+        input_snapshot_hash="abc123hash456",
+    )
+    db_session.add(suggestion)
+    db_session.flush()
+
+    assert suggestion.id is not None
+    assert suggestion.entity_type == "interview"
+    assert suggestion.status == "pending"
+    assert suggestion.confidence is None
+    assert suggestion.rationale is None
+    assert suggestion.resolved_value is None
+    assert suggestion.resolved_at is None
+    assert suggestion.created_at is not None
+    assert suggestion.created_at.tzinfo is not None
+    assert suggestion.updated_at is not None
+    assert suggestion.updated_at.tzinfo is not None
+    assert suggestion in interview.ai_suggestions
+    owner = db_session.get(User, user_id)
+    assert owner is not None
+    assert suggestion in owner.ai_suggestions
+
+
+def test_existing_interview_and_application_remain_readable(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "readable-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(
+        application_id=app.id,
+        title="Screening Call",
+        interview_type="recruiter",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    db_session.expire_all()
+    loaded_interview = db_session.get(Interview, interview.id)
+    assert loaded_interview is not None
+    assert loaded_interview.title == "Screening Call"
+    assert loaded_interview.questions == []
+    assert loaded_interview.ai_suggestions == []
+
+
+def test_cascade_delete_interview_removes_questions_and_suggestions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "cascade-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    app = create_application(db_session, user_id=user_id)
+    interview = Interview(
+        application_id=app.id,
+        title="Behavioral Round",
+        interview_type="behavioral",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    question = InterviewQuestion(
+        interview_id=interview.id,
+        question="Tell me about a time you handled a difficult conflict.",
+        category="behavioral",
+    )
+    suggestion = AISuggestion(
+        user_id=user_id,
+        interview_id=interview.id,
+        suggestion_type="interview_prep",
+        proposed_value={"key": "val"},
+        model_provider="openai",
+        model_version="gpt-4o-mini",
+        prompt_version="v1",
+        output_schema_version="1.0",
+        input_snapshot_hash="hash-cascade-123",
+    )
+    db_session.add_all([question, suggestion])
+    db_session.flush()
+
+    q_id = question.id
+    s_id = suggestion.id
+
+    db_session.delete(interview)
+    db_session.flush()
+
+    assert db_session.get(InterviewQuestion, q_id) is None
+    assert db_session.get(AISuggestion, s_id) is None
+
+
+def test_ai_suggestion_pending_idempotency_constraint(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "idempotency-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    app = create_application(db_session, user_id=user_id)
+    interview = Interview(
+        application_id=app.id,
+        title="Architecture Round",
+        interview_type="system_design",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    sugg1 = AISuggestion(
+        user_id=user_id,
+        interview_id=interview.id,
+        suggestion_type="interview_prep",
+        proposed_value={"version": 1},
+        model_provider="openai",
+        model_version="gpt-4o-mini",
+        prompt_version="v1",
+        output_schema_version="1.0",
+        input_snapshot_hash="same-hash-12345",
+        status="pending",
+    )
+    db_session.add(sugg1)
+    db_session.flush()
+
+    savepoint = db_session.begin_nested()
+    sugg2 = AISuggestion(
+        user_id=user_id,
+        interview_id=interview.id,
+        suggestion_type="interview_prep",
+        proposed_value={"version": 2},
+        model_provider="openai",
+        model_version="gpt-4o-mini",
+        prompt_version="v1",
+        output_schema_version="1.0",
+        input_snapshot_hash="same-hash-12345",
+        status="pending",
+    )
+    db_session.add(sugg2)
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    savepoint.rollback()
+
+    # After first suggestion is accepted (or rejected/superseded), creating a new suggestion with same hash succeeds
+    sugg1.status = "accepted"
+    db_session.flush()
+
+    sugg3 = AISuggestion(
+        user_id=user_id,
+        interview_id=interview.id,
+        suggestion_type="interview_prep",
+        proposed_value={"version": 3},
+        model_provider="openai",
+        model_version="gpt-4o-mini",
+        prompt_version="v1",
+        output_schema_version="1.0",
+        input_snapshot_hash="same-hash-12345",
+        status="pending",
+    )
+    db_session.add(sugg3)
+    db_session.flush()
+    assert sugg3.id is not None
+

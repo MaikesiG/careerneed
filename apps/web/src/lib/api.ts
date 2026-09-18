@@ -33,6 +33,11 @@ export type InterviewType =
   | "system_design"
   | "behavioral"
   | "hiring_manager"
+  | "portfolio_review"
+  | "case_study"
+  | "role_play"
+  | "presentation"
+  | "take_home"
   | "panel"
   | "final"
   | "other";
