@@ -192,3 +192,81 @@ export type InterviewPrepSuggestion = {
   created_at: string;
   updated_at: string;
 };
+
+export type OutcomeSourceReference =
+  "interview_notes" | "question" | "answer_notes" | "reflection" | "interview_result";
+
+export type GroundedObservation = {
+  observation: string;
+  source_reference: OutcomeSourceReference;
+  evidence_summary: string;
+  confidence: number | null;
+};
+
+export type OutcomeInsight = {
+  title: string;
+  explanation: string;
+  evidence_summary: string;
+  confidence: number | null;
+};
+
+export type OutcomeGrowthArea = {
+  area: string;
+  rationale: string;
+  suggested_action: string;
+  confidence: number | null;
+};
+
+export type OutcomeRecurringTopic = {
+  topic: string;
+  occurrence_context: string;
+  confidence: number | null;
+};
+
+export type OutcomeRecommendedAction = {
+  action: string;
+  time_horizon: "before_next_interview" | "this_week" | "ongoing";
+  rationale: string;
+  related_topics: string[];
+};
+
+export type OutcomeAnalysisScope = {
+  interviews_considered: number;
+  questions_considered: number;
+  notes_available: boolean;
+  result_recorded: boolean;
+  data_limitations: string[];
+};
+
+export type InterviewOutcomeAnalysisOutput = {
+  grounded_observations: GroundedObservation[];
+  possible_strengths: OutcomeInsight[];
+  possible_growth_areas: OutcomeGrowthArea[];
+  recurring_topics: OutcomeRecurringTopic[];
+  recommended_actions: OutcomeRecommendedAction[];
+  suggested_follow_up_points: string[];
+  uncertainty_notes: string[];
+  limitations: string[];
+  analysis_scope: OutcomeAnalysisScope;
+};
+
+export type InterviewOutcomeSuggestion = {
+  id: string;
+  interview_id: string;
+  entity_type: string;
+  entity_id: string | null;
+  suggestion_type: "interview_outcome_analysis";
+  proposed_value: InterviewOutcomeAnalysisOutput;
+  confidence: number | null;
+  rationale: string | null;
+  model_provider: string;
+  model_version: string;
+  prompt_version: string;
+  output_schema_version: string;
+  input_snapshot_hash: string;
+  status: AISuggestionStatus;
+  resolved_value: InterviewOutcomeAnalysisOutput | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
