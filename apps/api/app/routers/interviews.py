@@ -7,12 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, Interview, Job, User
+from app.models import Application, Interview, InterviewQuestion, Job, User, utcnow
 from app.schemas import (
     FastCaptureRequest,
     InterviewCreate,
     InterviewExtraction,
     InterviewOut,
+    InterviewQuestionCreate,
+    InterviewQuestionOut,
+    InterviewQuestionUpdate,
     InterviewUpdate,
     UpcomingInterviewOut,
 )
@@ -53,6 +56,25 @@ def _get_owned_interview(
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found")
     return interview
+
+
+def _get_owned_question(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    question_id: uuid.UUID,
+    current_user: User,
+    db: Session,
+) -> InterviewQuestion:
+    _get_owned_interview(application_id, interview_id, current_user, db)
+    question = db.scalar(
+        select(InterviewQuestion).where(
+            InterviewQuestion.id == question_id,
+            InterviewQuestion.interview_id == interview_id,
+        )
+    )
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
 
 
 @router.get(
@@ -158,6 +180,99 @@ def delete_application_interview(
     db.delete(interview)
     db.commit()
     return Response(status_code=204)
+
+
+@router.get(
+    "/applications/{application_id}/interviews/{interview_id}/questions",
+    response_model=list[InterviewQuestionOut],
+)
+def list_interview_questions(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[InterviewQuestion]:
+    _get_owned_interview(application_id, interview_id, current_user, db)
+
+    return list(
+        db.scalars(
+            select(InterviewQuestion)
+            .where(InterviewQuestion.interview_id == interview_id)
+            .order_by(
+                InterviewQuestion.asked_at.asc().nullslast(),
+                InterviewQuestion.created_at.asc(),
+            )
+        )
+    )
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/questions",
+    response_model=InterviewQuestionOut,
+    status_code=201,
+)
+def create_interview_question(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    payload: InterviewQuestionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InterviewQuestion:
+    _get_owned_interview(application_id, interview_id, current_user, db)
+
+    question = InterviewQuestion(
+        interview_id=interview_id,
+        **payload.model_dump(),
+    )
+    db.add(question)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+@router.patch(
+    "/applications/{application_id}/interviews/{interview_id}/questions/{question_id}",
+    response_model=InterviewQuestionOut,
+)
+def update_interview_question(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    question_id: uuid.UUID,
+    payload: InterviewQuestionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InterviewQuestion:
+    question = _get_owned_question(
+        application_id, interview_id, question_id, current_user, db
+    )
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(question, field, value)
+
+    question.updated_at = utcnow()
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+@router.delete(
+    "/applications/{application_id}/interviews/{interview_id}/questions/{question_id}",
+    status_code=204,
+)
+def delete_interview_question(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    question_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    question = _get_owned_question(
+        application_id, interview_id, question_id, current_user, db
+    )
+    db.delete(question)
+    db.commit()
+    return Response(status_code=204)
+
 
 
 @router.get(

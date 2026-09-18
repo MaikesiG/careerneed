@@ -526,3 +526,363 @@ def test_ai_suggestion_pending_idempotency_constraint(
     db_session.flush()
     assert sugg3.id is not None
 
+
+def test_interview_question_routes_require_authentication(client: TestClient) -> None:
+    app_id = uuid.uuid4()
+    int_id = uuid.uuid4()
+    q_id = uuid.uuid4()
+
+    assert client.get(f"/applications/{app_id}/interviews/{int_id}/questions").status_code == 401
+    assert client.post(f"/applications/{app_id}/interviews/{int_id}/questions", json={"question": "Q"}).status_code == 401
+    assert client.patch(f"/applications/{app_id}/interviews/{int_id}/questions/{q_id}", json={"question": "Updated"}).status_code == 401
+    assert client.delete(f"/applications/{app_id}/interviews/{int_id}/questions/{q_id}").status_code == 401
+
+
+def test_interview_question_crud_lifecycle(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "q-crud-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(
+        application_id=app.id,
+        title="Architecture Round",
+        interview_type="system_design",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    # Create Question
+    create_resp = client.post(
+        f"/applications/{app.id}/interviews/{interview.id}/questions",
+        json={
+            "question": "How do you scale WebSocket connections across multiple nodes?",
+            "category": "system_design",
+            "difficulty": "hard",
+            "answer_notes": "Discussed Redis pub/sub and sticky load balancing.",
+            "reflection": "Covered architecture well, could elaborate on heartbeat timeouts.",
+            "leetcode_url": "https://leetcode.com/problems/lru-cache/",
+            "asked_at": "2026-09-18T14:30:00Z",
+        },
+    )
+    assert create_resp.status_code == 201
+    q_data = create_resp.json()
+    assert q_data["id"] is not None
+    assert q_data["interview_id"] == str(interview.id)
+    assert q_data["question"] == "How do you scale WebSocket connections across multiple nodes?"
+    assert q_data["category"] == "system_design"
+    assert q_data["difficulty"] == "hard"
+    assert q_data["answer_notes"] == "Discussed Redis pub/sub and sticky load balancing."
+    assert q_data["reflection"] == "Covered architecture well, could elaborate on heartbeat timeouts."
+    assert q_data["leetcode_url"] == "https://leetcode.com/problems/lru-cache/"
+    assert q_data["asked_at"] is not None
+    assert q_data["created_at"] is not None
+
+    q_id = q_data["id"]
+
+    # List Questions
+    list_resp = client.get(f"/applications/{app.id}/interviews/{interview.id}/questions")
+    assert list_resp.status_code == 200
+    questions = list_resp.json()
+    assert len(questions) == 1
+    assert questions[0]["id"] == q_id
+
+    # Patch Question
+    patch_resp = client.patch(
+        f"/applications/{app.id}/interviews/{interview.id}/questions/{q_id}",
+        json={
+            "difficulty": "medium",
+            "reflection": "Updated reflection notes with more metrics.",
+        },
+    )
+    assert patch_resp.status_code == 200
+    updated = patch_resp.json()
+    assert updated["difficulty"] == "medium"
+    assert updated["reflection"] == "Updated reflection notes with more metrics."
+    assert updated["question"] == "How do you scale WebSocket connections across multiple nodes?"
+
+    # Delete Question
+    del_resp = client.delete(f"/applications/{app.id}/interviews/{interview.id}/questions/{q_id}")
+    assert del_resp.status_code == 204
+
+    # Verify deleted from list
+    list_after = client.get(f"/applications/{app.id}/interviews/{interview.id}/questions")
+    assert list_after.status_code == 200
+    assert list_after.json() == []
+
+    # Patch deleted question returns 404
+    patch_after = client.patch(
+        f"/applications/{app.id}/interviews/{interview.id}/questions/{q_id}",
+        json={"question": "New"},
+    )
+    assert patch_after.status_code == 404
+
+    # Delete deleted question returns 404
+    del_after = client.delete(f"/applications/{app.id}/interviews/{interview.id}/questions/{q_id}")
+    assert del_after.status_code == 404
+
+
+def test_interview_question_cross_user_isolation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "owner-q@example.test")
+    owner_app = create_application(db_session, user_id=uuid.UUID(owner["id"]))
+    interview = Interview(
+        application_id=owner_app.id,
+        title="Owner Interview",
+        interview_type="technical",
+    )
+    db_session.add(interview)
+    db_session.flush()
+
+    created_q = client.post(
+        f"/applications/{owner_app.id}/interviews/{interview.id}/questions",
+        json={"question": "Explain consistency models in distributed databases."},
+    ).json()
+    q_id = created_q["id"]
+
+    other_client = TestClient(app)
+    try:
+        register(other_client, "intruder-q@example.test")
+
+        # User B cannot list User A's questions
+        assert other_client.get(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/questions"
+        ).status_code == 404
+
+        # User B cannot add question to User A's interview
+        assert other_client.post(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/questions",
+            json={"question": "Malicious question"},
+        ).status_code == 404
+
+        # User B cannot patch User A's question
+        assert other_client.patch(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/questions/{q_id}",
+            json={"question": "Tampered"},
+        ).status_code == 404
+
+        # User B cannot delete User A's question
+        assert other_client.delete(
+            f"/applications/{owner_app.id}/interviews/{interview.id}/questions/{q_id}"
+        ).status_code == 404
+    finally:
+        other_client.close()
+
+
+def test_interview_question_hierarchy_mismatch_returns_404(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "mismatch-user@example.test")
+    user_id = uuid.UUID(user["id"])
+    app1 = create_application(db_session, user_id=user_id, company_name="Company 1")
+    app2 = create_application(db_session, user_id=user_id, company_name="Company 2")
+
+    int1 = Interview(application_id=app1.id, title="Int 1")
+    int2 = Interview(application_id=app2.id, title="Int 2")
+    db_session.add_all([int1, int2])
+    db_session.flush()
+
+    q1 = client.post(
+        f"/applications/{app1.id}/interviews/{int1.id}/questions",
+        json={"question": "Valid Question in Int 1"},
+    ).json()
+
+    # Wrong application_id for int1
+    assert client.get(
+        f"/applications/{app2.id}/interviews/{int1.id}/questions"
+    ).status_code == 404
+    assert client.patch(
+        f"/applications/{app2.id}/interviews/{int1.id}/questions/{q1['id']}",
+        json={"difficulty": "hard"},
+    ).status_code == 404
+    assert client.delete(
+        f"/applications/{app2.id}/interviews/{int1.id}/questions/{q1['id']}"
+    ).status_code == 404
+
+    # Wrong interview_id for q1
+    assert client.patch(
+        f"/applications/{app1.id}/interviews/{int2.id}/questions/{q1['id']}",
+        json={"difficulty": "hard"},
+    ).status_code == 404
+    assert client.delete(
+        f"/applications/{app1.id}/interviews/{int2.id}/questions/{q1['id']}"
+    ).status_code == 404
+
+    # Non-existent question_id
+    assert client.patch(
+        f"/applications/{app1.id}/interviews/{int1.id}/questions/{uuid.uuid4()}",
+        json={"difficulty": "hard"},
+    ).status_code == 404
+
+
+def test_interview_question_validation_rules(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "validation-q-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(application_id=app.id, title="Coding Round")
+    db_session.add(interview)
+    db_session.flush()
+
+    endpoint = f"/applications/{app.id}/interviews/{interview.id}/questions"
+
+    # Blank / whitespace question rejected
+    assert client.post(endpoint, json={"question": ""}).status_code == 422
+    assert client.post(endpoint, json={"question": "   "}).status_code == 422
+
+    # Invalid category rejected
+    assert client.post(endpoint, json={"question": "Valid", "category": "super_technical"}).status_code == 422
+
+    # Invalid difficulty rejected
+    assert client.post(endpoint, json={"question": "Valid", "difficulty": "impossible"}).status_code == 422
+
+    # LeetCode URL validations
+    # Reject HTTP
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "leetcode_url": "http://leetcode.com/problems/two-sum/"},
+    ).status_code == 422
+
+    # Reject non-LeetCode host
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "leetcode_url": "https://hackerrank.com/problems/two-sum/"},
+    ).status_code == 422
+
+    # Reject no problem path
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "leetcode_url": "https://leetcode.com/"},
+    ).status_code == 422
+
+    # Reject user credentials in URL
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "leetcode_url": "https://admin:pass@leetcode.com/problems/two-sum/"},
+    ).status_code == 422
+
+    # Reject javascript scheme
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "leetcode_url": "javascript:alert(1)"},
+    ).status_code == 422
+
+    # Accept valid HTTPS LeetCode URLs
+    resp1 = client.post(
+        endpoint,
+        json={"question": "Two Sum", "leetcode_url": "https://leetcode.com/problems/two-sum/"},
+    )
+    assert resp1.status_code == 201
+    assert resp1.json()["leetcode_url"] == "https://leetcode.com/problems/two-sum/"
+
+    resp2 = client.post(
+        endpoint,
+        json={"question": "3Sum", "leetcode_url": "https://www.leetcode.com/problems/3sum/"},
+    )
+    assert resp2.status_code == 201
+    assert resp2.json()["leetcode_url"] == "https://www.leetcode.com/problems/3sum/"
+
+    # asked_at timezone awareness
+    # Reject naive datetime
+    assert client.post(
+        endpoint,
+        json={"question": "Valid", "asked_at": "2026-09-18T14:00:00"},
+    ).status_code == 422
+
+    # Accept timezone-aware datetime (UTC with Z)
+    resp_tz_z = client.post(
+        endpoint,
+        json={"question": "Valid", "asked_at": "2026-09-18T14:00:00Z"},
+    )
+    assert resp_tz_z.status_code == 201
+    assert resp_tz_z.json()["asked_at"] is not None
+
+    # Accept timezone-aware datetime (with numeric offset)
+    resp_tz_offset = client.post(
+        endpoint,
+        json={"question": "Valid", "asked_at": "2026-09-18T10:00:00-04:00"},
+    )
+    assert resp_tz_offset.status_code == 201
+    assert resp_tz_offset.json()["asked_at"] is not None
+
+
+def test_interview_question_list_ordering(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "order-q-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(application_id=app.id, title="Round 1")
+    db_session.add(interview)
+    db_session.flush()
+
+    endpoint = f"/applications/{app.id}/interviews/{interview.id}/questions"
+
+    # Q1: asked_at 15:00
+    q1 = client.post(
+        endpoint,
+        json={"question": "Question asked at 15:00", "asked_at": "2026-09-18T15:00:00Z"},
+    ).json()
+
+    # Q2: asked_at None (created earlier among nulls)
+    q2 = client.post(
+        endpoint,
+        json={"question": "Question without asked_at (1st)"},
+    ).json()
+
+    # Q3: asked_at 11:00 (earliest asked_at)
+    q3 = client.post(
+        endpoint,
+        json={"question": "Question asked at 11:00", "asked_at": "2026-09-18T11:00:00Z"},
+    ).json()
+
+    # Q4: asked_at None (created later among nulls)
+    q4 = client.post(
+        endpoint,
+        json={"question": "Question without asked_at (2nd)"},
+    ).json()
+
+    list_resp = client.get(endpoint)
+    assert list_resp.status_code == 200
+    ordered_ids = [q["id"] for q in list_resp.json()]
+
+    # Expected order:
+    # 1. Q3 (11:00)
+    # 2. Q1 (15:00)
+    # 3. Q2 (None, created 1st)
+    # 4. Q4 (None, created 2nd)
+    assert ordered_ids == [q3["id"], q1["id"], q2["id"], q4["id"]]
+
+
+def test_parent_interview_delete_cascades_to_questions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "cascade-endpoint-user@example.test")
+    app = create_application(db_session, user_id=uuid.UUID(user["id"]))
+    interview = Interview(application_id=app.id, title="To Delete")
+    db_session.add(interview)
+    db_session.flush()
+
+    q = client.post(
+        f"/applications/{app.id}/interviews/{interview.id}/questions",
+        json={"question": "Cascade target question"},
+    ).json()
+
+    # Delete parent interview
+    del_resp = client.delete(f"/applications/{app.id}/interviews/{interview.id}")
+    assert del_resp.status_code == 204
+
+    # Verify interview is 404
+    assert client.get(f"/applications/{app.id}/interviews/{interview.id}").status_code == 404
+
+    # Verify question is 404
+    assert client.get(
+        f"/applications/{app.id}/interviews/{interview.id}/questions"
+    ).status_code == 404
+
+

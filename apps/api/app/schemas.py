@@ -1,8 +1,9 @@
 import uuid
 from datetime import date, datetime
 from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 JobStatus = Literal["new", "saved", "applied", "dismissed"]
 
@@ -356,4 +357,156 @@ class InterviewExtraction(BaseModel):
     notes: str | None = None
     company: str | None = None
     role: str | None = None
+
+
+QuestionCategory = Literal[
+    "behavioral",
+    "technical",
+    "coding",
+    "system_design",
+    "case",
+    "product",
+    "culture",
+    "other",
+]
+
+QuestionDifficulty = Literal[
+    "easy",
+    "medium",
+    "hard",
+    "unknown",
+]
+
+
+def _validate_question_text(v: str) -> str:
+    stripped = v.strip()
+    if not stripped:
+        raise ValueError("Question cannot be blank or whitespace only")
+    if len(stripped) > 10000:
+        raise ValueError("Question cannot exceed 10,000 characters")
+    return stripped
+
+
+def _validate_notes_text(v: str | None) -> str | None:
+    if v is None:
+        return None
+    stripped = v.strip()
+    if not stripped:
+        return None
+    if len(stripped) > 10000:
+        raise ValueError("Text cannot exceed 10,000 characters")
+    return stripped
+
+
+def _validate_leetcode_url(v: str | None) -> str | None:
+    if v is None:
+        return None
+    trimmed = v.strip()
+    if not trimmed:
+        return None
+    try:
+        parsed = urlparse(trimmed)
+    except Exception as e:
+        raise ValueError("Invalid URL format") from e
+
+    if parsed.scheme.lower() != "https":
+        raise ValueError("LeetCode URL must use the HTTPS scheme")
+    if parsed.username or parsed.password:
+        raise ValueError("LeetCode URL must not contain user credentials")
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in ("leetcode.com", "www.leetcode.com"):
+        raise ValueError("LeetCode URL host must be leetcode.com or www.leetcode.com")
+
+    path = parsed.path.strip("/")
+    if not path:
+        raise ValueError("LeetCode URL must include a problem path")
+    return trimmed
+
+
+def _validate_timezone_aware(v: datetime | None) -> datetime | None:
+    if v is None:
+        return None
+    if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+        raise ValueError("asked_at must be a timezone-aware datetime")
+    return v
+
+
+class InterviewQuestionCreate(BaseModel):
+    question: str
+    category: QuestionCategory = "technical"
+    difficulty: QuestionDifficulty = "unknown"
+    answer_notes: str | None = None
+    reflection: str | None = None
+    leetcode_url: str | None = None
+    asked_at: datetime | None = None
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, v: str) -> str:
+        return _validate_question_text(v)
+
+    @field_validator("answer_notes", "reflection")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
+        return _validate_notes_text(v)
+
+    @field_validator("leetcode_url")
+    @classmethod
+    def validate_url(cls, v: str | None) -> str | None:
+        return _validate_leetcode_url(v)
+
+    @field_validator("asked_at")
+    @classmethod
+    def validate_asked_at(cls, v: datetime | None) -> datetime | None:
+        return _validate_timezone_aware(v)
+
+
+class InterviewQuestionUpdate(BaseModel):
+    question: str | None = None
+    category: QuestionCategory | None = None
+    difficulty: QuestionDifficulty | None = None
+    answer_notes: str | None = None
+    reflection: str | None = None
+    leetcode_url: str | None = None
+    asked_at: datetime | None = None
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_question_text(v)
+        return None
+
+    @field_validator("answer_notes", "reflection")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
+        return _validate_notes_text(v)
+
+    @field_validator("leetcode_url")
+    @classmethod
+    def validate_url(cls, v: str | None) -> str | None:
+        return _validate_leetcode_url(v)
+
+    @field_validator("asked_at")
+    @classmethod
+    def validate_asked_at(cls, v: datetime | None) -> datetime | None:
+        return _validate_timezone_aware(v)
+
+
+class InterviewQuestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    interview_id: uuid.UUID
+    question: str
+    category: str
+    difficulty: str
+    answer_notes: str | None
+    reflection: str | None
+    leetcode_url: str | None
+    asked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
 
