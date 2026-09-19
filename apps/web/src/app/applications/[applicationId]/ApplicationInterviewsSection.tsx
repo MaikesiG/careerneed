@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   apiFetch,
   getApiErrorMessage,
@@ -10,12 +10,14 @@ import {
   InterviewResult,
   InterviewExtraction,
 } from "@/lib/api";
+import { buildThankYouFollowUpPayload } from "@/lib/followUpTime";
 import InterviewParticipantsSection from "./InterviewParticipantsSection";
 import InterviewPreparationBriefSection from "./InterviewPreparationBriefSection";
 import InterviewQuestionsSection from "./InterviewQuestionsSection";
 import InterviewOutcomeAnalysisSection from "./InterviewOutcomeAnalysisSection";
 import InterviewFollowUpsSection from "./InterviewFollowUpsSection";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import InterviewDisclosureSection from "./InterviewDisclosureSection";
 
 type ApplicationInterviewsSectionProps = {
   applicationId: string;
@@ -159,6 +161,7 @@ export default function ApplicationInterviewsSection({
   const [completionNotes, setCompletionNotes] = useState("");
   const [scheduleFollowUp, setScheduleFollowUp] = useState(true);
   const [isSavingCompletion, setIsSavingCompletion] = useState(false);
+  const saveCompletionInFlight = useRef(false);
 
   const loadInterviews = useCallback(async () => {
     setIsLoading(true);
@@ -366,8 +369,10 @@ export default function ApplicationInterviewsSection({
   }
 
   async function handleSaveCompletion() {
-    if (!activeInterview) return;
+    if (!activeInterview || saveCompletionInFlight.current || isSavingCompletion) return;
+    saveCompletionInFlight.current = true;
     setIsSavingCompletion(true);
+    setError(null);
     try {
       const res = await apiFetch(
         `/applications/${applicationId}/interviews/${activeInterview.id}`,
@@ -386,28 +391,39 @@ export default function ApplicationInterviewsSection({
         throw new Error(await getApiErrorMessage(res, "Failed to update interview"));
       }
 
-      // If user selected thank-you note follow-up, update application follow_up_on to tomorrow
+      let followUpError: string | null = null;
       if (scheduleFollowUp) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const yyyy = tomorrow.getFullYear();
-        const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
-        const dd = String(tomorrow.getDate()).padStart(2, "0");
-        await apiFetch(`/applications/${applicationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            follow_up_on: `${yyyy}-${mm}-${dd}`,
-            notes: `Thank-you note reminder after ${activeInterview.title}`,
-          }),
-        });
+        try {
+          const followUpPayload = buildThankYouFollowUpPayload(activeInterview);
+          const followUpRes = await apiFetch(
+            `/applications/${applicationId}/follow-ups`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(followUpPayload),
+            }
+          );
+
+          if (!followUpRes.ok) {
+            followUpError =
+              "Interview marked completed, but unable to schedule the thank-you follow-up. You can add it manually in the follow-ups section.";
+          }
+        } catch {
+          followUpError =
+            "Interview marked completed, but unable to schedule the thank-you follow-up. You can add it manually in the follow-ups section.";
+        }
       }
 
       setIsCompleteModalOpen(false);
       await loadInterviews();
+
+      if (followUpError) {
+        setError(followUpError);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete interview");
     } finally {
+      saveCompletionInFlight.current = false;
       setIsSavingCompletion(false);
     }
   }
@@ -627,26 +643,63 @@ export default function ApplicationInterviewsSection({
                   </div>
                 </div>
 
-                <InterviewParticipantsSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
-                <InterviewPreparationBriefSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
-                <InterviewQuestionsSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
-                <InterviewOutcomeAnalysisSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
-                <InterviewFollowUpsSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
+                <div className="mt-4 space-y-2.5">
+                  <InterviewDisclosureSection
+                    id={`interview-${interview.id}-preparation`}
+                    title="Preparation"
+                    defaultOpen={true}
+                  >
+                    {interview.preparation_notes ? (
+                      <div className="border-border bg-muted/20 my-2 rounded-lg border p-3 text-xs sm:text-sm">
+                        <span className="text-foreground font-medium">Prep notes: </span>
+                        <span className="text-muted-foreground whitespace-pre-wrap">
+                          {interview.preparation_notes}
+                        </span>
+                      </div>
+                    ) : null}
+                    <InterviewPreparationBriefSection
+                      applicationId={applicationId}
+                      interviewId={interview.id}
+                    />
+                  </InterviewDisclosureSection>
+
+                  <InterviewDisclosureSection
+                    id={`interview-${interview.id}-questions`}
+                    title="Questions and reflections"
+                    defaultOpen={false}
+                  >
+                    <InterviewQuestionsSection
+                      applicationId={applicationId}
+                      interviewId={interview.id}
+                    />
+                    <InterviewOutcomeAnalysisSection
+                      applicationId={applicationId}
+                      interviewId={interview.id}
+                    />
+                  </InterviewDisclosureSection>
+
+                  <InterviewDisclosureSection
+                    id={`interview-${interview.id}-participants`}
+                    title="Participants"
+                    defaultOpen={false}
+                  >
+                    <InterviewParticipantsSection
+                      applicationId={applicationId}
+                      interviewId={interview.id}
+                    />
+                  </InterviewDisclosureSection>
+
+                  <InterviewDisclosureSection
+                    id={`interview-${interview.id}-follow-ups`}
+                    title="Follow-ups"
+                    defaultOpen={false}
+                  >
+                    <InterviewFollowUpsSection
+                      applicationId={applicationId}
+                      interviewId={interview.id}
+                    />
+                  </InterviewDisclosureSection>
+                </div>
               </div>
             );
           })}
@@ -1077,6 +1130,7 @@ export default function ApplicationInterviewsSection({
                     type="checkbox"
                     checked={scheduleFollowUp}
                     onChange={(e) => setScheduleFollowUp(e.target.checked)}
+                    disabled={isSavingCompletion}
                     className="text-primary focus:ring-primary mt-0.5 rounded border-gray-300"
                   />
                   <div>
@@ -1084,8 +1138,7 @@ export default function ApplicationInterviewsSection({
                       Schedule Follow-up: Send thank-you note
                     </span>
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      Sets a follow-up reminder for tomorrow on this application to send a thank-you
-                      note.
+                      Creates a follow-up reminder for tomorrow at 10:00 AM linked to this interview.
                     </p>
                   </div>
                 </label>
