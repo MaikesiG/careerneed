@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
 import ApplicationContactsEditor from "./ApplicationContactsEditor";
 import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
 import ApplicationInterviewsSection from "./ApplicationInterviewsSection";
@@ -172,61 +173,54 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
 
   if (isNotFound) {
     return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <Link
-            className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
-            href="/applications"
-          >
-            ← Back to applications
-          </Link>
+      <PageContainer size="default">
+        <Link
+          className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
+          href="/applications"
+        >
+          ← Back to applications
+        </Link>
 
-          <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8">
-            <h1 className="text-xl font-semibold">Application not found</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              It may have been deleted or is not available for this account.
-            </p>
-          </section>
-        </div>
-      </main>
+        <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8">
+          <h1 className="text-xl font-semibold">Application not found</h1>
+          <p className="text-muted-foreground mt-2 text-sm">
+            It may have been deleted or is not available for this account.
+          </p>
+        </section>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <Link
-            className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
-            href="/applications"
-          >
-            ← Back to applications
-          </Link>
+      <PageContainer size="default">
+        <Link
+          className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
+          href="/applications"
+        >
+          ← Back to applications
+        </Link>
 
-          <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-8">
-            <h1 className="text-xl font-semibold">Application details are unavailable</h1>
-            <p className="mt-2 text-sm">{error}</p>
-          </section>
-        </div>
-      </main>
+        <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-8">
+          <h1 className="text-xl font-semibold">Application details are unavailable</h1>
+          <p className="mt-2 text-sm">{error}</p>
+        </section>
+      </PageContainer>
     );
   }
 
   if (!application) {
     return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
-            <p className="text-muted-foreground text-sm">Loading application details…</p>
-          </section>
-        </div>
-      </main>
+      <PageContainer size="default">
+        <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
+          <p className="text-muted-foreground text-sm">Loading application details…</p>
+        </section>
+      </PageContainer>
     );
   }
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
+    <PageContainer size="default">
         <Link
           className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
           href="/applications"
@@ -237,11 +231,11 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
             <div className="min-w-0">
-              <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
+              <p className="text-primary text-xs font-semibold tracking-[0.2em] uppercase">
                 {application.job.company_name}
               </p>
 
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="mt-1.5 text-2xl font-bold tracking-tight sm:text-3xl">
                 {application.job.title}
               </h1>
 
@@ -303,7 +297,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         </section>
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Application status</h2>
+          <h2 className="text-base sm:text-lg font-semibold">Application status</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Update this stage when the application moves forward, pauses, or closes.
           </p>
@@ -322,7 +316,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         />
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Follow-up</h2>
+          <h2 className="text-base sm:text-lg font-semibold">Follow-up</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Set a date so you know when to contact a recruiter or check on the application.
           </p>
@@ -335,7 +329,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         </section>
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Notes</h2>
+          <h2 className="text-base sm:text-lg font-semibold">Notes</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Keep recruiter messages, interview context, and follow-up details in one place.
           </p>
@@ -348,7 +342,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
         </section>
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Contacts</h2>
+          <h2 className="text-base sm:text-lg font-semibold">Contacts</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Track recruiters, hiring managers, referrals, and interviewers for this application.
           </p>
@@ -356,7 +350,6 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
             <ApplicationContactsEditor applicationId={application.id} />
           </div>
         </section>
-      </div>
-    </main>
+    </PageContainer>
   );
 }

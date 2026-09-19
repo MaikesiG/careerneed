@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 type FollowUpFilter = "all" | "today" | "overdue" | "scheduled";
@@ -205,33 +207,26 @@ export default function ApplicationsClient() {
   }, [requestPath, router]);
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-              CareerNeed
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">My applications</h1>
-            <p className="text-muted-foreground mt-3 max-w-2xl">
-              Track every role you saved or applied to. Results are ordered by most recently
-              updated.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
+    <PageContainer size="default">
+      <PageHeader
+        title="Applications"
+        description="Track every role you saved or applied to. Results are ordered by most recently updated."
+        actions={
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <ApplicationViewTabs currentView="list" />
             <Link
               href="/jobs"
-              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 sm:h-10 items-center justify-center rounded-lg border px-3.5 text-xs sm:text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               Browse jobs
             </Link>
           </div>
-        </header>
+        }
+      />
 
-        <nav aria-label="Application status filters" className="mb-3 flex flex-wrap gap-2">
+        <nav aria-label="Application status filters" className="mb-2.5 flex flex-wrap gap-1.5 sm:gap-2">
           <Link
-            className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+            className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
               selectedStatus === null
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-card text-foreground hover:bg-muted"
@@ -242,7 +237,7 @@ export default function ApplicationsClient() {
           </Link>
           {STATUS_OPTIONS.map((option) => (
             <Link
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+              className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
                 selectedStatus === option.value
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border bg-card text-foreground hover:bg-muted"
@@ -255,10 +250,10 @@ export default function ApplicationsClient() {
           ))}
         </nav>
 
-        <nav aria-label="Follow-up filters" className="mb-6 flex flex-wrap gap-2">
+        <nav aria-label="Follow-up filters" className="mb-5 flex flex-wrap gap-1.5 sm:gap-2">
           {FOLLOW_UP_OPTIONS.map((option) => (
             <Link
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+              className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
                 selectedFollowUp === option.value
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border bg-card text-foreground hover:bg-muted"
@@ -304,7 +299,7 @@ export default function ApplicationsClient() {
                       <div className="flex flex-col justify-between gap-4 sm:flex-row">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-lg font-semibold">{application.job.title}</h2>
+                            <h2 className="text-base sm:text-lg font-semibold">{application.job.title}</h2>
                             <span
                               className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
                                 application.status
@@ -363,7 +358,6 @@ export default function ApplicationsClient() {
             )}
           </>
         )}
-      </div>
-    </main>
+    </PageContainer>
   );
 }

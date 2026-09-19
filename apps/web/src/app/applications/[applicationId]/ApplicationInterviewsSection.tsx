@@ -13,9 +13,9 @@ import {
 import InterviewParticipantsSection from "./InterviewParticipantsSection";
 import InterviewPreparationBriefSection from "./InterviewPreparationBriefSection";
 import InterviewQuestionsSection from "./InterviewQuestionsSection";
-import InterviewPreparationSection from "./InterviewPreparationSection";
 import InterviewOutcomeAnalysisSection from "./InterviewOutcomeAnalysisSection";
 import InterviewFollowUpsSection from "./InterviewFollowUpsSection";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type ApplicationInterviewsSectionProps = {
   applicationId: string;
@@ -120,6 +120,8 @@ export default function ApplicationInterviewsSection({
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [interviewToDelete, setInterviewToDelete] = useState<Interview | null>(null);
+  const [isDeletingInterview, setIsDeletingInterview] = useState(false);
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -256,26 +258,36 @@ export default function ApplicationInterviewsSection({
       setIsFormOpen(false);
       await loadInterviews();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to save interview");
+      setError(err instanceof Error ? err.message : "Failed to save interview");
     }
   }
 
-  async function handleDelete(interview: Interview) {
-    if (
-      !confirm(`Are you sure you want to delete "${interview.title}" (Round ${interview.round})?`)
-    ) {
-      return;
-    }
+  function requestDeleteInterview(interview: Interview) {
+    setError(null);
+    setInterviewToDelete(interview);
+  }
+
+  async function handleConfirmDeleteInterview() {
+    if (!interviewToDelete) return;
+    setIsDeletingInterview(true);
+    setError(null);
     try {
-      const res = await apiFetch(`/applications/${applicationId}/interviews/${interview.id}`, {
-        method: "DELETE",
-      });
+      const res = await apiFetch(
+        `/applications/${applicationId}/interviews/${interviewToDelete.id}`,
+        {
+          method: "DELETE",
+        }
+      );
       if (!res.ok) {
         throw new Error(await getApiErrorMessage(res, "Failed to delete interview"));
       }
+      setInterviewToDelete(null);
       await loadInterviews();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete interview");
+      setError(err instanceof Error ? err.message : "Failed to delete interview");
+      setInterviewToDelete(null);
+    } finally {
+      setIsDeletingInterview(false);
     }
   }
 
@@ -341,7 +353,7 @@ export default function ApplicationInterviewsSection({
       setPasteText("");
       await loadInterviews();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to schedule interview");
+      setCaptureError(err instanceof Error ? err.message : "Failed to schedule interview");
     }
   }
 
@@ -394,7 +406,7 @@ export default function ApplicationInterviewsSection({
       setIsCompleteModalOpen(false);
       await loadInterviews();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to complete interview");
+      setError(err instanceof Error ? err.message : "Failed to complete interview");
     } finally {
       setIsSavingCompletion(false);
     }
@@ -405,7 +417,7 @@ export default function ApplicationInterviewsSection({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Interviews</h2>
+            <h2 className="text-base sm:text-lg font-semibold">Interviews</h2>
             <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
               {interviews.length}
             </span>
@@ -606,7 +618,7 @@ export default function ApplicationInterviewsSection({
 
                     <button
                       type="button"
-                      onClick={() => handleDelete(interview)}
+                      onClick={() => requestDeleteInterview(interview)}
                       className="hover:text-destructive text-muted-foreground p-1 text-xs transition"
                       title="Delete interview"
                     >
@@ -624,10 +636,6 @@ export default function ApplicationInterviewsSection({
                   interviewId={interview.id}
                 />
                 <InterviewQuestionsSection
-                  applicationId={applicationId}
-                  interviewId={interview.id}
-                />
-                <InterviewPreparationSection
                   applicationId={applicationId}
                   interviewId={interview.id}
                 />
@@ -1104,6 +1112,20 @@ export default function ApplicationInterviewsSection({
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        isOpen={Boolean(interviewToDelete)}
+        title="Delete Interview Round"
+        description={
+          interviewToDelete
+            ? `Are you sure you want to delete "${interviewToDelete.title}" (Round ${interviewToDelete.round})? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete Interview"
+        isLoading={isDeletingInterview}
+        onConfirm={handleConfirmDeleteInterview}
+        onCancel={() => setInterviewToDelete(null)}
+      />
     </section>
   );
 }

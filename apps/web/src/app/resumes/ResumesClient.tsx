@@ -1,6 +1,8 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type Resume = {
   id: string;
@@ -246,18 +248,11 @@ export default function ResumesClient() {
   }
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-            CareerNeed
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Resume management</h1>
-          <p className="text-muted-foreground mt-3 max-w-2xl">
-            Upload tailored resumes, choose one active default resume, and archive versions you no
-            longer want included in your job-search workflow.
-          </p>
-        </header>
+    <PageContainer size="default">
+      <PageHeader
+        title="Resumes"
+        description="Upload tailored resumes, choose one active default resume, and archive versions you no longer want included in your job-search workflow."
+      />
 
         {error ? (
           <div
@@ -295,7 +290,7 @@ export default function ResumesClient() {
 
         <section className="border-border bg-card rounded-2xl border p-5 shadow-sm sm:p-6">
           <div className="mb-5">
-            <h2 className="text-lg font-semibold">Upload a resume</h2>
+            <h2 className="text-base sm:text-lg font-semibold">Upload a resume</h2>
             <p className="text-muted-foreground mt-1 text-sm">
               PDF only. The API extracts its text and skills after upload.
             </p>
@@ -346,7 +341,7 @@ export default function ResumesClient() {
             </label>
 
             <div className="flex flex-wrap items-center gap-4">
-              <label className="text-foreground flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <label className="text-foreground inline-flex cursor-pointer items-center gap-2 text-xs sm:text-sm font-medium">
                 <input
                   checked={makeDefaultOnUpload}
                   className="border-border text-primary h-4 w-4 rounded focus:ring-indigo-500"
@@ -358,7 +353,7 @@ export default function ResumesClient() {
               </label>
 
               <button
-                className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-9 sm:h-10 items-center justify-center rounded-lg px-4 text-xs sm:text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isUploading}
                 type="submit"
               >
@@ -368,16 +363,16 @@ export default function ResumesClient() {
           </form>
         </section>
 
-        <section className="mt-8">
+        <section className="mt-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold">Your resumes</h2>
+              <h2 className="text-base sm:text-lg font-semibold">Your resumes</h2>
               <p className="text-muted-foreground mt-1 text-sm">
                 Your default resume will be used as the initial profile for future job workflows.
               </p>
             </div>
 
-            <label className="text-foreground flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <label className="text-foreground inline-flex cursor-pointer items-center gap-2 text-xs sm:text-sm font-medium">
               <input
                 checked={showArchived}
                 className="border-border text-primary h-4 w-4 rounded focus:ring-indigo-500"
@@ -468,7 +463,7 @@ export default function ResumesClient() {
 
                       <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-52 lg:justify-end">
                         <button
-                          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                          className="border-border bg-card text-foreground hover:bg-muted inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs sm:text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isBusy}
                           onClick={() => void handleRename(resume)}
                           type="button"
@@ -478,7 +473,7 @@ export default function ResumesClient() {
 
                         {!isArchived && !resume.is_default ? (
                           <button
-                            className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                            className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs sm:text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -495,7 +490,7 @@ export default function ResumesClient() {
 
                         {isArchived ? (
                           <button
-                            className="border-success-border bg-success-background text-success rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="border-success-border bg-success-background text-success inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs sm:text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -510,7 +505,7 @@ export default function ResumesClient() {
                           </button>
                         ) : (
                           <button
-                            className="border-warning-border bg-warning-background text-warning rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="border-warning-border bg-warning-background text-warning inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs sm:text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isBusy}
                             onClick={() =>
                               void updateResume(
@@ -526,7 +521,7 @@ export default function ResumesClient() {
                         )}
 
                         <button
-                          className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                          className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs sm:text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isBusy}
                           onClick={() => void handleDelete(resume)}
                           type="button"
@@ -541,7 +536,6 @@ export default function ResumesClient() {
             </div>
           ) : null}
         </section>
-      </div>
-    </main>
+    </PageContainer>
   );
 }

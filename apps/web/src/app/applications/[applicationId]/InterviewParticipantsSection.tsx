@@ -12,6 +12,7 @@ import {
   isInterviewParticipantArray,
   ParticipantRole,
 } from "@/lib/api";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Props = {
   applicationId: string;
@@ -119,6 +120,7 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [participantToRemove, setParticipantToRemove] = useState<InterviewParticipant | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<ParticipantRole>("interviewer");
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -465,27 +467,22 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
     }
   }
 
-  async function handleRemoveParticipant(participant: InterviewParticipant) {
-    if (deleteInFlight.current) return;
-    if (
-      !window.confirm(
-        `Remove ${participant.contact.name} from this interview? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+  async function confirmRemoveParticipant() {
+    if (!participantToRemove || deleteInFlight.current) return;
 
     deleteInFlight.current = true;
-    setDeletingId(participant.id);
+    setDeletingId(participantToRemove.id);
     setActionError(null);
     try {
-      const response = await apiFetch(`${participantsEndpoint}/${participant.id}`, {
+      const response = await apiFetch(`${participantsEndpoint}/${participantToRemove.id}`, {
         method: "DELETE",
       });
       if (!response.ok) throw new Error("request failed");
-      setParticipants((current) => current.filter((item) => item.id !== participant.id));
+      setParticipants((current) => current.filter((item) => item.id !== participantToRemove.id));
+      setParticipantToRemove(null);
     } catch {
       setActionError("Unable to remove participant. Please try again.");
+      setParticipantToRemove(null);
     } finally {
       deleteInFlight.current = false;
       setDeletingId(null);
@@ -711,7 +708,7 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
                       <button
                         type="button"
                         disabled={deletingId !== null || savingId !== null}
-                        onClick={() => void handleRemoveParticipant(participant)}
+                        onClick={() => setParticipantToRemove(participant)}
                         className="border-destructive/30 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive inline-flex h-10 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
                       >
                         {deletingId === participant.id ? "Removing…" : "Remove"}
@@ -1022,6 +1019,20 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        isOpen={Boolean(participantToRemove)}
+        title="Remove Participant"
+        description={
+          participantToRemove
+            ? `Are you sure you want to remove ${participantToRemove.contact.name} from this interview? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Remove"
+        isLoading={Boolean(deletingId)}
+        onConfirm={confirmRemoveParticipant}
+        onCancel={() => setParticipantToRemove(null)}
+      />
     </div>
   );
 }

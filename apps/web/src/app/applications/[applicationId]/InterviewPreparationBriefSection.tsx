@@ -19,11 +19,46 @@ function TextList({ items }: { items: string[] }) {
   );
 }
 
+function formatActionableBrief(brief: InterviewPreparationBrief): string {
+  const parts: string[] = [];
+
+  if (brief.summary?.trim()) {
+    parts.push(`Summary:\n${brief.summary.trim()}`);
+  }
+
+  if (brief.likely_topics?.length) {
+    parts.push(`Likely Topics:\n${brief.likely_topics.map((t) => `• ${t}`).join("\n")}`);
+  }
+
+  if (brief.questions_to_prepare?.length) {
+    parts.push(
+      `Questions to Prepare:\n${brief.questions_to_prepare.map((q) => `• ${q}`).join("\n")}`
+    );
+  }
+
+  if (brief.participant_context?.length) {
+    const participants = brief.participant_context
+      .map((p) => `• ${p.name} (${p.role}): ${p.suggested_focus}`)
+      .join("\n");
+    parts.push(`Participant Context:\n${participants}`);
+  }
+
+  if (brief.next_steps?.length) {
+    parts.push(`Next Steps:\n${brief.next_steps.map((s) => `• ${s}`).join("\n")}`);
+  }
+
+  return parts.join("\n\n");
+}
+
 export default function InterviewPreparationBriefSection({ applicationId, interviewId }: Props) {
   const [brief, setBrief] = useState<InterviewPreparationBrief | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -33,6 +68,16 @@ export default function InterviewPreparationBriefSection({ applicationId, interv
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!copyNotice) return;
+    const timer = window.setTimeout(() => {
+      if (mountedRef.current) {
+        setCopyNotice(null);
+      }
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
 
   async function generateBrief() {
     if (inFlightRef.current) return;
@@ -65,6 +110,36 @@ export default function InterviewPreparationBriefSection({ applicationId, interv
     }
   }
 
+  async function handleCopyBrief() {
+    if (!brief) return;
+
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      setCopyNotice({
+        type: "error",
+        message: "Clipboard access is unavailable in this environment.",
+      });
+      return;
+    }
+
+    try {
+      const content = formatActionableBrief(brief);
+      await navigator.clipboard.writeText(content);
+      if (mountedRef.current) {
+        setCopyNotice({
+          type: "success",
+          message: "Brief copied to clipboard.",
+        });
+      }
+    } catch {
+      if (mountedRef.current) {
+        setCopyNotice({
+          type: "error",
+          message: "Failed to copy brief to clipboard.",
+        });
+      }
+    }
+  }
+
   return (
     <section className="border-border mt-3 border-t pt-3" aria-labelledby={`brief-${interviewId}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -76,35 +151,93 @@ export default function InterviewPreparationBriefSection({ applicationId, interv
             Focused guidance generated from this interview&apos;s recorded context.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void generateBrief()}
-          disabled={isGenerating}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-primary h-10 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex flex-wrap items-center gap-2">
+          {copyNotice ? (
+            <span
+              role="status"
+              className={`text-xs font-medium ${
+                copyNotice.type === "success"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-destructive"
+              }`}
+            >
+              {copyNotice.message}
+            </span>
+          ) : null}
+          {brief && !isGenerating ? (
+            <button
+              type="button"
+              onClick={() => void handleCopyBrief()}
+              className="border-border bg-card hover:bg-muted text-foreground focus-visible:ring-primary h-10 rounded-lg border px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none"
+            >
+              Copy Brief
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void generateBrief()}
+            disabled={isGenerating}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-primary h-10 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isGenerating
+              ? "Generating…"
+              : brief
+                ? "Generate again"
+                : error || isUnavailable
+                  ? "Retry"
+                  : "Generate preparation brief"}
+          </button>
+        </div>
+      </div>
+
+      <div aria-live="polite" className="sr-only">
+        {isGenerating ? "Generating your interview preparation brief…" : null}
+        {isUnavailable
+          ? "AI preparation briefs are currently unavailable. Please try again later."
+          : null}
+        {error ? error : null}
+        {copyNotice ? copyNotice.message : null}
+      </div>
+
+      {isGenerating ? (
+        <div
+          className="border-border bg-muted/15 mt-3 space-y-4 rounded-lg border p-4 animate-pulse"
+          aria-hidden="true"
         >
-          {isGenerating
-            ? "Generating…"
-            : brief
-              ? "Generate again"
-              : error || isUnavailable
-                ? "Retry"
-                : "Generate preparation brief"}
-        </button>
-      </div>
+          {/* Block 1: Summary */}
+          <div className="space-y-2">
+            <div className="bg-muted h-4 w-24 rounded" />
+            <div className="bg-muted/60 h-16 w-full rounded" />
+          </div>
 
-      <div aria-live="polite">
-        {isGenerating ? (
-          <p className="text-muted-foreground mt-3 text-sm">Generating your preparation brief…</p>
-        ) : null}
-        {isUnavailable ? (
-          <p className="text-muted-foreground mt-3 text-sm">
-            AI preparation briefs are currently unavailable. Please try again later.
-          </p>
-        ) : null}
-        {error ? <p className="text-destructive mt-3 text-sm">{error}</p> : null}
-      </div>
+          {/* Block 2: Likely Topics & Questions */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="bg-muted h-4 w-28 rounded" />
+              <div className="bg-muted/60 h-12 w-full rounded" />
+            </div>
+            <div className="space-y-2">
+              <div className="bg-muted h-4 w-36 rounded" />
+              <div className="bg-muted/60 h-12 w-full rounded" />
+            </div>
+          </div>
 
-      {brief ? (
+          {/* Block 3: Participant Context & Next Steps */}
+          <div className="space-y-2">
+            <div className="bg-muted h-4 w-24 rounded" />
+            <div className="bg-muted/60 h-10 w-full rounded" />
+          </div>
+        </div>
+      ) : null}
+
+      {isUnavailable ? (
+        <p className="text-muted-foreground mt-3 text-sm">
+          AI preparation briefs are currently unavailable. Please try again later.
+        </p>
+      ) : null}
+      {error ? <p className="text-destructive mt-3 text-sm">{error}</p> : null}
+
+      {brief && !isGenerating ? (
         <div className="border-border bg-muted/20 mt-3 space-y-4 rounded-lg border p-3">
           <div>
             <h6 className="text-foreground text-sm font-semibold">Summary</h6>

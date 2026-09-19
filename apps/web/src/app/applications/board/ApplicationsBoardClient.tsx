@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 import PipelineBoard, { type PipelineApplication } from "./PipelineBoard";
 import { useRouter } from "next/navigation";
 
@@ -77,27 +79,26 @@ export default function ApplicationsBoardClient() {
     ).length ?? 0;
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-              CareerNeed
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Application pipeline
-            </h1>
-            <p className="text-muted-foreground mt-3 max-w-2xl">
-              See every opportunity by stage, identify stalled applications, and decide your next
-              move.
-            </p>
+    <PageContainer size="default">
+      <PageHeader
+        title="Applications"
+        description="See every opportunity by stage, identify stalled applications, and decide your next move."
+        actions={
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <ApplicationViewTabs currentView="pipeline" />
+            <Link
+              href="/jobs"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 sm:h-10 items-center justify-center rounded-lg border px-3.5 text-xs sm:text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              Browse jobs
+            </Link>
           </div>
-          <ApplicationViewTabs currentView="pipeline" />
-        </header>
+        }
+      />
 
         {error ? (
-          <section className="border-error-border bg-error-background text-destructive mt-8 rounded-2xl border p-6">
-            <h2 className="text-lg font-semibold">Pipeline is temporarily unavailable</h2>
+          <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-6">
+            <h2 className="text-base sm:text-lg font-semibold">Pipeline is temporarily unavailable</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6">{error}</p>
             <Link
               href="/applications"
@@ -107,28 +108,28 @@ export default function ApplicationsBoardClient() {
             </Link>
           </section>
         ) : applications === null ? (
-          <section className="border-border bg-card mt-8 rounded-2xl border border-dashed p-8 text-center shadow-sm">
+          <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8 text-center shadow-sm">
             <p className="text-muted-foreground text-sm">Loading your pipeline…</p>
           </section>
         ) : (
           <>
             <section
-              className="border-border bg-card mt-8 rounded-2xl border p-5 sm:p-6"
+              className="border-border bg-card rounded-2xl border p-5 sm:p-6"
               aria-label="Pipeline summary"
             >
               <dl className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <dt className="text-muted-foreground text-sm">Tracked jobs</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">{totalApplications}</dd>
+                  <dt className="text-muted-foreground text-xs sm:text-sm">Tracked jobs</dt>
+                  <dd className="mt-1 text-xl sm:text-2xl font-bold tracking-tight">{totalApplications}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground text-sm">Active applications</dt>
-                  <dd className="mt-1 text-2xl font-bold tracking-tight">{activeApplications}</dd>
+                  <dt className="text-muted-foreground text-xs sm:text-sm">Active applications</dt>
+                  <dd className="mt-1 text-xl sm:text-2xl font-bold tracking-tight">{activeApplications}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground text-sm">Need attention</dt>
+                  <dt className="text-muted-foreground text-xs sm:text-sm">Need attention</dt>
                   <dd
-                    className={`mt-1 text-2xl font-bold tracking-tight ${
+                    className={`mt-1 text-xl sm:text-2xl font-bold tracking-tight ${
                       attentionCount > 0 ? "text-destructive" : ""
                     }`}
                   >
@@ -140,7 +141,7 @@ export default function ApplicationsBoardClient() {
               {attentionCount > 0 ? (
                 <Link
                   href="/applications?follow_up=scheduled"
-                  className="text-primary mt-4 inline-flex text-sm font-semibold transition hover:opacity-80"
+                  className="text-primary mt-4 inline-flex text-xs sm:text-sm font-semibold transition hover:opacity-80"
                 >
                   Review follow-ups <span aria-hidden="true">&nbsp;→</span>
                 </Link>
@@ -150,7 +151,6 @@ export default function ApplicationsBoardClient() {
             <PipelineBoard applications={applications} />
           </>
         )}
-      </div>
-    </main>
+    </PageContainer>
   );
 }

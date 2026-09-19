@@ -10,6 +10,8 @@ import {
   TodayPriorityActionKind,
   TodayPriorityGroupKey,
 } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type DashboardSummary = {
   follow_ups_due_today: number;
@@ -61,7 +63,7 @@ const exploreActions: ExploreAction[] = [
 ];
 
 const quickStartSteps = [
-  "Add a resume so CareerNeed can evaluate job relevance.",
+  "Add a resume so the system can evaluate job relevance.",
   "Browse jobs and save roles you want to pursue.",
   "Track applications and set a follow-up date.",
 ];
@@ -362,35 +364,27 @@ export default function TodoClient() {
   const caughtUpState = summary ? createCaughtUpState(summary) : null;
 
   return (
-    <main className="bg-background text-foreground min-h-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-      <section className="mx-auto max-w-5xl">
-        {/* Page header */}
-        <header className="border-border flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
-                Today
-              </h1>
-              {urgentActionCount > 0 ? (
-                <span className="border-warning-border bg-warning-background text-warning inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-                  {urgentActionCount} {urgentActionCount === 1 ? "action needs" : "actions need"}{" "}
-                  attention
-                </span>
-              ) : null}
-            </div>
-            <p className="text-muted-foreground mt-1 text-xs sm:text-sm">
-              Focus on the next action, keep your applications moving, and see your progress at a
-              glance.
-            </p>
-          </div>
-
+    <PageContainer size="default">
+      <PageHeader
+        title="Today"
+        description="Focus on the next action, keep your applications moving, and see your progress at a glance."
+        badge={
+          urgentActionCount > 0 ? (
+            <span className="border-warning-border bg-warning-background text-warning inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold">
+              {urgentActionCount} {urgentActionCount === 1 ? "action needs" : "actions need"}{" "}
+              attention
+            </span>
+          ) : null
+        }
+        actions={
           <Link
             href="/jobs/add"
             className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex shrink-0 items-center justify-center rounded-lg px-3.5 py-2 text-sm font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             Add a job
           </Link>
-        </header>
+        }
+      />
 
         {/* Priorities Section (Action-First) */}
         {isTodayLoading ? (
@@ -876,7 +870,6 @@ export default function TodoClient() {
             </ol>
           </section>
         ) : null}
-      </section>
-    </main>
+    </PageContainer>
   );
 }

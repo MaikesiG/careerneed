@@ -4,6 +4,8 @@ import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type Provider = "ashby" | "greenhouse" | "lever" | "custom" | "manual";
 type Priority = "high" | "medium" | "low";
@@ -735,46 +737,44 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
   });
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-            CareerNeed
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            Job Sources & Ingestion
-          </h1>
-          <p className="text-muted-foreground mt-3 max-w-3xl text-base">
-            Configure automated job boards (Ashby, Greenhouse, Lever) or paste individual job links
-            found on LinkedIn, company sites, and referrals.
-          </p>
-
-          {/* Navigation Tabs */}
-          <div className="border-border mt-6 flex border-b">
-            <button
-              type="button"
-              onClick={() => setActiveTab("companies")}
-              className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "companies"
-                  ? "border-primary text-primary"
-                  : "text-muted-foreground hover:text-foreground border-transparent"
-              }`}
-            >
-              🏢 Tracked Companies & ATS Boards ({companies.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("manual_jobs")}
-              className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "manual_jobs"
-                  ? "border-primary text-primary"
-                  : "text-muted-foreground hover:text-foreground border-transparent"
-              }`}
-            >
-              🔗 Add Individual Job Link
-            </button>
-          </div>
-        </header>
+    <PageContainer size="default">
+      <PageHeader
+        title="Sources"
+        description="Configure automated job boards (Ashby, Greenhouse, Lever) or paste individual job links found on LinkedIn, company sites, and referrals."
+      >
+        <div
+          role="tablist"
+          aria-label="Source views"
+          className="border-border flex flex-wrap border-b"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "companies"}
+            onClick={() => setActiveTab("companies")}
+            className={`border-b-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-2 ${
+              activeTab === "companies"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            🏢 Tracked Companies & ATS Boards ({companies.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "manual_jobs"}
+            onClick={() => setActiveTab("manual_jobs")}
+            className={`border-b-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-2 ${
+              activeTab === "manual_jobs"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            🔗 Add Individual Job Link
+          </button>
+        </div>
+      </PageHeader>
 
         {error ? (
           <div
@@ -847,7 +847,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                   <button
                     type="button"
                     onClick={handleAddAllAIPresets}
-                    className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+                    className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-8 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition"
                   >
                     + Add All AI
                   </button>
@@ -1000,7 +1000,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
                 <div className="flex items-end lg:col-span-2">
                   <button
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-xs transition disabled:opacity-50"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-9 sm:h-10 items-center justify-center rounded-lg px-4 text-xs sm:text-sm font-semibold shadow-xs transition disabled:opacity-50"
                     disabled={isAdding}
                     type="submit"
                   >
@@ -1014,7 +1014,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
             <section className="border-border bg-card rounded-2xl border p-5 shadow-xs sm:p-6">
               <div className="border-border flex flex-col justify-between gap-4 border-b pb-5 sm:flex-row sm:items-center">
                 <div>
-                  <h2 className="text-lg font-semibold">Tracked Sources</h2>
+                  <h2 className="text-base sm:text-lg font-semibold">Tracked company sources</h2>
                   <p className="text-muted-foreground text-sm">
                     {companies.length} company source{companies.length === 1 ? "" : "s"} currently
                     tracked.
@@ -1025,7 +1025,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                   {connectorProviders.map((syncableProvider) => (
                     <button
                       key={syncableProvider}
-                      className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={syncingProvider !== null || syncingCompanyId !== null}
                       onClick={() => handleSyncAll(syncableProvider)}
                       type="button"
@@ -1037,7 +1037,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                   ))}
 
                   <button
-                    className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-8 sm:h-9 items-center justify-center rounded-lg border px-3 text-xs font-medium transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isRefreshing}
                     onClick={refreshCompanies}
                     type="button"
@@ -1147,7 +1147,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
             <div className="mb-6">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🔗</span>
-                <h2 className="text-xl font-bold">Track an Individual Job by Link</h2>
+                <h2 className="text-base sm:text-lg font-semibold">Track an individual job by link</h2>
               </div>
               <p className="text-muted-foreground mt-1 text-sm">
                 Found an interesting posting on LinkedIn, a company careers page, or through a
@@ -1278,7 +1278,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                 <button
                   type="submit"
                   disabled={isAddingJob}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-6 py-2.5 text-sm font-semibold shadow-xs transition disabled:opacity-50"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-9 sm:h-10 items-center justify-center rounded-lg px-5 text-xs sm:text-sm font-semibold shadow-xs transition disabled:opacity-50"
                 >
                   {isAddingJob ? "Adding Job…" : "Add to Job Pool & Applications →"}
                 </button>
@@ -1286,7 +1286,6 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
             </form>
           </section>
         )}
-      </div>
-    </main>
+    </PageContainer>
   );
 }

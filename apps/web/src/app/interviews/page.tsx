@@ -6,9 +6,9 @@ import {
   apiFetch,
   getApiErrorMessage,
   UpcomingInterview,
-  InterviewStatus,
-  InterviewResult,
 } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type GroupKey = "today" | "tomorrow" | "this_week" | "later" | "past";
 
@@ -134,48 +134,46 @@ export default function InterviewsPage() {
   ];
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        {/* Header */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">💼</span>
-              <h1 className="text-3xl font-bold tracking-tight">Interview Center</h1>
-            </div>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Consolidated upcoming rounds, meeting links, and preparation context across all active
-              applications.
-            </p>
-          </div>
-
+    <PageContainer size="default">
+      <PageHeader
+        title={
           <div className="flex items-center gap-2">
-            <div className="border-border bg-card inline-flex rounded-lg border p-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab("upcoming")}
-                className={`rounded-md px-3 py-1.5 font-semibold transition ${
-                  activeTab === "upcoming"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Upcoming (Next 60d)
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("all")}
-                className={`rounded-md px-3 py-1.5 font-semibold transition ${
-                  activeTab === "all"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                All & Past
-              </button>
-            </div>
+            <span className="text-2xl" aria-hidden="true">
+              💼
+            </span>
+            <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+              Interview Center
+            </h1>
           </div>
-        </div>
+        }
+        description="Consolidated upcoming rounds, meeting links, and preparation context across all active applications."
+        actions={
+          <div className="border-border bg-card inline-flex rounded-lg border p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("upcoming")}
+              className={`rounded-md px-3 py-1.5 font-semibold transition ${
+                activeTab === "upcoming"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Upcoming (Next 60d)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("all")}
+              className={`rounded-md px-3 py-1.5 font-semibold transition ${
+                activeTab === "all"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              All & Past
+            </button>
+          </div>
+        }
+      />
 
         {error ? (
           <div className="border-destructive/30 bg-destructive/10 text-destructive mt-6 rounded-xl border p-4 text-sm">
@@ -328,7 +326,6 @@ export default function InterviewsPage() {
             })}
           </div>
         )}
-      </div>
-    </main>
+    </PageContainer>
   );
 }

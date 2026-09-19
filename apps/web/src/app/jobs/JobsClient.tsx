@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
 
 type Job = {
   id: string;
@@ -276,6 +278,7 @@ export default function JobsClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const [searchInput, setSearchInput] = useState(initialFilters.q);
   const [locationInput, setLocationInput] = useState(initialFilters.locationQuery);
@@ -459,6 +462,8 @@ export default function JobsClient({
     sortDirection?: string;
     keywordGroups?: KeywordGroup[];
   }) {
+    if (isPending) return;
+
     const params = new URLSearchParams(searchParams.toString());
 
     const page = next.page ?? 1;
@@ -528,11 +533,14 @@ export default function JobsClient({
     });
 
     const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
+    startTransition(() => {
+      router.push(query ? `${pathname}?${query}` : pathname);
+    });
   }
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isPending) return;
 
     navigateWithFilters({
       page: 1,
@@ -728,7 +736,7 @@ export default function JobsClient({
   }
 
   function goToPage(page: number) {
-    if (page < 1 || page > totalPages || page === initialPage) {
+    if (isPending || page < 1 || page > totalPages || page === initialPage) {
       return;
     }
 
@@ -736,13 +744,13 @@ export default function JobsClient({
   }
 
   function refreshJobs() {
+    if (isPending) return;
     clearFeedback();
     setIsRefreshing(true);
-    router.refresh();
-
-    window.setTimeout(() => {
+    startTransition(() => {
+      router.refresh();
       setIsRefreshing(false);
-    }, 300);
+    });
   }
 
   async function updateApplicationStatus(
@@ -850,44 +858,37 @@ export default function JobsClient({
   }
 
   return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-              CareerNeed
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Job dashboard</h1>
-            <p className="text-muted-foreground mt-3 max-w-3xl">
-              Search and filter jobs across all synced Ashby, Greenhouse, and Lever company sources.
-            </p>
-          </div>
-
+    <PageContainer size="default">
+      <PageHeader
+        title="Jobs"
+        description="Search and filter jobs across all synced Ashby, Greenhouse, and Lever company sources."
+        actions={
           <div className="flex flex-wrap gap-2">
             <Link
-              className="bg-primary text-primary-foreground inline-flex h-10 items-center rounded-lg px-4 text-sm font-semibold transition hover:opacity-90"
+              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-10 items-center rounded-lg px-4 text-sm font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               href="/jobs/add"
             >
               + Add a job
             </Link>
 
             <Link
-              className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-4 text-sm font-semibold transition"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-10 items-center rounded-lg border px-4 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none"
               href="/applications"
             >
               My applications
             </Link>
 
             <button
-              className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isRefreshing}
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary h-10 rounded-lg border px-4 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isRefreshing || isPending}
               onClick={refreshJobs}
               type="button"
             >
               {isRefreshing ? "Refreshing..." : "Refresh jobs"}
             </button>
           </div>
-        </header>
+        }
+      />
 
         {error ? (
           <div
@@ -927,7 +928,7 @@ export default function JobsClient({
           <div className="flex flex-col gap-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div>
-                <h2 className="text-lg font-semibold">Find relevant roles</h2>
+                <h2 className="text-base sm:text-lg font-semibold">Find relevant roles</h2>
                 <p className="text-muted-foreground mt-1 text-sm">
                   Showing {firstJobNumber}–{lastJobNumber} of {totalJobs} matching jobs.
                 </p>
@@ -1205,10 +1206,10 @@ export default function JobsClient({
           </div>
         </section>
 
-        <section className="mt-8">
+        <section className="mt-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold">Jobs</h2>
+              <h2 className="text-base sm:text-lg font-semibold">Job listings</h2>
               <p className="text-muted-foreground mt-1 text-sm">
                 Page {initialPage} of {totalPages}
               </p>
@@ -1219,15 +1220,34 @@ export default function JobsClient({
             </p>
           </div>
 
+          {isPending ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="text-muted-foreground mb-3 flex items-center gap-2 text-xs font-medium"
+            >
+              <span className="bg-primary inline-block h-2 w-2 animate-ping rounded-full" />
+              <span>Updating jobs list…</span>
+            </div>
+          ) : null}
+
           {totalJobs === 0 ? (
-            <div className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
+            <div
+              className={`border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm transition-opacity duration-200 ${
+                isPending ? "opacity-60" : ""
+              }`}
+            >
               <h3 className="text-lg font-semibold">No jobs match these filters</h3>
               <p className="text-muted-foreground mt-2 text-sm">
                 Try removing a filter, changing your search, or sync another company source.
               </p>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div
+              className={`grid gap-4 transition-opacity duration-200 ${
+                isPending ? "pointer-events-none opacity-60" : ""
+              }`}
+            >
               {initialJobs.map((job) => {
                 const applicationState = applicationStates[job.id];
                 const isUpdating = updatingJobId === job.id;
@@ -1299,15 +1319,15 @@ export default function JobsClient({
                         ) : null}
                       </div>
 
-                      <div className="flex shrink-0 flex-wrap content-start gap-2 lg:max-w-80 lg:justify-end">
-                        <a
-                          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
-                          href={job.application_url}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          View posting
-                        </a>
+                      <div className="flex shrink-0 flex-wrap content-start items-center gap-2 lg:max-w-96 lg:justify-end">
+                        {applicationState?.id ? (
+                          <Link
+                            href={`/applications/${applicationState.id}`}
+                            className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none"
+                          >
+                            View Application →
+                          </Link>
+                        ) : null}
 
                         <label className="sr-only" htmlFor={`application-status-${job.id}`}>
                           Tracking status for {job.title}
@@ -1335,7 +1355,7 @@ export default function JobsClient({
                         </select>
 
                         <button
-                          className="border-border bg-background text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                          className="border-border bg-background text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isLoadingStates || isUpdating}
                           onClick={() => openApplicationDetails(job.id)}
                           type="button"
@@ -1343,9 +1363,19 @@ export default function JobsClient({
                           Details
                         </button>
 
+                        <a
+                          className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none"
+                          href={job.application_url}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          <span>View posting</span>
+                          <span aria-hidden="true">↗</span>
+                        </a>
+
                         {applicationState ? (
                           <button
-                            className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                            className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 focus-visible:ring-destructive rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isLoadingStates || isUpdating}
                             onClick={() => void removeApplicationTracking(job.id)}
                             type="button"
@@ -1421,8 +1451,8 @@ export default function JobsClient({
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  className="border-border text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={initialPage === 1}
+                  className="border-border text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isPending || initialPage === 1}
                   onClick={() => goToPage(initialPage - 1)}
                   type="button"
                 >
@@ -1432,7 +1462,8 @@ export default function JobsClient({
                 {visiblePages[0] && visiblePages[0] > 1 ? (
                   <>
                     <button
-                      className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
+                      className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isPending}
                       onClick={() => goToPage(1)}
                       type="button"
                     >
@@ -1447,10 +1478,11 @@ export default function JobsClient({
                 {visiblePages.map((page) => (
                   <button
                     aria-current={page === initialPage ? "page" : undefined}
-                    className={`min-w-10 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    disabled={isPending}
+                    className={`min-w-10 rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                       page === initialPage
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card text-foreground hover:bg-muted"
+                        ? "border-primary bg-primary text-primary-foreground focus-visible:ring-primary"
+                        : "border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary"
                     }`}
                     key={page}
                     onClick={() => goToPage(page)}
@@ -1466,7 +1498,8 @@ export default function JobsClient({
                       <span className="text-muted-foreground px-1 text-sm">…</span>
                     ) : null}
                     <button
-                      className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
+                      className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isPending}
                       onClick={() => goToPage(totalPages)}
                       type="button"
                     >
@@ -1476,8 +1509,8 @@ export default function JobsClient({
                 ) : null}
 
                 <button
-                  className="border-border text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={initialPage === totalPages}
+                  className="border-border text-foreground hover:bg-muted focus-visible:ring-primary rounded-lg border px-3 py-2 text-sm font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isPending || initialPage === totalPages}
                   onClick={() => goToPage(initialPage + 1)}
                   type="button"
                 >
@@ -1487,7 +1520,6 @@ export default function JobsClient({
             </nav>
           ) : null}
         </section>
-      </div>
-    </main>
+    </PageContainer>
   );
 }

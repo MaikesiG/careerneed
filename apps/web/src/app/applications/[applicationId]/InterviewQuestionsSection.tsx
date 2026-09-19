@@ -7,6 +7,7 @@ import {
   InterviewQuestionCategory,
   InterviewQuestionDifficulty,
 } from "@/lib/api";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type InterviewQuestionsSectionProps = {
   applicationId: string;
@@ -128,6 +129,7 @@ export default function InterviewQuestionsSection({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [questionToDelete, setQuestionToDelete] = useState<InterviewQuestion | null>(null);
 
   const endpoint = `/applications/${applicationId}/interviews/${interviewId}/questions`;
 
@@ -231,18 +233,19 @@ export default function InterviewQuestionsSection({
     }
   }
 
-  async function handleDelete(question: InterviewQuestion) {
-    const confirmed = window.confirm("Delete this interview question? This cannot be undone.");
-    if (!confirmed) return;
-
-    setDeletingId(question.id);
+  async function confirmDeleteQuestion() {
+    if (!questionToDelete) return;
+    const target = questionToDelete;
+    setDeletingId(target.id);
     setActionError(null);
     try {
-      const response = await apiFetch(`${endpoint}/${question.id}`, { method: "DELETE" });
+      const response = await apiFetch(`${endpoint}/${target.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Unable to delete interview question.");
-      setQuestions((current) => current.filter((item) => item.id !== question.id));
+      setQuestions((current) => current.filter((item) => item.id !== target.id));
+      setQuestionToDelete(null);
     } catch {
       setActionError("Unable to delete this question. Please try again.");
+      setQuestionToDelete(null);
     } finally {
       setDeletingId(null);
     }
@@ -352,7 +355,7 @@ export default function InterviewQuestionsSection({
                       </button>
                       <button
                         type="button"
-                        onClick={() => void handleDelete(question)}
+                        onClick={() => setQuestionToDelete(question)}
                         disabled={deletingId === question.id}
                         className="text-muted-foreground hover:text-destructive text-xs font-medium transition disabled:opacity-50"
                       >
@@ -555,6 +558,20 @@ export default function InterviewQuestionsSection({
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        isOpen={Boolean(questionToDelete)}
+        title="Delete Question"
+        description={
+          questionToDelete
+            ? `Are you sure you want to delete "${questionToDelete.question}"? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete Question"
+        isLoading={Boolean(deletingId)}
+        onConfirm={confirmDeleteQuestion}
+        onCancel={() => setQuestionToDelete(null)}
+      />
     </div>
   );
 }

@@ -5,16 +5,16 @@ type ApplicationViewTabsProps = {
 };
 
 const inactiveClassName =
-  "rounded-md px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset";
+  "inline-flex h-full items-center justify-center rounded-md px-3 text-xs sm:text-sm font-semibold text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset";
 
 const activeClassName =
-  "rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground";
+  "inline-flex h-full items-center justify-center rounded-md bg-primary px-3 text-xs sm:text-sm font-semibold text-primary-foreground shadow-xs";
 
 export default function ApplicationViewTabs({ currentView }: ApplicationViewTabsProps) {
   return (
     <nav
       aria-label="Application views"
-      className="border-border bg-card inline-flex rounded-lg border p-1"
+      className="border-border bg-card inline-flex h-9 sm:h-10 items-center rounded-lg border p-1 text-xs sm:text-sm"
     >
       {currentView === "list" ? (
         <span aria-current="page" className={activeClassName}>
