@@ -9,6 +9,7 @@ import {
   TodayPrioritiesResponse,
   TodayPriorityActionKind,
   TodayPriorityGroupKey,
+  TodayPriorityItem,
 } from "@/lib/api";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
@@ -238,6 +239,15 @@ export default function TodoClient() {
   const todayMountedRef = useRef(false);
   const todayAbortRef = useRef<AbortController | null>(null);
 
+  const [completedItemIds, setCompletedItemIds] = useState<Set<string>>(() => new Set());
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(() => new Set());
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ id: string; title: string } | null>(null);
+
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+
   const loadTodayPriorities = useCallback(async () => {
     if (todayInFlightRef.current) return;
     todayInFlightRef.current = true;
@@ -278,14 +288,23 @@ export default function TodoClient() {
   }, [pathname, router]);
 
   useEffect(() => {
+    const abortControllers = abortControllersRef.current;
+    const inFlightItems = inFlightRef.current;
+
     todayMountedRef.current = true;
+
     // Initial client-only request requires the browser's resolved IANA timezone.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadTodayPriorities();
+
     return () => {
       todayMountedRef.current = false;
       todayAbortRef.current?.abort();
       todayInFlightRef.current = false;
+
+      abortControllers.forEach((controller) => controller.abort());
+      abortControllers.clear();
+      inFlightItems.clear();
     };
   }, [loadTodayPriorities]);
 
@@ -335,6 +354,80 @@ export default function TodoClient() {
     };
   }, [pathname, router]);
 
+  useEffect(() => {
+    if (!actionNotice) return;
+    const timer = window.setTimeout(() => {
+      if (todayMountedRef.current) {
+        setActionNotice(null);
+      }
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice]);
+
+  const handleCompleteFollowUp = useCallback(async (item: TodayPriorityItem) => {
+    if (inFlightRef.current.has(item.id)) return;
+    inFlightRef.current.add(item.id);
+
+    const controller = new AbortController();
+    abortControllersRef.current.set(item.id, controller);
+
+    setPendingItemIds((prev) => new Set(prev).add(item.id));
+    setItemErrors((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setLiveMessage(`Completing follow-up: "${item.title}"…`);
+
+    try {
+      const response = await apiFetch(
+        `/applications/${encodeURIComponent(item.application_id)}/follow-ups/${encodeURIComponent(item.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            completed_at: new Date().toISOString(),
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("request failed");
+      }
+
+      if (todayMountedRef.current) {
+        setCompletedItemIds((prev) => new Set(prev).add(item.id));
+        setPendingItemIds((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setActionNotice({ id: item.id, title: item.title });
+        setLiveMessage(`Follow-up completed: "${item.title}".`);
+      }
+    } catch (caughtError) {
+      if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+        return;
+      }
+      if (todayMountedRef.current) {
+        setPendingItemIds((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        setItemErrors((prev) => ({
+          ...prev,
+          [item.id]: "Unable to complete this follow-up. Please try again.",
+        }));
+        setLiveMessage(`Failed to complete "${item.title}". Restored.`);
+      }
+    } finally {
+      inFlightRef.current.delete(item.id);
+      abortControllersRef.current.delete(item.id);
+    }
+  }, []);
+
   const overdueGroup = todayPriorities?.groups.find((g) => g.key === "overdue_follow_ups");
   const interviewsTodayGroup = todayPriorities?.groups.find((g) => g.key === "interviews_today");
   const followUpsDueTodayGroup = todayPriorities?.groups.find(
@@ -353,7 +446,12 @@ export default function TodoClient() {
   const upcomingInterviewItems = upcomingInterviewsGroup?.items ?? [];
   const applicationsNeedingUpdateItems = applicationsNeedingUpdateGroup?.items ?? [];
 
-  const urgentActionCount = overdueItems.length + followUpsDueTodayItems.length;
+  const visibleOverdueItems = overdueItems.filter((item) => !completedItemIds.has(item.id));
+  const visibleFollowUpsDueTodayItems = followUpsDueTodayItems.filter(
+    (item) => !completedItemIds.has(item.id)
+  );
+
+  const urgentActionCount = visibleOverdueItems.length + visibleFollowUpsDueTodayItems.length;
 
   const showQuickStart =
     summary !== null &&
@@ -386,69 +484,103 @@ export default function TodoClient() {
         }
       />
 
-        {/* Priorities Section (Action-First) */}
-        {isTodayLoading ? (
-          <section className="border-border bg-card mt-6 rounded-xl border border-dashed p-6 text-center">
-            <p className="text-muted-foreground text-sm">Loading today’s priorities…</p>
-          </section>
-        ) : todayError ? (
-          <section className="border-error-border bg-error-background text-destructive mt-6 rounded-xl border p-5">
-            <p className="text-sm font-medium">{todayError}</p>
-            <button
-              type="button"
-              onClick={() => void loadTodayPriorities()}
-              className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background mt-4 inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-            >
-              Retry
-            </button>
-          </section>
-        ) : todayPriorities ? (
-          <>
-            {/* Primary action area at the top: Needs attention queue */}
-            <section className="mt-6 space-y-3" aria-labelledby="needs-attention-heading">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <h2
-                    id="needs-attention-heading"
-                    className="text-foreground text-base font-semibold sm:text-lg"
-                  >
-                    Needs attention
-                  </h2>
-                  {urgentActionCount > 0 ? (
-                    <span className="border-warning-border bg-warning-background text-warning rounded-full border px-2 py-0.5 text-xs font-semibold">
-                      {urgentActionCount}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
+      {/* Priorities Section (Action-First) */}
+      {isTodayLoading ? (
+        <section className="border-border bg-card mt-6 rounded-xl border border-dashed p-6 text-center">
+          <p className="text-muted-foreground text-sm">Loading today’s priorities…</p>
+        </section>
+      ) : todayError ? (
+        <section className="border-error-border bg-error-background text-destructive mt-6 rounded-xl border p-5">
+          <p className="text-sm font-medium">{todayError}</p>
+          <button
+            type="button"
+            onClick={() => void loadTodayPriorities()}
+            className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background mt-4 inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            Retry
+          </button>
+        </section>
+      ) : todayPriorities ? (
+        <>
+          {/* Primary action area at the top: Needs attention queue */}
+          <section className="mt-6 space-y-3" aria-labelledby="needs-attention-heading">
+            <div role="status" aria-live="polite" className="sr-only">
+              {liveMessage}
+            </div>
 
-              {urgentActionCount === 0 ? (
-                <div className="border-border bg-muted/20 text-muted-foreground flex items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-xs sm:text-sm">
-                  <span className="text-success text-sm font-bold" aria-hidden="true">
-                    ✓
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h2
+                  id="needs-attention-heading"
+                  className="text-foreground text-base font-semibold sm:text-lg"
+                >
+                  Needs attention
+                </h2>
+                {urgentActionCount > 0 ? (
+                  <span className="border-warning-border bg-warning-background text-warning rounded-full border px-2 py-0.5 text-xs font-semibold">
+                    {urgentActionCount}
                   </span>
-                  <span>No urgent actions today.</span>
+                ) : null}
+              </div>
+            </div>
+
+            {actionNotice ? (
+              <div
+                role="status"
+                className="border-success-border bg-success-background text-success flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2 text-xs font-medium sm:text-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <span aria-hidden="true">✓</span>
+                  <span>Completed &ldquo;{actionNotice.title}&rdquo;.</span>
                 </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {/* Overdue follow-ups first */}
-                  {overdueItems.map((item) => {
-                    const showTimezone = validIanaTimezone(item.timezone);
-                    return (
-                      <Link
-                        key={`overdue-${item.id}`}
-                        href={`/applications/${item.application_id}`}
-                        className="border-border hover:border-destructive/60 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group border-l-destructive bg-card flex flex-col justify-between gap-2.5 rounded-xl border border-l-4 p-3 transition focus-visible:ring-2 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3"
-                      >
+                <button
+                  type="button"
+                  aria-label="Dismiss completion notice"
+                  onClick={() => setActionNotice(null)}
+                  className="text-success shrink-0 font-bold hover:opacity-80"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+
+            {urgentActionCount === 0 ? (
+              <div className="border-border bg-muted/20 text-muted-foreground flex items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-xs sm:text-sm">
+                <span className="text-success text-sm font-bold" aria-hidden="true">
+                  ✓
+                </span>
+                <span>No urgent actions today.</span>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* Overdue follow-ups first */}
+                {visibleOverdueItems.map((item) => {
+                  const showTimezone = validIanaTimezone(item.timezone);
+                  const isItemPending = pendingItemIds.has(item.id);
+                  const itemError = itemErrors[item.id];
+                  return (
+                    <article
+                      key={`overdue-${item.id}`}
+                      className={`border-border group border-l-destructive bg-card flex flex-col justify-between gap-2 rounded-xl border border-l-4 p-3 transition sm:px-4 sm:py-3 ${
+                        isItemPending
+                          ? "bg-muted/20 opacity-60"
+                          : "hover:border-destructive/60 hover:bg-muted/30"
+                      }`}
+                      aria-busy={isItemPending}
+                    >
+                      <div className="flex w-full flex-col justify-between gap-2.5 sm:flex-row sm:items-center sm:gap-4">
                         <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
                           <span className="border-error-border bg-error-background text-destructive shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold">
                             Overdue
                           </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <h3 className="group-hover:text-primary text-foreground truncate text-sm font-semibold transition-colors">
+                              <Link
+                                href={`/applications/${item.application_id}`}
+                                className="text-foreground hover:text-primary focus-visible:ring-primary truncate rounded text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                              >
                                 {item.title}
-                              </h3>
+                              </Link>
                               {item.status ? (
                                 <span className="border-border bg-muted/40 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
                                   {displayPriorityStatus(item.status)}
@@ -461,40 +593,77 @@ export default function TodoClient() {
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 items-center justify-between gap-3 text-xs sm:justify-end">
+                        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 text-xs sm:justify-end">
                           <span className="text-destructive font-medium">
                             {formatPriorityTimestamp(item.occurs_at, item.timezone)}
                             {showTimezone ? ` · ${item.timezone}` : ""}
                           </span>
-                          <span
-                            className="text-primary font-semibold transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
-                          >
-                            View application →
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/applications/${item.application_id}`}
+                              className="text-primary font-semibold hover:underline"
+                            >
+                              View application →
+                            </Link>
+                            {item.action_kind === "follow_up" ? (
+                              <button
+                                type="button"
+                                disabled={isItemPending}
+                                onClick={() => void handleCompleteFollowUp(item)}
+                                aria-label={`Mark "${item.title}" complete`}
+                                className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isItemPending ? "Completing…" : "Mark complete"}
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                      </Link>
-                    );
-                  })}
+                      </div>
 
-                  {/* Due-today follow-ups directly after */}
-                  {followUpsDueTodayItems.map((item) => {
-                    const showTimezone = validIanaTimezone(item.timezone);
-                    return (
-                      <Link
-                        key={`due-today-${item.id}`}
-                        href={`/applications/${item.application_id}`}
-                        className="border-border hover:border-warning/60 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group border-l-warning bg-card flex flex-col justify-between gap-2.5 rounded-xl border border-l-4 p-3 transition focus-visible:ring-2 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3"
-                      >
+                      {itemError ? (
+                        <div className="border-destructive/30 bg-destructive/10 text-destructive mt-1 flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs">
+                          <span>{itemError}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleCompleteFollowUp(item)}
+                            className="focus-visible:ring-destructive rounded font-semibold underline hover:opacity-80 focus-visible:ring-2 focus-visible:outline-none"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+
+                {/* Due-today follow-ups directly after */}
+                {visibleFollowUpsDueTodayItems.map((item) => {
+                  const showTimezone = validIanaTimezone(item.timezone);
+                  const isItemPending = pendingItemIds.has(item.id);
+                  const itemError = itemErrors[item.id];
+                  return (
+                    <article
+                      key={`due-today-${item.id}`}
+                      className={`border-border group border-l-warning bg-card flex flex-col justify-between gap-2 rounded-xl border border-l-4 p-3 transition sm:px-4 sm:py-3 ${
+                        isItemPending
+                          ? "bg-muted/20 opacity-60"
+                          : "hover:border-warning/60 hover:bg-muted/30"
+                      }`}
+                      aria-busy={isItemPending}
+                    >
+                      <div className="flex w-full flex-col justify-between gap-2.5 sm:flex-row sm:items-center sm:gap-4">
                         <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
                           <span className="border-warning-border bg-warning-background text-warning shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold">
                             Due today
                           </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <h3 className="group-hover:text-primary text-foreground truncate text-sm font-semibold transition-colors">
+                              <Link
+                                href={`/applications/${item.application_id}`}
+                                className="text-foreground hover:text-primary focus-visible:ring-primary truncate rounded text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                              >
                                 {item.title}
-                              </h3>
+                              </Link>
                               {item.status ? (
                                 <span className="border-border bg-muted/40 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
                                   {displayPriorityStatus(item.status)}
@@ -507,369 +676,394 @@ export default function TodoClient() {
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 items-center justify-between gap-3 text-xs sm:justify-end">
+                        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 text-xs sm:justify-end">
                           <span className="text-warning font-medium">
                             {formatPriorityTimestamp(item.occurs_at, item.timezone)}
                             {showTimezone ? ` · ${item.timezone}` : ""}
                           </span>
-                          <span
-                            className="text-primary font-semibold transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
-                          >
-                            View application →
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/applications/${item.application_id}`}
+                              className="text-primary font-semibold hover:underline"
+                            >
+                              View application →
+                            </Link>
+                            {item.action_kind === "follow_up" ? (
+                              <button
+                                type="button"
+                                disabled={isItemPending}
+                                onClick={() => void handleCompleteFollowUp(item)}
+                                aria-label={`Mark "${item.title}" complete`}
+                                className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isItemPending ? "Completing…" : "Mark complete"}
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                      </div>
 
-            {/* You’re caught up section (moderately shrunk, shown when no urgent actions) */}
-            {caughtUpState && urgentActionCount === 0 ? (
-              <section
-                className={`mt-4 rounded-xl border p-3.5 sm:p-4 ${caughtUpState.className}`}
-                aria-labelledby="todo-heading"
-              >
-                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-primary text-xs font-semibold tracking-wider uppercase">
-                        {caughtUpState.eyebrow}
-                      </span>
-                      <span className="text-muted-foreground text-xs" aria-hidden="true">
-                        •
-                      </span>
-                      <h2
-                        id="todo-heading"
-                        className="text-foreground text-sm font-semibold sm:text-base"
-                      >
-                        {caughtUpState.title}
-                      </h2>
-                    </div>
-                    <p className="text-muted-foreground mt-0.5 text-xs sm:text-sm">
-                      {caughtUpState.description}
-                    </p>
-                  </div>
+                      {itemError ? (
+                        <div className="border-destructive/30 bg-destructive/10 text-destructive mt-1 flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs">
+                          <span>{itemError}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleCompleteFollowUp(item)}
+                            className="focus-visible:ring-destructive rounded font-semibold underline hover:opacity-80 focus-visible:ring-2 focus-visible:outline-none"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Link
-                      href={caughtUpState.primaryHref}
-                      className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                    >
-                      {caughtUpState.primaryLabel}
-                      <span aria-hidden="true">&nbsp;→</span>
-                    </Link>
-
-                    {caughtUpState.secondaryLabel && caughtUpState.secondaryHref ? (
-                      <Link
-                        href={caughtUpState.secondaryHref}
-                        className="text-foreground hover:text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      >
-                        {caughtUpState.secondaryLabel}
-                      </Link>
-                    ) : null}
-                  </div>
-                </div>
-              </section>
-            ) : null}
-
-            {/* Today schedule area: interviews_today */}
-            <section className="mt-8 space-y-3" aria-labelledby="today-schedule-heading">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <h2
-                    id="today-schedule-heading"
-                    className="text-foreground text-base font-semibold sm:text-lg"
-                  >
-                    Today’s schedule
-                  </h2>
-                  {interviewsTodayItems.length > 0 ? (
-                    <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
-                      {interviewsTodayItems.length}
+          {/* You’re caught up section (moderately shrunk, shown when no urgent actions) */}
+          {caughtUpState && urgentActionCount === 0 ? (
+            <section
+              className={`mt-4 rounded-xl border p-3.5 sm:p-4 ${caughtUpState.className}`}
+              aria-labelledby="todo-heading"
+            >
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-primary text-xs font-semibold tracking-wider uppercase">
+                      {caughtUpState.eyebrow}
                     </span>
+                    <span className="text-muted-foreground text-xs" aria-hidden="true">
+                      •
+                    </span>
+                    <h2
+                      id="todo-heading"
+                      className="text-foreground text-sm font-semibold sm:text-base"
+                    >
+                      {caughtUpState.title}
+                    </h2>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 text-xs sm:text-sm">
+                    {caughtUpState.description}
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Link
+                    href={caughtUpState.primaryHref}
+                    className="bg-primary text-primary-foreground focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  >
+                    {caughtUpState.primaryLabel}
+                    <span aria-hidden="true">&nbsp;→</span>
+                  </Link>
+
+                  {caughtUpState.secondaryLabel && caughtUpState.secondaryHref ? (
+                    <Link
+                      href={caughtUpState.secondaryHref}
+                      className="text-foreground hover:text-primary focus-visible:ring-primary focus-visible:ring-offset-background inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    >
+                      {caughtUpState.secondaryLabel}
+                    </Link>
                   ) : null}
                 </div>
               </div>
+            </section>
+          ) : null}
 
-              {interviewsTodayItems.length === 0 ? (
-                <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-4 py-3 text-xs sm:text-sm">
-                  No interviews scheduled today.
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {interviewsTodayItems.map((item) => {
-                    const showTimezone = validIanaTimezone(item.timezone);
-                    return (
-                      <Link
-                        key={`interview-today-${item.id}`}
-                        href={`/applications/${item.application_id}`}
-                        className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group flex flex-col justify-between gap-2.5 rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3"
-                      >
-                        <div className="flex min-w-0 items-start gap-3 sm:items-center">
-                          <div className="border-border bg-muted/60 text-foreground flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold">
-                            <span aria-hidden="true">⏰</span>
-                            <span>{formatInterviewTime(item.occurs_at, item.timezone)}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h3 className="group-hover:text-primary text-foreground truncate text-sm font-semibold transition-colors">
-                                {item.title}
-                              </h3>
-                              {item.status ? (
-                                <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium">
-                                  {displayPriorityStatus(item.status)}
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="text-muted-foreground mt-0.5 truncate text-xs">
-                              {item.company_name} · {item.job_title}
-                            </p>
-                          </div>
+          {/* Today schedule area: interviews_today */}
+          <section className="mt-8 space-y-3" aria-labelledby="today-schedule-heading">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h2
+                  id="today-schedule-heading"
+                  className="text-foreground text-base font-semibold sm:text-lg"
+                >
+                  Today’s schedule
+                </h2>
+                {interviewsTodayItems.length > 0 ? (
+                  <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
+                    {interviewsTodayItems.length}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {interviewsTodayItems.length === 0 ? (
+              <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-4 py-3 text-xs sm:text-sm">
+                No interviews scheduled today.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {interviewsTodayItems.map((item) => {
+                  const showTimezone = validIanaTimezone(item.timezone);
+                  return (
+                    <Link
+                      key={`interview-today-${item.id}`}
+                      href={`/applications/${item.application_id}`}
+                      className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group flex flex-col justify-between gap-2.5 rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3"
+                    >
+                      <div className="flex min-w-0 items-start gap-3 sm:items-center">
+                        <div className="border-border bg-muted/60 text-foreground flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold">
+                          <span aria-hidden="true">⏰</span>
+                          <span>{formatInterviewTime(item.occurs_at, item.timezone)}</span>
                         </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="group-hover:text-primary text-foreground truncate text-sm font-semibold transition-colors">
+                              {item.title}
+                            </h3>
+                            {item.status ? (
+                              <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                                {displayPriorityStatus(item.status)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                            {item.company_name} · {item.job_title}
+                          </p>
+                        </div>
+                      </div>
 
-                        <div className="flex shrink-0 items-center justify-between gap-3 text-xs sm:justify-end">
-                          <span className="text-muted-foreground">
-                            {showTimezone ? item.timezone : ""}
-                          </span>
+                      <div className="flex shrink-0 items-center justify-between gap-3 text-xs sm:justify-end">
+                        <span className="text-muted-foreground">
+                          {showTimezone ? item.timezone : ""}
+                        </span>
+                        <span
+                          className="text-primary font-semibold transition-transform group-hover:translate-x-0.5"
+                          aria-hidden="true"
+                        >
+                          View application →
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Secondary lower-priority area: upcoming_interviews and applications_needing_update */}
+          <section className="mt-8 space-y-4" aria-labelledby="secondary-priorities-heading">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
+              {/* Column 1: Upcoming interviews */}
+              <div className="space-y-3" aria-labelledby="upcoming-interviews-heading">
+                <div className="flex items-center justify-between gap-2">
+                  <h3
+                    id="upcoming-interviews-heading"
+                    className="text-foreground text-sm font-semibold"
+                  >
+                    Upcoming interviews
+                  </h3>
+                  {upcomingInterviewItems.length > 0 ? (
+                    <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
+                      {upcomingInterviewItems.length}
+                    </span>
+                  ) : null}
+                </div>
+
+                {upcomingInterviewItems.length === 0 ? (
+                  <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-3.5 py-2.5 text-xs">
+                    No upcoming interviews.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {upcomingInterviewItems.map((item) => (
+                      <Link
+                        key={`upcoming-${item.id}`}
+                        href={`/applications/${item.application_id}`}
+                        className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group block rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="group-hover:text-primary text-foreground truncate text-xs font-semibold transition-colors sm:text-sm">
+                            {item.title}
+                          </h4>
+                          {item.status ? (
+                            <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
+                              {displayPriorityStatus(item.status)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                          {item.company_name} · {item.job_title}
+                        </p>
+                        <div className="text-muted-foreground mt-2 flex items-center justify-between text-xs">
+                          <span>{formatPriorityTimestamp(item.occurs_at, item.timezone)}</span>
                           <span
-                            className="text-primary font-semibold transition-transform group-hover:translate-x-0.5"
+                            className="text-primary font-medium transition-transform group-hover:translate-x-0.5"
                             aria-hidden="true"
                           >
-                            View application →
+                            View →
                           </span>
                         </div>
                       </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* Secondary lower-priority area: upcoming_interviews and applications_needing_update */}
-            <section className="mt-8 space-y-4" aria-labelledby="secondary-priorities-heading">
-              <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
-                {/* Column 1: Upcoming interviews */}
-                <div className="space-y-3" aria-labelledby="upcoming-interviews-heading">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3
-                      id="upcoming-interviews-heading"
-                      className="text-foreground text-sm font-semibold"
-                    >
-                      Upcoming interviews
-                    </h3>
-                    {upcomingInterviewItems.length > 0 ? (
-                      <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
-                        {upcomingInterviewItems.length}
-                      </span>
-                    ) : null}
+                    ))}
                   </div>
-
-                  {upcomingInterviewItems.length === 0 ? (
-                    <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-3.5 py-2.5 text-xs">
-                      No upcoming interviews.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {upcomingInterviewItems.map((item) => (
-                        <Link
-                          key={`upcoming-${item.id}`}
-                          href={`/applications/${item.application_id}`}
-                          className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group block rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="group-hover:text-primary text-foreground truncate text-xs font-semibold transition-colors sm:text-sm">
-                              {item.title}
-                            </h4>
-                            {item.status ? (
-                              <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
-                                {displayPriorityStatus(item.status)}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="text-muted-foreground mt-0.5 truncate text-xs">
-                            {item.company_name} · {item.job_title}
-                          </p>
-                          <div className="text-muted-foreground mt-2 flex items-center justify-between text-xs">
-                            <span>{formatPriorityTimestamp(item.occurs_at, item.timezone)}</span>
-                            <span
-                              className="text-primary font-medium transition-transform group-hover:translate-x-0.5"
-                              aria-hidden="true"
-                            >
-                              View →
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Column 2: Applications needing update */}
-                <div className="space-y-3" aria-labelledby="applications-needing-update-heading">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3
-                      id="applications-needing-update-heading"
-                      className="text-foreground text-sm font-semibold"
-                    >
-                      Applications needing update
-                    </h3>
-                    {applicationsNeedingUpdateItems.length > 0 ? (
-                      <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
-                        {applicationsNeedingUpdateItems.length}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {applicationsNeedingUpdateItems.length === 0 ? (
-                    <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-3.5 py-2.5 text-xs">
-                      No applications needing update.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {applicationsNeedingUpdateItems.map((item) => (
-                        <Link
-                          key={`update-${item.id}`}
-                          href={`/applications/${item.application_id}`}
-                          className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group block rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="group-hover:text-primary text-foreground truncate text-xs font-semibold transition-colors sm:text-sm">
-                              {item.title}
-                            </h4>
-                            {item.status ? (
-                              <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
-                                {displayPriorityStatus(item.status)}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="text-muted-foreground mt-0.5 truncate text-xs">
-                            {item.company_name} · {item.job_title}
-                          </p>
-                          <div className="mt-2 flex items-center justify-end text-xs">
-                            <span
-                              className="text-primary font-medium transition-transform group-hover:translate-x-0.5"
-                              aria-hidden="true"
-                            >
-                              View →
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          </>
-        ) : null}
-
-        {/* Lower priority sections: Pipeline stats */}
-        {summary ? (
-          <section
-            className="border-border bg-card mt-8 rounded-xl border p-4 sm:p-5"
-            aria-labelledby="pipeline-heading"
-          >
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-              <div>
-                <p className="text-primary text-xs font-semibold tracking-wider uppercase">
-                  Your pipeline
-                </p>
-                <h2 id="pipeline-heading" className="text-base font-semibold sm:text-lg">
-                  Keep your momentum visible
-                </h2>
+                )}
               </div>
 
-              <Link
-                href="/applications/board"
-                className="border-border bg-background text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              >
-                Open pipeline <span aria-hidden="true">&nbsp;→</span>
-              </Link>
+              {/* Column 2: Applications needing update */}
+              <div className="space-y-3" aria-labelledby="applications-needing-update-heading">
+                <div className="flex items-center justify-between gap-2">
+                  <h3
+                    id="applications-needing-update-heading"
+                    className="text-foreground text-sm font-semibold"
+                  >
+                    Applications needing update
+                  </h3>
+                  {applicationsNeedingUpdateItems.length > 0 ? (
+                    <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
+                      {applicationsNeedingUpdateItems.length}
+                    </span>
+                  ) : null}
+                </div>
+
+                {applicationsNeedingUpdateItems.length === 0 ? (
+                  <div className="border-border bg-muted/10 text-muted-foreground rounded-xl border border-dashed px-3.5 py-2.5 text-xs">
+                    No applications needing update.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {applicationsNeedingUpdateItems.map((item) => (
+                      <Link
+                        key={`update-${item.id}`}
+                        href={`/applications/${item.application_id}`}
+                        className="border-border bg-card hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-primary focus-visible:ring-offset-background group block rounded-xl border p-3 transition focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="group-hover:text-primary text-foreground truncate text-xs font-semibold transition-colors sm:text-sm">
+                            {item.title}
+                          </h4>
+                          {item.status ? (
+                            <span className="border-border bg-muted/50 text-muted-foreground shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium">
+                              {displayPriorityStatus(item.status)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                          {item.company_name} · {item.job_title}
+                        </p>
+                        <div className="mt-2 flex items-center justify-end text-xs">
+                          <span
+                            className="text-primary font-medium transition-transform group-hover:translate-x-0.5"
+                            aria-hidden="true"
+                          >
+                            View →
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {/* Lower priority sections: Pipeline stats */}
+      {summary ? (
+        <section
+          className="border-border bg-card mt-8 rounded-xl border p-4 sm:p-5"
+          aria-labelledby="pipeline-heading"
+        >
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-primary text-xs font-semibold tracking-wider uppercase">
+                Your pipeline
+              </p>
+              <h2 id="pipeline-heading" className="text-base font-semibold sm:text-lg">
+                Keep your momentum visible
+              </h2>
             </div>
 
-            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="bg-muted rounded-lg p-3">
-                <dt className="text-muted-foreground text-xs">Saved</dt>
-                <dd className="mt-0.5 text-xl font-bold tracking-tight">
-                  {summary.applications_saved}
-                </dd>
-              </div>
-              <div className="bg-muted rounded-lg p-3">
-                <dt className="text-muted-foreground text-xs">Applied</dt>
-                <dd className="mt-0.5 text-xl font-bold tracking-tight">
-                  {summary.applications_applied}
-                </dd>
-              </div>
-              <div className="bg-muted rounded-lg p-3">
-                <dt className="text-muted-foreground text-xs">Interviewing</dt>
-                <dd className="mt-0.5 text-xl font-bold tracking-tight">
-                  {summary.applications_interviewing}
-                </dd>
-              </div>
-              <div className="bg-muted rounded-lg p-3">
-                <dt className="text-muted-foreground text-xs">Active</dt>
-                <dd className="mt-0.5 text-xl font-bold tracking-tight">
-                  {summary.active_applications}
-                </dd>
-              </div>
-            </dl>
-          </section>
-        ) : null}
-
-        {/* Explore section */}
-        <section className="mt-6 space-y-3" aria-labelledby="explore-heading">
-          <div>
-            <p className="text-primary text-xs font-semibold tracking-wider uppercase">Explore</p>
-            <h2 id="explore-heading" className="text-base font-semibold">
-              Continue your search
-            </h2>
+            <Link
+              href="/applications/board"
+              className="border-border bg-background text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex shrink-0 items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              Open pipeline <span aria-hidden="true">&nbsp;→</span>
+            </Link>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {exploreActions.map((action) => (
-              <Link
-                href={action.href}
-                key={action.href}
-                className="group border-border bg-card hover:border-primary/50 hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background rounded-xl border p-3.5 transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              >
-                <h3 className="group-hover:text-primary text-xs font-semibold sm:text-sm">
-                  {action.title}
-                </h3>
-                <p className="text-muted-foreground mt-0.5 text-xs leading-5">
-                  {action.description}
-                </p>
-              </Link>
-            ))}
-          </div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="bg-muted rounded-lg p-3">
+              <dt className="text-muted-foreground text-xs">Saved</dt>
+              <dd className="mt-0.5 text-xl font-bold tracking-tight">
+                {summary.applications_saved}
+              </dd>
+            </div>
+            <div className="bg-muted rounded-lg p-3">
+              <dt className="text-muted-foreground text-xs">Applied</dt>
+              <dd className="mt-0.5 text-xl font-bold tracking-tight">
+                {summary.applications_applied}
+              </dd>
+            </div>
+            <div className="bg-muted rounded-lg p-3">
+              <dt className="text-muted-foreground text-xs">Interviewing</dt>
+              <dd className="mt-0.5 text-xl font-bold tracking-tight">
+                {summary.applications_interviewing}
+              </dd>
+            </div>
+            <div className="bg-muted rounded-lg p-3">
+              <dt className="text-muted-foreground text-xs">Active</dt>
+              <dd className="mt-0.5 text-xl font-bold tracking-tight">
+                {summary.active_applications}
+              </dd>
+            </div>
+          </dl>
         </section>
+      ) : null}
 
-        {/* Quick start steps (only if no applications) */}
-        {showQuickStart ? (
-          <section
-            className="border-border bg-card mt-6 rounded-xl border p-4 sm:p-5"
-            aria-labelledby="quick-start-heading"
-          >
-            <p className="text-primary text-xs font-semibold tracking-wider uppercase">
-              Getting started
-            </p>
-            <h2 id="quick-start-heading" className="text-base font-semibold">
-              A simple loop for your search
-            </h2>
+      {/* Explore section */}
+      <section className="mt-6 space-y-3" aria-labelledby="explore-heading">
+        <div>
+          <p className="text-primary text-xs font-semibold tracking-wider uppercase">Explore</p>
+          <h2 id="explore-heading" className="text-base font-semibold">
+            Continue your search
+          </h2>
+        </div>
 
-            <ol className="mt-4 grid gap-4 md:grid-cols-3">
-              {quickStartSteps.map((step, index) => (
-                <li key={step} className="text-muted-foreground flex gap-2.5 text-xs leading-5">
-                  <span className="bg-muted text-primary flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-                    {index + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {exploreActions.map((action) => (
+            <Link
+              href={action.href}
+              key={action.href}
+              className="group border-border bg-card hover:border-primary/50 hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background rounded-xl border p-3.5 transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <h3 className="group-hover:text-primary text-xs font-semibold sm:text-sm">
+                {action.title}
+              </h3>
+              <p className="text-muted-foreground mt-0.5 text-xs leading-5">{action.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Quick start steps (only if no applications) */}
+      {showQuickStart ? (
+        <section
+          className="border-border bg-card mt-6 rounded-xl border p-4 sm:p-5"
+          aria-labelledby="quick-start-heading"
+        >
+          <p className="text-primary text-xs font-semibold tracking-wider uppercase">
+            Getting started
+          </p>
+          <h2 id="quick-start-heading" className="text-base font-semibold">
+            A simple loop for your search
+          </h2>
+
+          <ol className="mt-4 grid gap-4 md:grid-cols-3">
+            {quickStartSteps.map((step, index) => (
+              <li key={step} className="text-muted-foreground flex gap-2.5 text-xs leading-5">
+                <span className="bg-muted text-primary flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
     </PageContainer>
   );
 }
