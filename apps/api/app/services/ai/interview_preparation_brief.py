@@ -13,6 +13,7 @@ from app.config import (
 )
 from app.models import AIRun, Application, Interview, InterviewParticipant
 from app.schemas import InterviewPreparationBriefOut, _InterviewPreparationBriefGenerated
+from app.services.ai.openai_adapter import OpenAIAdapter
 from app.services.ai.routing import (
     AIModelRoutingError,
     ModelRouter,
@@ -41,8 +42,9 @@ MAX_JOB_DESCRIPTION_LENGTH = 6_000
 MAX_INTERVIEW_NOTES_LENGTH = 3_000
 MAX_PARTICIPANTS = 20
 
-# Real adapters intentionally remain unregistered until a dedicated provider-integration change.
-_PROVIDER_ADAPTERS: dict[AIProviderId, ProviderAdapter] = {}
+_PROVIDER_ADAPTERS: dict[AIProviderId, ProviderAdapter] = {
+    "openai": OpenAIAdapter(),
+}
 
 
 def get_model_router() -> ModelRouter:

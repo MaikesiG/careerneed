@@ -1,3 +1,4 @@
+from app.services.ai.openai_adapter import OpenAIAdapter
 from app.services.ai.routing import (
     AdapterGenerationResult,
     AIModelRoutingError,
@@ -15,6 +16,7 @@ __all__ = [
     "AdapterGenerationResult",
     "InvalidGenerationRequestError",
     "ModelRouter",
+    "OpenAIAdapter",
     "ProviderAdapter",
     "ProviderCapabilities",
     "SafeUsageMetadata",
