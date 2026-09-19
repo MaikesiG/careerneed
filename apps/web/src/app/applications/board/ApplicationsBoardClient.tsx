@@ -8,16 +8,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import PipelineBoard, { type PipelineApplication } from "./PipelineBoard";
 import { useRouter } from "next/navigation";
-
-function localDateKey(): string {
-  const today = new Date();
-
-  return [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
-}
+import { getApplicationFollowUpSummaryDisplay } from "@/lib/applicationFollowUpSummary";
 
 export default function ApplicationsBoardClient() {
   const router = useRouter();
@@ -72,10 +63,13 @@ export default function ApplicationsBoardClient() {
       (application) => application.status === "applied" || application.status === "interviewing"
     ).length ?? 0;
 
-  const today = localDateKey();
   const attentionCount =
     applications?.filter(
-      (application) => application.follow_up_on !== null && application.follow_up_on <= today
+      (application) =>
+        getApplicationFollowUpSummaryDisplay(
+          application.next_open_follow_up_at,
+          application.open_follow_up_count
+        )?.needsAttention ?? false
     ).length ?? 0;
 
   return (

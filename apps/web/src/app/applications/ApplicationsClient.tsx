@@ -4,31 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
-import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { apiFetch, type ApplicationListItem, getApiErrorMessage } from "@/lib/api";
+import { getApplicationFollowUpSummaryDisplay } from "@/lib/applicationFollowUpSummary";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 
-type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
+type ApplicationStatus = ApplicationListItem["status"];
 type FollowUpFilter = "all" | "today" | "overdue" | "scheduled";
-
-type Application = {
-  id: string;
-  job_id: string;
-  resume_id: string | null;
-  status: ApplicationStatus;
-  applied_at: string | null;
-  notes: string | null;
-  follow_up_on: string | null;
-  updated_at: string;
-  job: {
-    company_name: string;
-    source: string;
-    title: string;
-    location: string | null;
-    workplace_type: string | null;
-    application_url: string;
-  };
-};
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "saved", label: "Saved" },
@@ -95,41 +77,6 @@ function applicationHref(status: ApplicationStatus | null, followUp: FollowUpFil
   return query ? `/applications?${query}` : "/applications";
 }
 
-function getFollowUpLabel(value: string | null): {
-  label: string;
-  className: string;
-} | null {
-  if (!value) {
-    return null;
-  }
-
-  const today = new Date();
-  const localToday = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
-
-  if (value === localToday) {
-    return {
-      label: "Follow up today",
-      className: "border-warning-border bg-warning-background text-warning",
-    };
-  }
-
-  if (value < localToday) {
-    return {
-      label: "Follow-up overdue",
-      className: "border-error-border bg-error-background text-destructive",
-    };
-  }
-
-  return {
-    label: `Follow up ${formatDate(value)}`,
-    className: "border-border bg-muted text-muted-foreground",
-  };
-}
-
 export default function ApplicationsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -157,7 +104,7 @@ export default function ApplicationsClient() {
     return `/applications?${params.toString()}`;
   }, [selectedFollowUp, selectedStatus]);
 
-  const [applications, setApplications] = useState<Application[]>([]);
+  const [applications, setApplications] = useState<ApplicationListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -183,7 +130,7 @@ export default function ApplicationsClient() {
           throw new Error(await getApiErrorMessage(response, "Unable to load applications."));
         }
 
-        setApplications((await response.json()) as Application[]);
+        setApplications((await response.json()) as ApplicationListItem[]);
         setError(null);
       } catch (caughtError) {
         if (!cancelled) {
@@ -289,7 +236,10 @@ export default function ApplicationsClient() {
             ) : (
               <section className="grid gap-4">
                 {applications.map((application) => {
-                  const followUp = getFollowUpLabel(application.follow_up_on);
+                  const followUp = getApplicationFollowUpSummaryDisplay(
+                    application.next_open_follow_up_at,
+                    application.open_follow_up_count
+                  );
 
                   return (
                     <article
@@ -312,6 +262,7 @@ export default function ApplicationsClient() {
                                 className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${followUp.className}`}
                               >
                                 {followUp.label}
+                                {followUp.countLabel ? ` · ${followUp.countLabel}` : ""}
                               </span>
                             ) : null}
                           </div>

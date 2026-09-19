@@ -24,6 +24,37 @@ export async function getApiErrorMessage(response: Response, fallback: string): 
   }
 }
 
+export type ApplicationStatus =
+  | "saved"
+  | "applied"
+  | "interviewing"
+  | "offer"
+  | "rejected"
+  | "withdrawn";
+
+export type ApplicationListItem = {
+  id: string;
+  job_id: string;
+  resume_id: string | null;
+  status: ApplicationStatus;
+  applied_at: string | null;
+  notes: string | null;
+  follow_up_on: string | null;
+  next_open_follow_up_at: string | null;
+  open_follow_up_count: number;
+  created_at: string;
+  updated_at: string;
+  job: {
+    id: string;
+    company_name: string;
+    source: string;
+    title: string;
+    location: string | null;
+    workplace_type: string | null;
+    application_url: string;
+  };
+};
+
 export type InterviewStatus = "scheduled" | "completed" | "cancelled" | "rescheduled";
 export type InterviewResult = "pending" | "passed" | "failed" | "unknown";
 export type InterviewType =

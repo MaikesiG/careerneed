@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, ApplicationContact, Contact, Job, Resume, User
+from app.models import (
+    Application,
+    ApplicationContact,
+    Contact,
+    FollowUp,
+    Job,
+    Resume,
+    User,
+)
 from app.schemas import (
     ApplicationByJobUpdate,
     ApplicationContactCreate,
@@ -16,6 +24,7 @@ from app.schemas import (
     ApplicationCreate,
     ApplicationJobState,
     ApplicationJobStateMap,
+    ApplicationListItemOut,
     ApplicationOut,
     ApplicationUpdate,
     ApplicationWithJobOut,
@@ -26,7 +35,7 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 ALLOWED_FOLLOW_UP_FILTERS = {"all", "today", "overdue", "scheduled"}
 
 
-@router.get("", response_model=list[ApplicationWithJobOut])
+@router.get("", response_model=list[ApplicationListItemOut])
 def list_applications(
     response: Response,
     status: str | None = Query(default=None, max_length=50),
@@ -36,9 +45,34 @@ def list_applications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
+    open_follow_up_summary = (
+        select(
+            FollowUp.application_id.label("application_id"),
+            func.min(FollowUp.due_at_utc).label("next_open_follow_up_at"),
+            func.count(FollowUp.id).label("open_follow_up_count"),
+        )
+        .where(
+            FollowUp.user_id == current_user.id,
+            FollowUp.completed_at.is_(None),
+        )
+        .group_by(FollowUp.application_id)
+        .subquery()
+    )
+
     statement = (
-        select(Application, Job)
+        select(
+            Application,
+            Job,
+            open_follow_up_summary.c.next_open_follow_up_at,
+            func.coalesce(open_follow_up_summary.c.open_follow_up_count, 0).label(
+                "open_follow_up_count"
+            ),
+        )
         .join(Job, Job.id == Application.job_id)
+        .outerjoin(
+            open_follow_up_summary,
+            open_follow_up_summary.c.application_id == Application.id,
+        )
         .where(Application.user_id == current_user.id)
     )
 
@@ -96,8 +130,10 @@ def list_applications(
                 "workplace_type": job.workplace_type,
                 "application_url": job.application_url,
             },
+            "next_open_follow_up_at": next_open_follow_up_at,
+            "open_follow_up_count": open_follow_up_count,
         }
-        for application, job in rows
+        for application, job, next_open_follow_up_at, open_follow_up_count in rows
     ]
 
 

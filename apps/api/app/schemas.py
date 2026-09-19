@@ -139,6 +139,11 @@ class ApplicationWithJobOut(ApplicationOut):
     job: ApplicationJobSummary
 
 
+class ApplicationListItemOut(ApplicationWithJobOut):
+    next_open_follow_up_at: datetime | None
+    open_follow_up_count: int = Field(ge=0)
+
+
 class ApplicationUpdate(BaseModel):
     status: ApplicationStatus | None = None
     resume_id: uuid.UUID | None = None
