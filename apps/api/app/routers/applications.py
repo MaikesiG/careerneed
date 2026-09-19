@@ -1,5 +1,6 @@
 import uuid
-from datetime import date, datetime
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -40,6 +41,12 @@ def list_applications(
     response: Response,
     status: str | None = Query(default=None, max_length=50),
     follow_up: str = Query(default="all", max_length=20),
+    timezone_name: str = Query(
+        default="UTC",
+        alias="timezone",
+        min_length=1,
+        max_length=100,
+    ),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -87,14 +94,32 @@ def list_applications(
     if status and status.strip():
         statement = statement.where(Application.status == status.strip().lower())
 
-    today = date.today()
+    try:
+        requested_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
+
+    now_utc = datetime.now(timezone.utc)
+    local_date = now_utc.astimezone(requested_timezone).date()
+    local_start = datetime.combine(local_date, time.min, requested_timezone)
+    local_next_start = datetime.combine(
+        local_date + timedelta(days=1),
+        time.min,
+        requested_timezone,
+    )
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_next_start = local_next_start.astimezone(timezone.utc)
+    next_open_follow_up_at = open_follow_up_summary.c.next_open_follow_up_at
 
     if follow_up_filter == "today":
-        statement = statement.where(Application.follow_up_on == today)
+        statement = statement.where(
+            next_open_follow_up_at >= utc_start,
+            next_open_follow_up_at < utc_next_start,
+        )
     elif follow_up_filter == "overdue":
-        statement = statement.where(Application.follow_up_on < today)
+        statement = statement.where(next_open_follow_up_at < utc_start)
     elif follow_up_filter == "scheduled":
-        statement = statement.where(Application.follow_up_on.is_not(None))
+        statement = statement.where(next_open_follow_up_at.is_not(None))
 
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 

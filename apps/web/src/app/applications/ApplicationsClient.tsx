@@ -6,11 +6,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ApplicationViewTabs from "@/components/ApplicationViewTabs";
 import { apiFetch, type ApplicationListItem, getApiErrorMessage } from "@/lib/api";
 import { getApplicationFollowUpSummaryDisplay } from "@/lib/applicationFollowUpSummary";
+import {
+  buildApplicationsHref,
+  buildApplicationsRequestPath,
+  type ApplicationFollowUpFilter,
+} from "@/lib/applicationListSearchParams";
+import { browserTimezone } from "@/lib/followUpTime";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 
 type ApplicationStatus = ApplicationListItem["status"];
-type FollowUpFilter = "all" | "today" | "overdue" | "scheduled";
+type FollowUpFilter = ApplicationFollowUpFilter;
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "saved", label: "Saved" },
@@ -62,21 +68,6 @@ function isFollowUpFilter(value: string | null): value is FollowUpFilter {
   return FOLLOW_UP_OPTIONS.some((option) => option.value === value);
 }
 
-function applicationHref(status: ApplicationStatus | null, followUp: FollowUpFilter): string {
-  const params = new URLSearchParams();
-
-  if (status) {
-    params.set("status", status);
-  }
-
-  if (followUp !== "all") {
-    params.set("follow_up", followUp);
-  }
-
-  const query = params.toString();
-  return query ? `/applications?${query}` : "/applications";
-}
-
 export default function ApplicationsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -91,17 +82,11 @@ export default function ApplicationsClient() {
     : "all";
 
   const requestPath = useMemo(() => {
-    const params = new URLSearchParams({ limit: "100" });
-
-    if (selectedStatus) {
-      params.set("status", selectedStatus);
-    }
-
-    if (selectedFollowUp !== "all") {
-      params.set("follow_up", selectedFollowUp);
-    }
-
-    return `/applications?${params.toString()}`;
+    return buildApplicationsRequestPath(
+      selectedStatus,
+      selectedFollowUp,
+      browserTimezone()
+    );
   }, [selectedFollowUp, selectedStatus]);
 
   const [applications, setApplications] = useState<ApplicationListItem[]>([]);
@@ -178,7 +163,7 @@ export default function ApplicationsClient() {
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-card text-foreground hover:bg-muted"
             }`}
-            href={applicationHref(null, selectedFollowUp)}
+            href={buildApplicationsHref(null, selectedFollowUp)}
           >
             All statuses
           </Link>
@@ -189,7 +174,7 @@ export default function ApplicationsClient() {
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border bg-card text-foreground hover:bg-muted"
               }`}
-              href={applicationHref(option.value, selectedFollowUp)}
+              href={buildApplicationsHref(option.value, selectedFollowUp)}
               key={option.value}
             >
               {option.label}
@@ -205,7 +190,7 @@ export default function ApplicationsClient() {
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border bg-card text-foreground hover:bg-muted"
               }`}
-              href={applicationHref(selectedStatus, option.value)}
+              href={buildApplicationsHref(selectedStatus, option.value)}
               key={option.value}
             >
               {option.label}
