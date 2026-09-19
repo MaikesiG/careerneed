@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import PageContainer from "@/components/ui/PageContainer";
 import ApplicationContactsEditor from "./ApplicationContactsEditor";
-import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
+import ApplicationFollowUpsSection from "./ApplicationFollowUpsSection";
 import ApplicationInterviewsSection from "./ApplicationInterviewsSection";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
 import ApplicationStatusEditor from "./ApplicationStatusEditor";
@@ -20,7 +20,6 @@ type ApplicationDetail = {
   status: ApplicationStatus;
   applied_at: string | null;
   notes: string | null;
-  follow_up_on: string | null;
   created_at: string;
   updated_at: string;
   job: {
@@ -117,6 +116,10 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isNotFound, setIsNotFound] = useState(false);
+  const [followUpsRevision, setFollowUpsRevision] = useState(0);
+  const onFollowUpsChanged = useCallback(() => {
+    setFollowUpsRevision((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,20 +316,15 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
           applicationId={application.id}
           companyName={application.job.company_name}
           jobTitle={application.job.title}
+          followUpsRevision={followUpsRevision}
+          onFollowUpsChanged={onFollowUpsChanged}
         />
 
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-base sm:text-lg font-semibold">Follow-up</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Set a date so you know when to contact a recruiter or check on the application.
-          </p>
-          <div className="mt-5">
-            <ApplicationFollowUpEditor
-              applicationId={application.id}
-              initialFollowUpOn={application.follow_up_on}
-            />
-          </div>
-        </section>
+        <ApplicationFollowUpsSection
+          applicationId={application.id}
+          followUpsRevision={followUpsRevision}
+          onFollowUpsChanged={onFollowUpsChanged}
+        />
 
         <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
           <h2 className="text-base sm:text-lg font-semibold">Notes</h2>

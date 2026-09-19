@@ -1,18 +1,25 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
-import { apiFetch, FollowUpType, InterviewFollowUp } from "@/lib/api";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { apiFetch, FollowUpType, Interview, InterviewFollowUp } from "@/lib/api";
 import {
   browserTimezone,
   formatTimestamp,
   serializeZonedDatetime,
   toDatetimeInput,
 } from "@/lib/followUpTime";
-import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Props = {
   applicationId: string;
-  interviewId: string;
   followUpsRevision: number;
   onFollowUpsChanged: () => void;
 };
@@ -39,7 +46,7 @@ const controlClass =
 function emptyForm(): FollowUpForm {
   return {
     title: "",
-    type: "thank_you",
+    type: "status_check",
     due_at_local: "",
     timezone: browserTimezone(),
     notes: "",
@@ -61,16 +68,31 @@ function sortFollowUps(items: InterviewFollowUp[]): InterviewFollowUp[] {
   });
 }
 
-export default function InterviewFollowUpsSection({
+export function interviewContextLabel(
+  followUp: Pick<InterviewFollowUp, "interview_id">,
+  interview: Pick<Interview, "round" | "title"> | undefined
+): string {
+  if (!followUp.interview_id) return "General";
+  if (!interview) return "Interview follow-up";
+
+  const title = interview.title.trim();
+  const round = Number.isInteger(interview.round) && interview.round > 0
+    ? `Round ${interview.round}`
+    : "";
+  if (round && title) return `${round} · ${title}`;
+  return title || round || "Interview follow-up";
+}
+
+export default function ApplicationFollowUpsSection({
   applicationId,
-  interviewId,
   followUpsRevision,
   onFollowUpsChanged,
 }: Props) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const dialogTitleId = useId();
   const [followUps, setFollowUps] = useState<InterviewFollowUp[]>([]);
+  const [interviewsById, setInterviewsById] = useState<Record<string, Interview>>({});
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -78,21 +100,30 @@ export default function InterviewFollowUpsSection({
   const [form, setForm] = useState<FollowUpForm>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<InterviewFollowUp | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const mountedRef = useRef(true);
   const loadInFlight = useRef(false);
   const saveInFlight = useRef(false);
-  const updateInFlight = useRef(false);
-  const deleteInFlight = useRef(false);
-  const mountedRef = useRef(true);
+  const mutationInFlight = useRef<Set<string>>(new Set());
   const activeLoadController = useRef<AbortController | null>(null);
   const lastSeenRevisionRef = useRef(followUpsRevision);
   const selfNotificationsRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  const endpoint = `/applications/${applicationId}/follow-ups`;
+  const endpoint = `/applications/${encodeURIComponent(applicationId)}/follow-ups`;
+
+  const setItemPending = useCallback((id: string, pending: boolean) => {
+    if (!mountedRef.current) return;
+    setPendingIds((current) => {
+      const next = new Set(current);
+      if (pending) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
   const loadFollowUps = useCallback(async () => {
     if (loadInFlight.current) return;
@@ -101,16 +132,37 @@ export default function InterviewFollowUpsSection({
     activeLoadController.current = controller;
     setIsLoading(true);
     setLoadError(null);
+
     try {
-      const response = await apiFetch(
-        `${endpoint}?interview_id=${encodeURIComponent(interviewId)}`,
-        { cache: "no-store", signal: controller.signal }
-      );
-      if (!response.ok) throw new Error("request failed");
-      const loadedFollowUps = (await response.json()) as InterviewFollowUp[];
+      const [followUpsResult, interviewsResult] = await Promise.allSettled([
+        apiFetch(endpoint, { cache: "no-store", signal: controller.signal }),
+        apiFetch(`/applications/${encodeURIComponent(applicationId)}/interviews`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }),
+      ]);
+
       if (!mountedRef.current || controller.signal.aborted) return;
-      setFollowUps(loadedFollowUps);
+      if (followUpsResult.status === "rejected" || !followUpsResult.value.ok) {
+        throw new Error("request failed");
+      }
+
+      const loadedFollowUps = (await followUpsResult.value.json()) as InterviewFollowUp[];
+      if (!mountedRef.current || controller.signal.aborted) return;
+      setFollowUps(sortFollowUps(loadedFollowUps));
       setHasLoaded(true);
+
+      if (interviewsResult.status === "fulfilled" && interviewsResult.value.ok) {
+        try {
+          const interviews = (await interviewsResult.value.json()) as Interview[];
+          if (!mountedRef.current || controller.signal.aborted) return;
+          setInterviewsById(
+            Object.fromEntries(interviews.map((interview) => [interview.id, interview]))
+          );
+        } catch {
+          // Follow-ups remain usable with the neutral interview-label fallback.
+        }
+      }
     } catch {
       if (mountedRef.current && !controller.signal.aborted) {
         setLoadError("Unable to load follow-ups. Please try again.");
@@ -122,7 +174,7 @@ export default function InterviewFollowUpsSection({
         if (mountedRef.current && !controller.signal.aborted) setIsLoading(false);
       }
     }
-  }, [endpoint, interviewId]);
+  }, [applicationId, endpoint]);
 
   const refreshFollowUps = useCallback(() => {
     const controller = activeLoadController.current;
@@ -141,6 +193,9 @@ export default function InterviewFollowUpsSection({
 
   useEffect(() => {
     mountedRef.current = true;
+    // Eager-load the canonical application overview once for this mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadFollowUps();
     return () => {
       mountedRef.current = false;
       const controller = activeLoadController.current;
@@ -150,14 +205,7 @@ export default function InterviewFollowUpsSection({
         loadInFlight.current = false;
       }
     };
-  }, []);
-
-  useEffect(() => {
-    if (!isExpanded || hasLoaded || loadError) return;
-    // Lazy-load once for this mounted interview card.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadFollowUps();
-  }, [hasLoaded, isExpanded, loadError, loadFollowUps]);
+  }, [loadFollowUps]);
 
   useEffect(() => {
     const previousRevision = lastSeenRevisionRef.current;
@@ -167,18 +215,15 @@ export default function InterviewFollowUpsSection({
     lastSeenRevisionRef.current = followUpsRevision;
     const ignoredOwnRevisions = Math.min(revisionDelta, selfNotificationsRef.current);
     selfNotificationsRef.current -= ignoredOwnRevisions;
-    if (revisionDelta > ignoredOwnRevisions && (hasLoaded || isExpanded)) {
+    if (revisionDelta > ignoredOwnRevisions) {
       refreshFollowUps();
     }
-  }, [followUpsRevision, hasLoaded, isExpanded, refreshFollowUps]);
+  }, [followUpsRevision, refreshFollowUps]);
 
   useEffect(() => {
     if (!isEditorOpen) return;
     previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const firstControl = dialogRef.current?.querySelector<HTMLElement>(
-      "input, select, textarea, button"
-    );
-    firstControl?.focus();
+    dialogRef.current?.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
     return () => previousFocusRef.current?.focus();
   }, [isEditorOpen]);
 
@@ -245,6 +290,7 @@ export default function InterviewFollowUpsSection({
       setFormError("Title or notes exceed the allowed length.");
       return;
     }
+
     let dueAtUtc: string;
     try {
       dueAtUtc = serializeZonedDatetime(form.due_at_local, timezone);
@@ -262,7 +308,7 @@ export default function InterviewFollowUpsSection({
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(editing ? {} : { interview_id: interviewId }),
+          ...(editing ? {} : { interview_id: null }),
           title,
           type: form.type,
           due_at_utc: dueAtUtc,
@@ -294,9 +340,9 @@ export default function InterviewFollowUpsSection({
   }
 
   async function toggleCompletion(followUp: InterviewFollowUp) {
-    if (updateInFlight.current) return;
-    updateInFlight.current = true;
-    setUpdatingId(followUp.id);
+    if (mutationInFlight.current.has(followUp.id)) return;
+    mutationInFlight.current.add(followUp.id);
+    setItemPending(followUp.id, true);
     setActionError(null);
     try {
       const response = await apiFetch(`${endpoint}/${followUp.id}`, {
@@ -318,15 +364,15 @@ export default function InterviewFollowUpsSection({
         setActionError("Unable to update this follow-up. Please try again.");
       }
     } finally {
-      updateInFlight.current = false;
-      if (mountedRef.current) setUpdatingId(null);
+      mutationInFlight.current.delete(followUp.id);
+      setItemPending(followUp.id, false);
     }
   }
 
   async function deleteFollowUp(followUp: InterviewFollowUp) {
-    if (deleteInFlight.current) return;
-    deleteInFlight.current = true;
-    setDeletingId(followUp.id);
+    if (mutationInFlight.current.has(followUp.id)) return;
+    mutationInFlight.current.add(followUp.id);
+    setItemPending(followUp.id, true);
     setActionError(null);
     try {
       const response = await apiFetch(`${endpoint}/${followUp.id}`, { method: "DELETE" });
@@ -340,144 +386,158 @@ export default function InterviewFollowUpsSection({
         setActionError("Unable to delete this follow-up. Please try again.");
       }
     } finally {
-      deleteInFlight.current = false;
-      if (mountedRef.current) setDeletingId(null);
+      mutationInFlight.current.delete(followUp.id);
+      setItemPending(followUp.id, false);
     }
   }
 
-  return (
-    <div className="border-border mt-3 border-t pt-3">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((current) => !current)}
-        aria-expanded={isExpanded}
-        aria-controls={`follow-ups-${interviewId}`}
-        className="text-foreground hover:text-primary flex h-10 w-full items-center justify-between text-left text-sm font-semibold"
-      >
-        <span className="flex items-center gap-2">
-          Follow-ups
-          {hasLoaded ? (
-            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
-              {followUps.length}
-            </span>
-          ) : null}
-        </span>
-        <span aria-hidden="true">{isExpanded ? "▴" : "▾"}</span>
-      </button>
+  const openFollowUps = followUps.filter((followUp) => followUp.completed_at === null);
+  const completedFollowUps = followUps.filter((followUp) => followUp.completed_at !== null);
 
-      {isExpanded ? (
-        <div id={`follow-ups-${interviewId}`} className="pt-2">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-muted-foreground text-xs">
-              Manage reminders linked only to this interview.
+  function renderFollowUp(followUp: InterviewFollowUp) {
+    const isCompleted = followUp.completed_at !== null;
+    const isPending = pendingIds.has(followUp.id);
+    const contextLabel = interviewContextLabel(
+      followUp,
+      followUp.interview_id ? interviewsById[followUp.interview_id] : undefined
+    );
+
+    return (
+      <article key={followUp.id} className="border-border rounded-xl border px-4 py-3">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-foreground text-sm font-semibold">{followUp.title}</h3>
+              <span className="border-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs">
+                {contextLabel}
+              </span>
+              <span className="border-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs">
+                {typeLabel(followUp.type)}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  isCompleted
+                    ? "border-success-border bg-success-background text-success"
+                    : "border-warning-border bg-warning-background text-warning"
+                }`}
+              >
+                {isCompleted ? "Completed" : "Pending"}
+              </span>
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Due {formatTimestamp(followUp.due_at_utc, followUp.timezone)} · {followUp.timezone}
             </p>
+            {isCompleted ? (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Completed {formatTimestamp(followUp.completed_at ?? "")}
+              </p>
+            ) : null}
+            {followUp.notes ? (
+              <p className="text-foreground mt-2 whitespace-pre-wrap text-sm">{followUp.notes}</p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
             <button
               type="button"
-              onClick={openCreate}
-              disabled={isLoading || !hasLoaded}
-              className="bg-primary text-primary-foreground h-10 rounded-lg px-3 text-sm font-semibold disabled:opacity-50"
+              disabled={isPending}
+              onClick={() => void toggleCompletion(followUp)}
+              className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
             >
-              Add follow-up
+              {isPending ? "Saving…" : isCompleted ? "Reopen" : "Mark complete"}
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => openEdit(followUp)}
+              className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => setPendingDelete(followUp)}
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
+            >
+              Delete
             </button>
           </div>
+        </div>
+      </article>
+    );
+  }
 
-          {loadError ? (
-            <div className="border-destructive/30 bg-destructive/10 text-destructive flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
-              <span>{loadError}</span>
-              <button type="button" onClick={() => void loadFollowUps()} className="font-semibold underline">
-                Retry
-              </button>
+  return (
+    <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div>
+          <h2 className="text-base font-semibold sm:text-lg">Follow-ups</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Manage application reminders and review follow-ups linked to interviews.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          disabled={isLoading || !hasLoaded}
+          className="bg-primary text-primary-foreground h-10 shrink-0 rounded-lg px-4 text-sm font-semibold disabled:opacity-50"
+        >
+          Add follow-up
+        </button>
+      </div>
+
+      {loadError ? (
+        <div className="border-destructive/30 bg-destructive/10 text-destructive mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadFollowUps()}
+            disabled={isLoading}
+            className="h-10 px-2 font-semibold underline disabled:opacity-50"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {actionError ? (
+        <p className="border-destructive/30 bg-destructive/10 text-destructive mt-4 rounded-lg border px-3 py-2 text-sm" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+      {isLoading && !hasLoaded ? (
+        <p className="text-muted-foreground py-6 text-sm">Loading follow-ups…</p>
+      ) : null}
+      {!isLoading && hasLoaded && followUps.length === 0 ? (
+        <div className="border-border bg-muted/20 mt-5 rounded-xl border border-dashed px-4 py-6 text-center">
+          <p className="text-foreground text-sm font-medium">No follow-ups yet</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Add an application reminder or create an interview-specific follow-up in an interview.
+          </p>
+        </div>
+      ) : null}
+
+      {openFollowUps.length > 0 ? (
+        <div className="mt-5 space-y-2" aria-label="Open follow-ups">
+          {openFollowUps.map(renderFollowUp)}
+        </div>
+      ) : null}
+
+      {completedFollowUps.length > 0 ? (
+        <div className="border-border mt-5 border-t pt-3">
+          <button
+            type="button"
+            aria-expanded={showCompleted}
+            onClick={() => setShowCompleted((current) => !current)}
+            className="text-muted-foreground hover:text-foreground flex h-10 w-full items-center justify-between text-left text-sm font-semibold"
+          >
+            <span>Completed ({completedFollowUps.length})</span>
+            <span aria-hidden="true">{showCompleted ? "▴" : "▾"}</span>
+          </button>
+          {showCompleted ? (
+            <div className="mt-2 space-y-2 opacity-80" aria-label="Completed follow-ups">
+              {completedFollowUps.map(renderFollowUp)}
             </div>
           ) : null}
-          {actionError ? (
-            <p className="border-destructive/30 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm">
-              {actionError}
-            </p>
-          ) : null}
-          {isLoading ? (
-            <p className="text-muted-foreground py-4 text-sm">Loading follow-ups…</p>
-          ) : null}
-          {!isLoading && !loadError && followUps.length === 0 ? (
-            <div className="border-border bg-muted/20 rounded-lg border border-dashed px-4 py-5 text-center">
-              <p className="text-foreground text-sm font-medium">No follow-ups yet</p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Add a thank-you, status check, or preparation reminder.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            {followUps.map((followUp) => {
-              const isCompleted = followUp.completed_at !== null;
-              return (
-                <article key={followUp.id} className="border-border rounded-lg border px-3 py-3">
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-foreground text-sm font-semibold">{followUp.title}</h4>
-                        <span className="border-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs">
-                          {typeLabel(followUp.type)}
-                        </span>
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                            isCompleted
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                          }`}
-                        >
-                          {isCompleted ? "Completed" : "Pending"}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        Due {formatTimestamp(followUp.due_at_utc, followUp.timezone)}
-                        {followUp.timezone ? ` · ${followUp.timezone}` : ""}
-                      </p>
-                      {isCompleted ? (
-                        <p className="text-muted-foreground mt-1 text-xs">
-                          Completed {formatTimestamp(followUp.completed_at ?? "")}
-                        </p>
-                      ) : null}
-                      {followUp.notes ? (
-                        <p className="text-foreground mt-2 whitespace-pre-wrap text-sm">
-                          {followUp.notes}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={updatingId !== null || deletingId !== null}
-                        onClick={() => void toggleCompletion(followUp)}
-                        className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
-                      >
-                        {updatingId === followUp.id
-                          ? "Saving…"
-                          : isCompleted
-                            ? "Reopen"
-                            : "Mark complete"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={updatingId !== null || deletingId !== null}
-                        onClick={() => openEdit(followUp)}
-                        className="border-border bg-card text-foreground hover:bg-muted h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={updatingId !== null || deletingId !== null}
-                        onClick={() => setPendingDelete(followUp)}
-                        className="border-destructive/30 text-destructive hover:bg-destructive/10 h-10 rounded-lg border px-3 text-xs font-medium disabled:opacity-50"
-                      >
-                        {deletingId === followUp.id ? "Deleting…" : "Delete"}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
         </div>
       ) : null}
 
@@ -486,7 +546,7 @@ export default function InterviewFollowUpsSection({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
-          aria-labelledby={`follow-up-editor-title-${interviewId}`}
+          aria-labelledby={dialogTitleId}
         >
           <div
             ref={dialogRef}
@@ -495,7 +555,7 @@ export default function InterviewFollowUpsSection({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id={`follow-up-editor-title-${interviewId}`} className="text-foreground text-lg font-bold">
+                <h3 id={dialogTitleId} className="text-foreground text-lg font-bold">
                   {editing ? "Edit follow-up" : "Add follow-up"}
                 </h3>
                 <p className="text-muted-foreground mt-1 text-xs">
@@ -515,11 +575,11 @@ export default function InterviewFollowUpsSection({
 
             <form onSubmit={submitFollowUp} className="mt-5 space-y-4">
               <div>
-                <label htmlFor={`follow-up-title-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label htmlFor={`${dialogTitleId}-title`} className="text-foreground text-sm font-medium">
                   Title
                 </label>
                 <input
-                  id={`follow-up-title-${interviewId}`}
+                  id={`${dialogTitleId}-title`}
                   required
                   maxLength={255}
                   value={form.title}
@@ -528,11 +588,11 @@ export default function InterviewFollowUpsSection({
                 />
               </div>
               <div>
-                <label htmlFor={`follow-up-type-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label htmlFor={`${dialogTitleId}-type`} className="text-foreground text-sm font-medium">
                   Type
                 </label>
                 <select
-                  id={`follow-up-type-${interviewId}`}
+                  id={`${dialogTitleId}-type`}
                   value={form.type}
                   onChange={(event) => setForm({ ...form, type: event.target.value as FollowUpType })}
                   className={`${controlClass} h-10`}
@@ -544,11 +604,11 @@ export default function InterviewFollowUpsSection({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor={`follow-up-due-${interviewId}`} className="text-foreground text-sm font-medium">
+                  <label htmlFor={`${dialogTitleId}-due`} className="text-foreground text-sm font-medium">
                     Due date and time
                   </label>
                   <input
-                    id={`follow-up-due-${interviewId}`}
+                    id={`${dialogTitleId}-due`}
                     type="datetime-local"
                     required
                     value={form.due_at_local}
@@ -557,11 +617,11 @@ export default function InterviewFollowUpsSection({
                   />
                 </div>
                 <div>
-                  <label htmlFor={`follow-up-timezone-${interviewId}`} className="text-foreground text-sm font-medium">
+                  <label htmlFor={`${dialogTitleId}-timezone`} className="text-foreground text-sm font-medium">
                     IANA timezone
                   </label>
                   <input
-                    id={`follow-up-timezone-${interviewId}`}
+                    id={`${dialogTitleId}-timezone`}
                     required
                     maxLength={100}
                     placeholder="America/New_York"
@@ -572,11 +632,11 @@ export default function InterviewFollowUpsSection({
                 </div>
               </div>
               <div>
-                <label htmlFor={`follow-up-notes-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label htmlFor={`${dialogTitleId}-notes`} className="text-foreground text-sm font-medium">
                   Notes <span className="text-muted-foreground">(optional)</span>
                 </label>
                 <textarea
-                  id={`follow-up-notes-${interviewId}`}
+                  id={`${dialogTitleId}-notes`}
                   rows={4}
                   maxLength={10_000}
                   value={form.notes}
@@ -585,7 +645,7 @@ export default function InterviewFollowUpsSection({
                 />
               </div>
               {formError ? (
-                <p className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm">
+                <p className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm" role="alert">
                   {formError}
                 </p>
               ) : null}
@@ -619,14 +679,16 @@ export default function InterviewFollowUpsSection({
             ? `Delete “${pendingDelete.title}”? This cannot be undone.`
             : "This cannot be undone."
         }
-        isLoading={deletingId !== null}
+        isLoading={pendingDelete ? pendingIds.has(pendingDelete.id) : false}
         onCancel={() => {
-          if (!deleteInFlight.current) setPendingDelete(null);
+          if (!pendingDelete || !mutationInFlight.current.has(pendingDelete.id)) {
+            setPendingDelete(null);
+          }
         }}
         onConfirm={() => {
           if (pendingDelete) void deleteFollowUp(pendingDelete);
         }}
       />
-    </div>
+    </section>
   );
 }

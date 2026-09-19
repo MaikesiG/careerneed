@@ -23,7 +23,11 @@ type ApplicationInterviewsSectionProps = {
   applicationId: string;
   companyName: string;
   jobTitle: string;
+  followUpsRevision?: number;
+  onFollowUpsChanged?: () => void;
 };
+
+const noopFollowUpsChanged = () => {};
 
 const INTERVIEW_TYPE_OPTIONS: { value: InterviewType; label: string }[] = [
   { value: "recruiter", label: "Recruiter Screen" },
@@ -118,6 +122,8 @@ export default function ApplicationInterviewsSection({
   applicationId,
   companyName,
   jobTitle,
+  followUpsRevision = 0,
+  onFollowUpsChanged = noopFollowUpsChanged,
 }: ApplicationInterviewsSectionProps) {
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -697,6 +703,8 @@ export default function ApplicationInterviewsSection({
                     <InterviewFollowUpsSection
                       applicationId={applicationId}
                       interviewId={interview.id}
+                      followUpsRevision={followUpsRevision}
+                      onFollowUpsChanged={onFollowUpsChanged}
                     />
                   </InterviewDisclosureSection>
                 </div>
