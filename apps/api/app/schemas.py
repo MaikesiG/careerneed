@@ -645,6 +645,60 @@ def _bounded_text_list(values: list[str], max_item_length: int, field_name: str)
     return normalized
 
 
+class InterviewPreparationBriefParticipantContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    role: ParticipantRole
+    suggested_focus: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("name", "suggested_focus")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Participant context fields cannot be blank")
+        return value
+
+
+class _InterviewPreparationBriefGenerated(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str = Field(min_length=1, max_length=3000)
+    likely_topics: list[str] = Field(default_factory=list, max_length=12)
+    questions_to_prepare: list[str] = Field(default_factory=list, max_length=12)
+    participant_context: list[InterviewPreparationBriefParticipantContext] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    next_steps: list[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("summary")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preparation brief fields cannot be blank")
+        return value
+
+    @field_validator("likely_topics", "questions_to_prepare", "next_steps")
+    @classmethod
+    def bounded_text_lists(cls, values: list[str]) -> list[str]:
+        return _bounded_text_list(values, 1000, "Preparation brief text")
+
+
+class InterviewPreparationBriefOut(_InterviewPreparationBriefGenerated):
+    disclaimer: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("disclaimer")
+    @classmethod
+    def normalize_disclaimer(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preparation brief disclaimer cannot be blank")
+        return value
+
+
 def _validate_leetcode_url(v: str | None) -> str | None:
     if v is None:
         return None

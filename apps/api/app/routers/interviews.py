@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.config import AIConfigurationError
 from app.database import get_db
 from app.models import (
     AISuggestion,
@@ -30,6 +31,7 @@ from app.schemas import (
     InterviewOutcomeAnalysisOutput,
     InterviewOutcomeResolveRequest,
     InterviewParticipantOut,
+    InterviewPreparationBriefOut,
     InterviewPrepOutput,
     InterviewPrepResolveRequest,
     InterviewQuestionCreate,
@@ -40,14 +42,25 @@ from app.schemas import (
     ParticipantUpdate,
     UpcomingInterviewOut,
 )
-from app.services.interview_extractor import extract_interview
-from app.services.interview_prep import (
-    generate_interview_prep,
-    resolve_interview_prep_suggestion,
+from app.services.ai.interview_preparation_brief import (
+    generate_interview_preparation_brief,
+    get_model_router,
 )
+from app.services.ai.routing import (
+    AIModelRoutingError,
+    ModelUnavailableError,
+    ProviderTimeoutError,
+    UnknownModelError,
+    UnsupportedCapabilityError,
+)
+from app.services.interview_extractor import extract_interview
 from app.services.interview_outcome import (
     generate_interview_outcome,
     resolve_interview_outcome_suggestion,
+)
+from app.services.interview_prep import (
+    generate_interview_prep,
+    resolve_interview_prep_suggestion,
 )
 
 router = APIRouter(tags=["interviews"])
@@ -481,6 +494,49 @@ def delete_interview_question(
     db.delete(question)
     db.commit()
     return Response(status_code=204)
+
+
+@router.post(
+    "/applications/{application_id}/interviews/{interview_id}/preparation-brief",
+    response_model=InterviewPreparationBriefOut,
+)
+def create_interview_preparation_brief(
+    application_id: uuid.UUID,
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InterviewPreparationBriefOut:
+    application = _get_owned_application(application_id, current_user, db)
+    interview = _get_owned_interview(application_id, interview_id, current_user, db)
+    try:
+        model_router = get_model_router()
+        return generate_interview_preparation_brief(
+            db=db,
+            router=model_router,
+            user_id=current_user.id,
+            application=application,
+            interview=interview,
+        )
+    except (
+        AIConfigurationError,
+        ModelUnavailableError,
+        UnknownModelError,
+        UnsupportedCapabilityError,
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="AI preparation briefs are currently unavailable.",
+        ) from None
+    except ProviderTimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="AI preparation brief generation timed out. Please try again.",
+        ) from None
+    except AIModelRoutingError:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to generate the AI preparation brief. Please try again.",
+        ) from None
 
 
 @router.post(

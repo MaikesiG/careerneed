@@ -86,6 +86,21 @@ export type InterviewExtraction = {
   role: string | null;
 };
 
+export type InterviewPreparationBriefParticipantContext = {
+  name: string;
+  role: ParticipantRole;
+  suggested_focus: string;
+};
+
+export type InterviewPreparationBrief = {
+  summary: string;
+  likely_topics: string[];
+  questions_to_prepare: string[];
+  participant_context: InterviewPreparationBriefParticipantContext[];
+  next_steps: string[];
+  disclaimer: string;
+};
+
 export type InterviewQuestionCategory =
   | "behavioral"
   | "technical"
@@ -397,9 +412,7 @@ export function isAISuggestionStatus(value: unknown): value is AISuggestionStatu
   );
 }
 
-function isInterviewQuestionCategoryValue(
-  value: unknown
-): value is InterviewQuestionCategory {
+function isInterviewQuestionCategoryValue(value: unknown): value is InterviewQuestionCategory {
   return (
     value === "behavioral" ||
     value === "technical" ||
@@ -498,9 +511,7 @@ export function isInterviewPrepSuggestion(value: unknown): value is InterviewPre
   );
 }
 
-export function isInterviewPrepSuggestionArray(
-  value: unknown
-): value is InterviewPrepSuggestion[] {
+export function isInterviewPrepSuggestionArray(value: unknown): value is InterviewPrepSuggestion[] {
   return Array.isArray(value) && value.every(isInterviewPrepSuggestion);
 }
 
@@ -517,6 +528,25 @@ export function isContactRelationshipType(value: unknown): value is ContactRelat
 
 export function isParticipantRole(value: unknown): value is ParticipantRole {
   return value === "interviewer" || value === "coordinator" || value === "observer";
+}
+
+export function isInterviewPreparationBrief(value: unknown): value is InterviewPreparationBrief {
+  return (
+    isRecord(value) &&
+    typeof value.summary === "string" &&
+    isStringArray(value.likely_topics) &&
+    isStringArray(value.questions_to_prepare) &&
+    Array.isArray(value.participant_context) &&
+    value.participant_context.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.name === "string" &&
+        isParticipantRole(item.role) &&
+        typeof item.suggested_focus === "string"
+    ) &&
+    isStringArray(value.next_steps) &&
+    typeof value.disclaimer === "string"
+  );
 }
 
 export function isContact(value: unknown): value is Contact {

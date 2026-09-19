@@ -8,6 +8,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -20,7 +21,6 @@ from app.database import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
 
 
 class User(Base):
@@ -301,6 +301,79 @@ class UsageLog(Base):
     )
 
 
+class AIRun(Base):
+    __tablename__ = "ai_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('started', 'succeeded', 'failed')",
+            name="ck_ai_runs_status",
+        ),
+        CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_ai_runs_duration_ms_non_negative",
+        ),
+        CheckConstraint(
+            "input_tokens IS NULL OR input_tokens >= 0",
+            name="ck_ai_runs_input_tokens_non_negative",
+        ),
+        CheckConstraint(
+            "output_tokens IS NULL OR output_tokens >= 0",
+            name="ck_ai_runs_output_tokens_non_negative",
+        ),
+        CheckConstraint(
+            "total_tokens IS NULL OR total_tokens >= 0",
+            name="ck_ai_runs_total_tokens_non_negative",
+        ),
+        Index(
+            "ix_ai_runs_user_feature_created",
+            "user_id",
+            "feature_name",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    feature_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="started")
+    safe_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
     __table_args__ = (
@@ -546,7 +619,9 @@ class FollowUp(Base):
     )
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    due_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    due_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
