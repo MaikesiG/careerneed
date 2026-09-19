@@ -203,6 +203,8 @@ class TodayPriorityItem(BaseModel):
     company_name: str
     job_title: str
     interview_id: uuid.UUID | None = None
+    interview_title: str | None = None
+    interview_round: int | None = None
     occurs_at: datetime | None = None
     timezone: str | None = None
     status: str | None = None

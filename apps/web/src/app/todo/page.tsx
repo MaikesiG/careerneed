@@ -6,8 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   apiFetch,
   getApiErrorMessage,
+  isTodayPriorityItem,
   TodayPrioritiesResponse,
-  TodayPriorityActionKind,
   TodayPriorityGroupKey,
   TodayPriorityItem,
 } from "@/lib/api";
@@ -83,28 +83,21 @@ function isTodayGroupKey(value: unknown): value is TodayPriorityGroupKey {
   );
 }
 
-function isTodayActionKind(value: unknown): value is TodayPriorityActionKind {
-  return value === "follow_up" || value === "interview" || value === "application_update";
-}
+function formatInterviewContext(item: TodayPriorityItem): string | null {
+  if (item.action_kind !== "follow_up" || !item.interview_id) return null;
+  const hasRound = typeof item.interview_round === "number";
+  const title = item.interview_title?.trim();
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function isTodayPriorityItem(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === "string" &&
-    isTodayActionKind(value.action_kind) &&
-    typeof value.title === "string" &&
-    typeof value.application_id === "string" &&
-    typeof value.company_name === "string" &&
-    typeof value.job_title === "string" &&
-    isNullableString(value.interview_id) &&
-    isNullableString(value.occurs_at) &&
-    isNullableString(value.timezone) &&
-    isNullableString(value.status)
-  );
+  if (hasRound && title) {
+    return `Round ${item.interview_round} · ${title}`;
+  }
+  if (title) {
+    return title;
+  }
+  if (hasRound) {
+    return `Round ${item.interview_round}`;
+  }
+  return null;
 }
 
 function isTodayPrioritiesResponse(value: unknown): value is TodayPrioritiesResponse {
@@ -558,6 +551,7 @@ export default function TodoClient() {
                   const showTimezone = validIanaTimezone(item.timezone);
                   const isItemPending = pendingItemIds.has(item.id);
                   const itemError = itemErrors[item.id];
+                  const interviewContext = formatInterviewContext(item);
                   return (
                     <article
                       key={`overdue-${item.id}`}
@@ -587,6 +581,11 @@ export default function TodoClient() {
                                 </span>
                               ) : null}
                             </div>
+                            {interviewContext ? (
+                              <p className="text-muted-foreground mt-0.5 truncate text-xs font-medium">
+                                {interviewContext}
+                              </p>
+                            ) : null}
                             <p className="text-muted-foreground mt-0.5 truncate text-xs">
                               {item.company_name} · {item.job_title}
                             </p>
@@ -641,6 +640,7 @@ export default function TodoClient() {
                   const showTimezone = validIanaTimezone(item.timezone);
                   const isItemPending = pendingItemIds.has(item.id);
                   const itemError = itemErrors[item.id];
+                  const interviewContext = formatInterviewContext(item);
                   return (
                     <article
                       key={`due-today-${item.id}`}
@@ -670,6 +670,11 @@ export default function TodoClient() {
                                 </span>
                               ) : null}
                             </div>
+                            {interviewContext ? (
+                              <p className="text-muted-foreground mt-0.5 truncate text-xs font-medium">
+                                {interviewContext}
+                              </p>
+                            ) : null}
                             <p className="text-muted-foreground mt-0.5 truncate text-xs">
                               {item.company_name} · {item.job_title}
                             </p>

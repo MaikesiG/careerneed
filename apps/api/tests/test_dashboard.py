@@ -86,10 +86,12 @@ def create_follow_up(
     title: str,
     due_at: datetime,
     completed_at: datetime | None = None,
+    interview_id: uuid.UUID | None = None,
 ) -> FollowUp:
     follow_up = FollowUp(
         user_id=application.user_id,
         application_id=application.id,
+        interview_id=interview_id,
         type="custom",
         title=title,
         due_at_utc=due_at,
@@ -108,10 +110,12 @@ def create_interview(
     application: Application,
     title: str,
     scheduled_at: datetime,
+    round: int = 1,
     status: str = "scheduled",
 ) -> Interview:
     interview = Interview(
         application_id=application.id,
+        round=round,
         title=title,
         scheduled_at=scheduled_at.replace(tzinfo=None),
         timezone="Pacific/Kiritimati",
@@ -316,3 +320,105 @@ def test_today_preserves_legacy_dashboard_follow_up_behavior(
     legacy_items = client.get("/dashboard/follow-ups").json()["items"]
     assert summary["follow_ups_due_today"] == 1
     assert [item["id"] for item in legacy_items] == [str(application.id)]
+
+
+def test_today_enriches_interview_linked_follow_up_with_context(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "today-interview-context@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Backend Lead")
+    start, _ = local_day_bounds("Pacific/Kiritimati")
+
+    interview = create_interview(
+        db_session,
+        application=application,
+        title="Architecture Deep Dive",
+        round=2,
+        scheduled_at=start,
+    )
+    follow_up = create_follow_up(
+        db_session,
+        application=application,
+        interview_id=interview.id,
+        title="Send thank-you note",
+        due_at=start,
+    )
+
+    response = client.get(
+        "/dashboard/today", params={"timezone": "Pacific/Kiritimati"}
+    )
+    assert response.status_code == 200
+    groups = group_map(response.json())
+    due_items = groups["follow_ups_due_today"]
+    assert len(due_items) == 1
+    item = due_items[0]
+    assert item["id"] == str(follow_up.id)
+    assert item["interview_id"] == str(interview.id)
+    assert item["interview_title"] == "Architecture Deep Dive"
+    assert item["interview_round"] == 2
+
+
+def test_today_application_level_follow_up_has_null_interview_context(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "today-app-level-context@example.test")
+    application = create_application(db_session, user_id=user["id"], title="Frontend Lead")
+    start, _ = local_day_bounds("Pacific/Kiritimati")
+
+    follow_up = create_follow_up(
+        db_session,
+        application=application,
+        interview_id=None,
+        title="Check status on application",
+        due_at=start,
+    )
+
+    response = client.get(
+        "/dashboard/today", params={"timezone": "Pacific/Kiritimati"}
+    )
+    assert response.status_code == 200
+    groups = group_map(response.json())
+    due_items = groups["follow_ups_due_today"]
+    assert len(due_items) == 1
+    item = due_items[0]
+    assert item["id"] == str(follow_up.id)
+    assert item["interview_id"] is None
+    assert item["interview_title"] is None
+    assert item["interview_round"] is None
+
+
+def test_today_interview_context_preserves_ownership_scoping(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "today-ctx-owner@example.test")
+    owner_app = create_application(db_session, user_id=owner["id"], title="Staff SRE")
+    start, _ = local_day_bounds("UTC")
+
+    interview = create_interview(
+        db_session,
+        application=owner_app,
+        title="Staff Panel",
+        round=3,
+        scheduled_at=start,
+    )
+    create_follow_up(
+        db_session,
+        application=owner_app,
+        interview_id=interview.id,
+        title="Owner follow-up",
+        due_at=start,
+    )
+
+    other_client = TestClient(app)
+    try:
+        register(other_client, "today-ctx-other@example.test")
+        response = other_client.get("/dashboard/today", params={"timezone": "UTC"})
+        assert response.status_code == 200
+        groups = group_map(response.json())
+        all_items = [item for group in groups.values() for item in group]
+        assert len(all_items) == 0
+    finally:
+        other_client.close()

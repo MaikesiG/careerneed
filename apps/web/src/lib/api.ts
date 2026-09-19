@@ -162,6 +162,8 @@ export type TodayPriorityItem = {
   company_name: string;
   job_title: string;
   interview_id: string | null;
+  interview_title?: string | null;
+  interview_round?: number | null;
   occurs_at: string | null;
   timezone: string | null;
   status: string | null;
@@ -397,6 +399,32 @@ function isNullableBoundedNumber(
   return (
     value === null ||
     (typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum)
+  );
+}
+
+function isNullableInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isInteger(value));
+}
+
+export function isTodayPriorityActionKind(value: unknown): value is TodayPriorityActionKind {
+  return value === "follow_up" || value === "interview" || value === "application_update";
+}
+
+export function isTodayPriorityItem(value: unknown): value is TodayPriorityItem {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    isTodayPriorityActionKind(value.action_kind) &&
+    typeof value.title === "string" &&
+    typeof value.application_id === "string" &&
+    typeof value.company_name === "string" &&
+    typeof value.job_title === "string" &&
+    isNullableString(value.interview_id) &&
+    (value.interview_title === undefined || isNullableString(value.interview_title)) &&
+    (value.interview_round === undefined || isNullableInteger(value.interview_round)) &&
+    isNullableString(value.occurs_at) &&
+    isNullableString(value.timezone) &&
+    isNullableString(value.status)
   );
 }
 

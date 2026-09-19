@@ -158,9 +158,10 @@ def get_today_priorities(
     utc_next_start = local_next_start.astimezone(timezone.utc)
 
     follow_up_rows = db.execute(
-        select(FollowUp, Job)
+        select(FollowUp, Job, Interview)
         .join(Application, Application.id == FollowUp.application_id)
         .join(Job, Job.id == Application.job_id)
+        .outerjoin(Interview, Interview.id == FollowUp.interview_id)
         .where(
             FollowUp.user_id == current_user.id,
             Application.user_id == current_user.id,
@@ -172,7 +173,7 @@ def get_today_priorities(
 
     overdue_follow_ups = []
     due_today_follow_ups = []
-    for follow_up, job in follow_up_rows:
+    for follow_up, job, interview in follow_up_rows:
         item = {
             "id": follow_up.id,
             "action_kind": "follow_up",
@@ -181,6 +182,8 @@ def get_today_priorities(
             "company_name": job.company_name,
             "job_title": job.title,
             "interview_id": follow_up.interview_id,
+            "interview_title": interview.title if interview else None,
+            "interview_round": interview.round if interview else None,
             "occurs_at": follow_up.due_at_utc,
             "timezone": follow_up.timezone,
             "status": "pending",
