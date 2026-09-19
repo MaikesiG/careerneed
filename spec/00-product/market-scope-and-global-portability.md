@@ -10,9 +10,9 @@
 ## 1. Long-Term Direction: Globally Portable Career Operating System
 
 CareerNeed is fundamentally conceived as a **globally portable, user-owned career operating system**:
-- A candidate's career records, historical resumes, application timelines, interview reflections, and professional skills belong permanently to the candidate, regardless of which company they work for, which country they reside in, or how frequently they relocate.
+- **Globally Portable Career Records**: The long-term direction of CareerNeed is to ensure candidate career records, historical resumes, application timelines, interview reflections, and professional skills belong permanently to the candidate, remaining globally portable across employers, borders, and career transitions.
 - **Portability Invariant**: Global portability guarantees that user data models, career export formats, and personal career timelines remain universally applicable worldwide.
-- **Boundary Clarification**: Global data portability does **not** mean worldwide operational support, international legal compliance, or global job catalog coverage today.
+- **Boundary Clarification (No Worldwide-Support Claim)**: Global data portability is an architectural data-ownership model; it is **not a current worldwide-support claim**. It does **not** mean worldwide operational support, international legal compliance, or global job catalog coverage today.
 
 ---
 
@@ -82,7 +82,7 @@ Compensation metadata enforces explicit currency and period attributes:
 Work authorization attributes in CareerNeed operate strictly as **user preference filters** and **job requirement comparisons**:
 - Candidates specify their work authorization status (e.g. Citizen, Permanent Resident, F-1 OPT/CPT, H-1B, TN visa, requiring visa sponsorship).
 - Job listings are parsed for employer sponsorship policies (e.g. "Visa sponsorship available", "No sponsorship provided").
-- **Strict Legal Disclaimer**: CareerNeed does **not** provide legal, immigration, tax, or employment-law determinations. The matching engine compares stated candidate preferences against stated employer requirements to save job-search time, but does not verify legal right to work or guarantee immigration eligibility.
+- **Strict Legal Disclaimer**: CareerNeed does **not** provide legal, immigration, tax, employment-law, or work-authorization determinations. The matching engine compares stated candidate preferences against stated employer requirements to save job-search time, but does not verify legal right to work, certify immigration status, or make legal work-authorization determinations.
 
 ---
 

@@ -1,6 +1,6 @@
 # Controlled AI Architecture and Provider Integration
 
-> **Status:** Implemented (Server-Side Routing) / In Progress (Structured Provider Adapters)  
+> **Status:** In Progress / Mock-Tested (Server-Side Routing & Structured Provider Adapters)
 > **Owner:** CareerNeed AI Platform Engineering  
 > **Last Updated:** 2026-09-19  
 > **Scope:** Server-side model routing, model registry, server-side secret management, provider isolation, structured output enforcement, and audit observability.
@@ -61,7 +61,7 @@ To maintain stability and cost control:
 ### 3.3 Configuration-Controlled Provider Selection Policy
 Long-lived specifications must not be permanently hard-coded to specific model versions. Provider and model choices are strictly configuration-controlled:
 1. **Selection Criteria**: Provider selection depends on schema adherence, reliability, latency, cost, privacy (zero data retention), regional availability, SDK maturity, and operational readiness.
-2. **Active Adapter Status**: The OpenAI structured-output adapter is currently **In progress** pending one controlled smoke test and a limited real-use evaluation period. It is an active integration candidate rather than a permanent platform lock-in.
+2. **Active Adapter Status**: The OpenAI structured-output adapter is currently **In progress / mock-tested** (live provider smoke test pending or blocked until billing/model entitlement succeeds; not production-validated). It is an active integration candidate rather than a permanent platform lock-in.
 3. **Conditional Second Provider**: Any evaluation or integration of a second provider is strictly conditional on evidence gathered from quality, schema adherence, latency, failure rate, cost, action value, availability, and operational risk during real-use evaluation. No specific future provider is pre-selected as the automatic next step.
 
 ---

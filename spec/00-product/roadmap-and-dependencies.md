@@ -105,6 +105,28 @@
 - **Risks**: Upstream provider latency and transient schema validation failures.
 - **Explicit Deferrals**: Premature asynchronous task queues (Celery/RabbitMQ); autonomous agent workflows; client-side API key handling.
 
+#### Phase 1 real-provider validation gate
+
+Before expanding beyond the initial Interview Preparation Brief, the platform must satisfy this gate:
+1. **Controlled Server-Side Smoke Test**: Successful execution of at least one controlled server-side structured-output smoke test against the live provider.
+2. **Documented Quality Rubric**: Evaluation against a documented limited quality rubric using real or representative synthetic test cases.
+3. **Empirical Metric Measurements**: Recorded measurement of:
+   - Schema-valid output rate;
+   - Timeout and safe-failure rate;
+   - p50 and p95 latency;
+   - Token and cost per successful artifact;
+   - Unsupported-claim and hallucination rate;
+   - User-rated usefulness and actionability;
+   - Source-traceability quality.
+4. **Security & Integrity Invariants**: Zero open critical defects regarding user privacy, tenant authorization boundaries, credential handling, or unsafe-write mechanisms.
+5. **Explicit Product-Owner Decision**: An explicit Product Owner decision is required before introducing or enabling:
+   - Any second AI provider (a second provider is **not automatic** and must be strictly justified by empirical evidence);
+   - Artifact persistence expansion;
+   - Post-interview debrief assistance;
+   - AI Career Search;
+   - RAG or vector retrieval pipelines;
+   - Agent workflows or autonomous actions.
+
 ---
 
 ### Phase 2: Daily Career Rhythm

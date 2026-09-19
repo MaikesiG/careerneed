@@ -3,7 +3,7 @@
 > **Status:** In Progress (Active Milestone Feature)  
 > **Owner:** CareerNeed AI & Product Engineering  
 > **Last Updated:** 2026-09-19  
-> **Scope:** Grounded inputs, schema-validated output structure, draft lifecycle, and user confirmation for the Interview Preparation Brief.
+> **Scope:** Grounded inputs, data minimization boundaries, schema-validated output structure, advisory lifecycle, and user confirmation for the Interview Preparation Brief.
 
 ---
 
@@ -11,117 +11,117 @@
 
 The **Interview Preparation Brief** is CareerNeed’s first production AI feature. It synthesizes private application context into a tailored, round-specific preparation plan to help technical candidates prepare with maximum efficiency.
 
-Rather than offering generic interview tips, the brief evaluates the specific intersection of:
-1. The target company's job description.
-2. The candidate's submitted resume version.
-3. The specific interview stage (e.g. Recruiter Screen, Technical Coding, System Design, or Behavioral).
-4. Past reflections from prior rounds at this company (where available).
+### Core Advisory Invariant
+- **Strictly Advisory**: The preparation brief is strictly advisory and cannot automatically mutate canonical records (applications, interviews, questions, contacts, or todos).
+- **No Autonomous Writes**: Every application of recommendations (e.g. copying to notes, creating todos) requires explicit user action.
 
 ---
 
-## 2. Input Contract and Data Minimization
+## 2. Input Contract and Data Minimization Boundaries
 
-The preparation engine extracts strictly bounded context to minimize external token exposure:
+### 2.1 Current v1 Context Extraction
+Current v1 extracts strictly minimized, bounded context across application, interview, and participant records:
+- **Application Context**:
+  - `company_name`: Target company name (max 255 chars).
+  - `role_title`: Target job title (max 500 chars).
+  - `job_description`: Cleaned, bounded job description excerpt (max 6,000 chars).
+- **Interview Context**:
+  - `title`: Interview round title (max 255 chars).
+  - `round`: Sequential round number.
+  - `scheduled_at`: Scheduled interview timestamp in ISO format (or `None`).
+  - `timezone`: Candidate IANA timezone string.
+  - `format`: Interview format/type (e.g. `technical`, `coding`, `system_design`, max 50 chars).
+  - `duration_minutes`: Estimated round duration.
+  - `notes`: Candidate's existing interview round notes (max 3,000 chars).
+- **Participant Context**:
+  - Up to 20 linked interview participants with `name` (max 255 chars), `role` (`interviewer`, `coordinator`, `observer`), `title` (max 255 chars), and `relationship_type`.
+
+### 2.2 Strict Context Exclusions
+To protect candidate privacy and minimize third-party data exposure, the preparation engine strictly excludes from model payloads:
+- **Contact Email Addresses**: `contact.email` is never forwarded to AI providers.
+- **LinkedIn / Social URLs**: `contact.linkedin_url` and external profile links are excluded.
+- **Private Notes**: Private candidate notes on contacts, debrief reflections, and unrelated personal notes are omitted.
+- **Internal Identifiers**: Database UUIDs, application IDs, interview IDs, and participant primary keys are omitted from LLM prompts.
+- **Exact Interview Location**: Physical street addresses and sensitive online meeting URLs (Zoom, Google Meet, Microsoft Teams links) are stripped.
+- **Credentials & Auth Tokens**: Session tokens, passwords, API keys, and account credentials are strictly excluded.
+- **Unrelated Records**: Cross-application history, unrelated company notes, and overall candidate profile drafts are excluded.
+
+### 2.3 Future Context Expansion Candidates
+Additional context sources are candidates for future context expansion:
+1. **Submitted Resume Versions**: Plain-text snapshot of the specific resume version attached to the application.
+2. **Question & Reflection History**: Historical questions and reflections recorded from earlier interview rounds in this application.
+3. **Broader Preparation Notes**: Comprehensive preparation notes, debrief summaries, and research documents.
+
+**Prerequisite Expansion Gate**: These context expansions will only be enabled after explicit source-selection controls, provenance tracking, data-minimization boundaries, privacy rules, and objective quality-evaluation rubrics are formally established and tested.
+
+---
+
+## 3. Validated Output Schema
+
+### 3.1 Active v1 Production Schema (`InterviewPreparationBriefOut`)
+The live brief output is strictly enforced via Pydantic schema validation:
 
 ```python
-class InterviewPrepInputContext(BaseModel):
-    application_id: uuid.UUID
-    interview_id: uuid.UUID
-    
-    # Grounding Context
-    company_name: str
-    job_title: str
-    job_description_excerpt: str                     # Cleaned, bounded description (max 8,000 chars)
-    submitted_resume_text: str                       # Plain-text snapshot of submitted resume (max 10,000 chars)
-    interview_stage: str                             # "technical", "system_design", "behavioral", etc.
-    round_number: int
-    interviewer_title: str | None = None
-    prior_round_reflections: list[str] = []          # User reflections from earlier rounds in this application
+class InterviewPreparationBriefParticipantContext(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    role: Literal["interviewer", "coordinator", "observer"]
+    suggested_focus: str = Field(min_length=1, max_length=1000)
+
+class _InterviewPreparationBriefGenerated(BaseModel):
+    summary: str = Field(min_length=1, max_length=3000)
+    likely_topics: list[str] = Field(default_factory=list, max_length=12)
+    questions_to_prepare: list[str] = Field(default_factory=list, max_length=12)
+    participant_context: list[InterviewPreparationBriefParticipantContext] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    next_steps: list[str] = Field(default_factory=list, max_length=12)
+
+class InterviewPreparationBriefOut(_InterviewPreparationBriefGenerated):
+    disclaimer: str = Field(min_length=1, max_length=1000)
 ```
+
+### 3.2 Planned Expanded Schema (`InterviewPrepOutput`)
+Future iterations may expand the output structure to include granular sections once quality gates are satisfied:
+- `preparation_priorities`: High/medium/low priority prep tasks with explicit rationale.
+- `technical_topics`: Core domain topics and recommended study actions.
+- `behavioral_stories`: Candidate stories mapped to company competencies.
+- `likely_questions`: Predicted questions categorized by interview type.
+- `gap_warnings`: Identified candidate experience gaps with suggested mitigations.
+- `readiness`: Multi-dimensional readiness assessment with explicit data limitations.
 
 ---
 
-## 3. Validated Output Schema (`InterviewPrepOutput`)
-
-The output is strictly enforced via Pydantic schema validation:
-
-```python
-class PrepPriority(BaseModel):
-    title: str = Field(max_length=255)
-    reason: str = Field(max_length=2000)
-    recommended_action: str = Field(max_length=2000)
-    priority: Literal["high", "medium", "low"]
-
-class TechnicalTopic(BaseModel):
-    topic: str = Field(max_length=255)
-    reason: str = Field(max_length=2000)
-    recommended_actions: list[str] = Field(default_factory=list, max_length=20)
-
-class BehavioralStory(BaseModel):
-    story_or_evidence: str = Field(max_length=2000)
-    relevance: str = Field(max_length=2000)
-    suggested_angle: str = Field(max_length=2000)
-
-class LikelyQuestion(BaseModel):
-    question: str = Field(max_length=2000)
-    category: Literal["technical", "coding", "system_design", "behavioral", "case", "culture"]
-    reason: str = Field(max_length=2000)
-    recommended_angle: str = Field(max_length=2000)
-
-class GapWarning(BaseModel):
-    area: str = Field(max_length=255)
-    reason: str = Field(max_length=2000)
-    suggested_action: str = Field(max_length=2000)
-    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
-
-class ReadinessAssessment(BaseModel):
-    score: int | None = Field(default=None, ge=0, le=100)
-    summary: str = Field(max_length=2000)
-    limitations: list[str] = Field(default_factory=list, max_length=20)
-
-class InterviewPrepOutput(BaseModel):
-    summary: str = Field(max_length=3000)
-    preparation_priorities: list[PrepPriority] = Field(default_factory=list, max_length=20)
-    technical_topics: list[TechnicalTopic] = Field(default_factory=list, max_length=20)
-    behavioral_stories: list[BehavioralStory] = Field(default_factory=list, max_length=20)
-    likely_questions: list[LikelyQuestion] = Field(default_factory=list, max_length=30)
-    questions_to_ask: list[str] = Field(default_factory=list, max_length=20)
-    gap_warnings: list[GapWarning] = Field(default_factory=list, max_length=20)
-    readiness: ReadinessAssessment
-```
-
----
-
-## 4. User Interaction & Artifact Lifecycle
+## 4. User Interaction & Advisory Artifact Lifecycle
 
 ```text
-[ Generate Brief ] ──► Schema-Validated ──► Displayed as Draft in Modal
-                                                  │
-         ┌────────────────────────────────────────┴────────────────────────────────────────┐
-         │                                        │                                        │
-         ▼                                        ▼                                        ▼
-[ Inspect Citations ]                   [ Edit / Add Notes ]                      [ Save to Prep Notes ]
-                                                  │                                        │
-                                                  ▼                                        ▼
-                                        [ Append to Notes ]                     [ Add Tasks to Todo ]
+[ Generate Brief ] ──► Server Schema-Validated ──► Displayed as Advisory Preview in Modal
+                                                          │
+         ┌────────────────────────────────────────────────┴────────────────────────────────┐
+         │                                                │                                │
+         ▼                                                ▼                                ▼
+[ Inspect Grounding ]                            [ Edit / Add Notes ]            [ Manual Copy to Prep Notes ]
+                                                          │                                │
+                                                          ▼                                ▼
+                                                 [ User-Owned Notes ]            [ User Creates Todos ]
 ```
 
-1. **Initial Generation**: User clicks "Generate Preparation Brief" inside the Application Detail Interviews section. The generation is saved as an `ai_suggestion` with `status = pending`.
-2. **Review Modal**:
-   - The brief opens in a structured preview modal.
-   - Every recommended topic displays a `[Source]` badge linking to the relevant resume bullet or job requirement.
-3. **User Customization**:
-   - The user can uncheck questions they do not wish to practice.
-   - The user can edit the summary text or add private bullet points.
-4. **Explicit Application**:
-   - Clicking "Save to Interview Notes" copies the reviewed outline to `interview.preparation_notes`.
-   - Clicking "Add Practice Questions to Todo" explicitly creates actionable `follow_up` tasks due before the interview date.
+1. **User-Triggered Generation**: User clicks "Generate Preparation Brief" inside the Application Detail Interviews section. Generation executes synchronously with bounded timeout; execution telemetry is committed to `ai_runs`.
+2. **Advisory Preview Modal**:
+   - The brief opens in a structured preview modal accompanied by a mandatory disclaimer: *"AI-generated preparation guidance. Verify details before relying on it."*
+   - Findings provide clear grounding in supplied job description and interview parameters.
+3. **No Automatic Record Mutation**:
+   - The brief **remains strictly advisory** and **cannot automatically mutate canonical records**.
+   - It does not automatically create todo items, alter application stages, overwrite interview notes, or modify contact cards.
+4. **Explicit User Application**:
+   - The candidate may manually copy or apply suggested questions and topics to `interview.preparation_notes`.
+   - The candidate may explicitly create separate action items or follow-up tasks if desired.
 
 ---
 
 ## 5. Non-Blocking Manual Fallback
 
 If the AI provider times out, fails schema validation, or exceeds budget:
-- The interview workspace displays a friendly error: *"Preparation brief could not be generated. You can enter prep notes manually."*
+- The interview workspace displays a friendly error: *\"Preparation brief could not be generated. You can enter prep notes manually.\"*
 - The manual `preparation_notes` editor remains completely functional.
 - The interview schedule, links, and question tracking operate normally without interruption.
