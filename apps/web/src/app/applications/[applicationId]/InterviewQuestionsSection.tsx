@@ -256,7 +256,7 @@ export default function InterviewQuestionsSection({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-foreground text-sm font-semibold">Interview questions</h4>
+            <h4 className="text-foreground text-sm font-semibold">Questions and reflections</h4>
             {hasLoaded ? (
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium">
                 {questions.length}
@@ -281,6 +281,7 @@ export default function InterviewQuestionsSection({
             type="button"
             onClick={toggleExpanded}
             aria-expanded={isExpanded}
+            aria-controls={`questions-${interviewId}`}
             className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-3 text-sm font-medium transition"
           >
             {isExpanded ? "Hide questions" : "Show questions"}
@@ -289,7 +290,7 @@ export default function InterviewQuestionsSection({
       </div>
 
       {isExpanded ? (
-        <>
+        <div id={`questions-${interviewId}`}>
           {loadError ? (
             <div className="border-destructive/30 bg-destructive/10 text-destructive mt-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
               <span>{loadError}</span>
@@ -394,7 +395,7 @@ export default function InterviewQuestionsSection({
               ))}
             </div>
           )}
-        </>
+        </div>
       ) : null}
 
       {isFormOpen ? (

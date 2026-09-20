@@ -669,44 +669,26 @@ export default function ApplicationInterviewsSection({
                     />
                   </InterviewDisclosureSection>
 
-                  <InterviewDisclosureSection
-                    id={`interview-${interview.id}-questions`}
-                    title="Questions and reflections"
-                    defaultOpen={false}
-                  >
-                    <InterviewQuestionsSection
-                      applicationId={applicationId}
-                      interviewId={interview.id}
-                    />
-                    <InterviewOutcomeAnalysisSection
-                      applicationId={applicationId}
-                      interviewId={interview.id}
-                    />
-                  </InterviewDisclosureSection>
+                  <InterviewQuestionsSection
+                    applicationId={applicationId}
+                    interviewId={interview.id}
+                  />
+                  <InterviewOutcomeAnalysisSection
+                    applicationId={applicationId}
+                    interviewId={interview.id}
+                  />
 
-                  <InterviewDisclosureSection
-                    id={`interview-${interview.id}-participants`}
-                    title="Participants"
-                    defaultOpen={false}
-                  >
-                    <InterviewParticipantsSection
-                      applicationId={applicationId}
-                      interviewId={interview.id}
-                    />
-                  </InterviewDisclosureSection>
+                  <InterviewParticipantsSection
+                    applicationId={applicationId}
+                    interviewId={interview.id}
+                  />
 
-                  <InterviewDisclosureSection
-                    id={`interview-${interview.id}-follow-ups`}
-                    title="Follow-ups"
-                    defaultOpen={false}
-                  >
-                    <InterviewFollowUpsSection
-                      applicationId={applicationId}
-                      interviewId={interview.id}
-                      followUpsRevision={followUpsRevision}
-                      onFollowUpsChanged={onFollowUpsChanged}
-                    />
-                  </InterviewDisclosureSection>
+                  <InterviewFollowUpsSection
+                    applicationId={applicationId}
+                    interviewId={interview.id}
+                    followUpsRevision={followUpsRevision}
+                    onFollowUpsChanged={onFollowUpsChanged}
+                  />
                 </div>
               </div>
             );

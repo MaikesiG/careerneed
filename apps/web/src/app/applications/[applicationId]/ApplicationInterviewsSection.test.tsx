@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ApplicationInterviewsSection from "./ApplicationInterviewsSection";
-import type { ApiError, Interview, InterviewFollowUp } from "@/lib/api";
+import type { ApiError, Interview, InterviewFollowUp, InterviewParticipant } from "@/lib/api";
 import type { ThankYouFollowUpPayload } from "@/lib/followUpTime";
 
 const mockInterview: Interview = {
@@ -26,6 +26,38 @@ const mockInterview: Interview = {
   updated_at: "2026-09-01T12:00:00Z",
 };
 
+const mockParticipant: InterviewParticipant = {
+  id: "participant-1",
+  interview_id: mockInterview.id,
+  contact_id: "contact-1",
+  role: "interviewer",
+  created_at: "2026-09-01T12:00:00Z",
+  contact: {
+    id: "contact-1",
+    name: "Jordan Rivera",
+    title: "Staff Engineer",
+    email: "jordan@example.test",
+    linkedin_url: null,
+  relationship_type: "interviewer",
+  },
+  updated_at: "2026-10-01T12:00:00Z",
+};
+
+const mockFollowUp: InterviewFollowUp = {
+  id: "follow-up-1",
+  user_id: "user-1",
+  application_id: mockInterview.application_id,
+  interview_id: mockInterview.id,
+  type: "thank_you",
+  title: "Send thank-you note",
+  due_at_utc: "2026-10-21T10:30:00Z",
+  timezone: "UTC",
+  completed_at: null,
+  notes: null,
+  created_at: "2026-09-01T12:00:00Z",
+  updated_at: "2026-09-01T12:00:00Z",
+};
+
 describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -40,14 +72,14 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
       }
 
       if (url.includes("/interviews/int-101/participants")) {
-        return new Response(JSON.stringify([]), {
+        return new Response(JSON.stringify([mockParticipant]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
 
       if (url.includes("/follow-ups")) {
-        return new Response(JSON.stringify([]), {
+        return new Response(JSON.stringify([mockFollowUp]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -93,15 +125,20 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
       expect(screen.getByText("Systems Architecture Round")).toBeInTheDocument();
     });
 
-    // Grab the disclosure triggers
+    // Grab the sole disclosure trigger for each conceptual section.
     const prepTrigger = screen.getByRole("button", {
       name: /^preparation/i,
     });
     const questionsTrigger = screen.getByRole("button", {
-      name: /^questions and reflections/i,
+      name: "Show questions",
     });
+    const participantDisclosureButtons = screen.getAllByRole("button", {
+      name: /^Participants$/,
+      expanded: false,
+    });
+    expect(participantDisclosureButtons).toHaveLength(1);
     const participantsTrigger = screen.getByRole("button", {
-      name: /^participants/i,
+      name: /^Participants$/,
       expanded: false,
     });
     const followUpsTrigger = screen.getByRole("button", {
@@ -109,177 +146,65 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
       expanded: false,
     });
 
-    const prepPanel = document.getElementById(
-      prepTrigger.getAttribute("aria-controls")!
-    )!;
-    const questionsPanel = document.getElementById(
-      questionsTrigger.getAttribute("aria-controls")!
-    )!;
-    const participantsPanel = document.getElementById(
-      participantsTrigger.getAttribute("aria-controls")!
-    )!;
-    const followUpsPanel = document.getElementById(
-      followUpsTrigger.getAttribute("aria-controls")!
-    )!;
-
     return {
       prepTrigger,
       questionsTrigger,
       participantsTrigger,
       followUpsTrigger,
-      prepPanel,
-      questionsPanel,
-      participantsPanel,
-      followUpsPanel,
     };
   }
 
-  it("1. Preparation starts expanded; other conceptual sections start collapsed", async () => {
-    const {
-      prepTrigger,
-      questionsTrigger,
-      participantsTrigger,
-      followUpsTrigger,
-      prepPanel,
-      questionsPanel,
-      participantsPanel,
-      followUpsPanel,
-    } = await renderInterviewsSection();
+  it("renders one child-owned disclosure for questions, participants, and follow-ups", async () => {
+    const { prepTrigger, questionsTrigger, participantsTrigger, followUpsTrigger } =
+      await renderInterviewsSection();
 
-    // Preparation is expanded by default
     expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(prepPanel).toBeVisible();
-
-    // Questions and reflections is collapsed by default
     expect(questionsTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(questionsPanel).not.toBeVisible();
-
-    // Participants is collapsed by default
     expect(participantsTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(participantsPanel).not.toBeVisible();
-
-    // Follow-ups is collapsed by default
     expect(followUpsTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(followUpsPanel).not.toBeVisible();
+
+    expect(screen.getAllByRole("button", { name: /questions/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Participants$/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^follow-ups/i })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /participants.*(?:show|hide)/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /follow-ups.*(?:show|hide)/i })).toBeNull();
   });
 
-  it("2. Multiple sections can independently remain open", async () => {
-    const {
-      prepTrigger,
-      questionsTrigger,
-      participantsTrigger,
-      prepPanel,
-      questionsPanel,
-      participantsPanel,
-    } = await renderInterviewsSection();
+  it("keeps question, participant, and canonical follow-up content reachable", async () => {
+    const { questionsTrigger, participantsTrigger, followUpsTrigger } =
+      await renderInterviewsSection();
 
-    // Preparation starts open
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(prepPanel).toBeVisible();
-
-    // Open Questions and reflections
     fireEvent.click(questionsTrigger);
-    expect(questionsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(questionsPanel).toBeVisible();
+    expect(await screen.findByText("No questions captured yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Add question" })).toBeInTheDocument();
 
-    // Preparation remains open (independent multi-open behavior)
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(prepPanel).toBeVisible();
-
-    // Open Participants as well
+    expect(
+      screen.getAllByRole("button", { name: /^Participants$/, expanded: false })
+    ).toHaveLength(1);
     fireEvent.click(participantsTrigger);
-    expect(participantsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(participantsPanel).toBeVisible();
+    expect(await screen.findByText(mockParticipant.contact.name)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Add participant" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit role" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
 
-    // All three sections are simultaneously open
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(questionsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(participantsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(prepPanel).toBeVisible();
-    expect(questionsPanel).toBeVisible();
-    expect(participantsPanel).toBeVisible();
+    fireEvent.click(followUpsTrigger);
+    expect(await screen.findByText(mockFollowUp.title)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark complete" })).toBeInTheDocument();
   });
 
-  it("3. Each trigger correctly updates aria-expanded and panel visibility", async () => {
-    const {
-      prepTrigger,
-      followUpsTrigger,
-      prepPanel,
-      followUpsPanel,
-    } = await renderInterviewsSection();
+  it("keeps each child disclosure independently keyboard-operable", async () => {
+    const { questionsTrigger, participantsTrigger, followUpsTrigger } =
+      await renderInterviewsSection();
 
-    // Toggle Preparation: expanded -> collapsed
-    fireEvent.click(prepTrigger);
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(prepPanel).not.toBeVisible();
-
-    // Toggle Preparation: collapsed -> expanded
-    fireEvent.click(prepTrigger);
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(prepPanel).toBeVisible();
-
-    // Toggle Follow-ups: collapsed -> expanded
-    fireEvent.click(followUpsTrigger);
-    expect(followUpsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(followUpsPanel).toBeVisible();
-
-    // Toggle Follow-ups: expanded -> collapsed
-    fireEvent.click(followUpsTrigger);
-    expect(followUpsTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(followUpsPanel).not.toBeVisible();
-  });
-
-  it("4. Collapsing/reopening a section does not reset an active text input or discard entered draft text", async () => {
-    const {
-      questionsTrigger,
-      questionsPanel,
-    } = await renderInterviewsSection();
-
-    // Open Questions and reflections section
-    fireEvent.click(questionsTrigger);
-    expect(questionsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(questionsPanel).toBeVisible();
-
-    // Inside questions section, open questions and the Add Question form
-    const showQuestionsButton = await screen.findByRole("button", {
-      name: "Show questions",
-    });
-    fireEvent.click(showQuestionsButton);
-
-    const addQuestionButton = await screen.findByRole("button", {
-      name: "+ Add question",
-    });
-    fireEvent.click(addQuestionButton);
-
-    // Enter draft question text in the form
-    const questionTextarea = await screen.findByPlaceholderText(
-      "What question was asked?"
-    );
-    fireEvent.change(questionTextarea, {
-      target: { value: "How would you design a distributed rate limiter?" },
-    });
-    expect(questionTextarea).toHaveValue(
-      "How would you design a distributed rate limiter?"
-    );
-
-    // Collapse the Questions and reflections disclosure section
-    fireEvent.click(questionsTrigger);
-    expect(questionsTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(questionsPanel).not.toBeVisible();
-
-    // Reopen the Questions and reflections disclosure section
-    fireEvent.click(questionsTrigger);
-    expect(questionsTrigger).toHaveAttribute("aria-expanded", "true");
-    expect(questionsPanel).toBeVisible();
-
-    // Verify the active draft text was retained and not discarded
-    const restoredTextarea = screen.getByPlaceholderText(
-      "What question was asked?"
-    );
-    expect(restoredTextarea).toBeVisible();
-    expect(restoredTextarea).toHaveValue(
-      "How would you design a distributed rate limiter?"
-    );
+    for (const trigger of [questionsTrigger, participantsTrigger, followUpsTrigger]) {
+      trigger.focus();
+      expect(trigger).toHaveFocus();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+      fireEvent.click(trigger);
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+      expect(trigger).toHaveAttribute("aria-controls");
+    }
   });
 });
 

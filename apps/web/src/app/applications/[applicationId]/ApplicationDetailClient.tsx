@@ -118,7 +118,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
   const [isNotFound, setIsNotFound] = useState(false);
   const [followUpsRevision, setFollowUpsRevision] = useState(0);
   const onFollowUpsChanged = useCallback(() => {
-    setFollowUpsRevision((current) => current + 1);
+    setFollowUpsRevision((revision) => revision + 1);
   }, []);
 
   useEffect(() => {
