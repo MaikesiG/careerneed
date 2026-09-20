@@ -329,7 +329,7 @@ def test_follow_up_rejects_invalid_values(
     assert response.status_code == expected_status
 
 
-def test_dedicated_follow_up_does_not_change_application_dashboard_behavior(
+def test_dedicated_follow_up_drives_dashboard_without_changing_legacy_date(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -343,13 +343,30 @@ def test_dedicated_follow_up_does_not_change_application_dashboard_behavior(
 
     before_summary = client.get("/dashboard/summary").json()
     before_items = client.get("/dashboard/follow-ups").json()["items"]
+    due_today = datetime.now(timezone.utc).replace(
+        hour=12,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     create_response = client.post(
         f"/applications/{application.id}/follow-ups",
-        json=follow_up_payload(),
+        json=follow_up_payload(
+            due_at_utc=due_today.isoformat(),
+            timezone="UTC",
+        ),
     )
     assert create_response.status_code == 201
     db_session.refresh(application)
 
     assert application.follow_up_on == today
-    assert client.get("/dashboard/summary").json() == before_summary
-    assert client.get("/dashboard/follow-ups").json()["items"] == before_items
+    after_summary = client.get("/dashboard/summary").json()
+    after_items = client.get("/dashboard/follow-ups").json()["items"]
+    assert after_summary["follow_ups_due_today"] == (
+        before_summary["follow_ups_due_today"] + 1
+    )
+    assert after_summary["follow_ups_overdue"] == before_summary["follow_ups_overdue"]
+    before_item_ids = {item["id"] for item in before_items}
+    after_item_ids = {item["id"] for item in after_items}
+    assert str(application.id) not in before_item_ids
+    assert str(application.id) in after_item_ids

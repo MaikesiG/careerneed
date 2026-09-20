@@ -13,6 +13,8 @@ import {
 } from "@/lib/api";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { dashboardSummaryRequestPath } from "@/lib/dashboardSummaryRequest";
+import { browserTimezone } from "@/lib/followUpTime";
 
 type DashboardSummary = {
   follow_ups_due_today: number;
@@ -119,7 +121,7 @@ function isTodayPrioritiesResponse(value: unknown): value is TodayPrioritiesResp
   );
 }
 
-function browserTimezone(): string {
+function todayBrowserTimezone(): string {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return typeof timezone === "string" && timezone.trim() && validIanaTimezone(timezone)
     ? timezone
@@ -251,7 +253,7 @@ export default function TodoClient() {
       setTodayError(null);
     }
     try {
-      const timezone = browserTimezone();
+      const timezone = todayBrowserTimezone();
       const response = await apiFetch(`/dashboard/today?timezone=${encodeURIComponent(timezone)}`, {
         cache: "no-store",
         signal: controller.signal,
@@ -306,10 +308,13 @@ export default function TodoClient() {
 
     async function loadSummary() {
       try {
-        const summaryResponse = await apiFetch("/dashboard/summary", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
+        const summaryResponse = await apiFetch(
+          dashboardSummaryRequestPath(browserTimezone()),
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
 
         if (controller.signal.aborted) {
           return;

@@ -671,17 +671,33 @@ def test_dashboard_returns_only_current_users_counts_and_follow_ups(
         status="applied",
         follow_up_on=today,
     )
+    due_today = datetime.now(timezone.utc).replace(
+        hour=12,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    create_follow_up(
+        db_session,
+        application=owner_due_application,
+        due_at=due_today,
+    )
 
     other_client = TestClient(app)
     try:
         other_id = register(other_client, "dashboard-other@example.test")
         other_overdue_job = create_job(db_session, title="Other overdue role")
-        create_application(
+        other_overdue_application = create_application(
             db_session,
             user_id=other_id,
             job=other_overdue_job,
             status="interviewing",
             follow_up_on=today - timedelta(days=1),
+        )
+        create_follow_up(
+            db_session,
+            application=other_overdue_application,
+            due_at=due_today - timedelta(days=1),
         )
 
         summary_response = client.get("/dashboard/summary")

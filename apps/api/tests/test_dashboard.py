@@ -9,6 +9,23 @@ from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app.main import app
 from app.models import Application, FollowUp, Interview, Job
+from app.routers import dashboard as dashboard_router
+
+
+FIXED_NOW_UTC = datetime(2026, 3, 8, 12, tzinfo=timezone.utc)
+
+
+class FrozenDashboardDateTime(datetime):
+    @classmethod
+    def now(cls, tz: timezone | ZoneInfo | None = None) -> datetime:
+        if tz is None:
+            return FIXED_NOW_UTC.replace(tzinfo=None)
+        return FIXED_NOW_UTC.astimezone(tz)
+
+
+@pytest.fixture(autouse=True)
+def freeze_dashboard_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dashboard_router, "datetime", FrozenDashboardDateTime)
 
 
 @pytest.fixture
@@ -47,6 +64,7 @@ def create_application(
     user_id: str,
     title: str,
     follow_up_on: date | None = None,
+    status: str = "interviewing",
 ) -> Application:
     job = Job(
         company_name="Example Corp",
@@ -61,7 +79,7 @@ def create_application(
     application = Application(
         user_id=user_id,
         job_id=job.id,
-        status="interviewing",
+        status=status,
         follow_up_on=follow_up_on,
     )
     db.add(application)
@@ -71,7 +89,7 @@ def create_application(
 
 def local_day_bounds(timezone_name: str) -> tuple[datetime, datetime]:
     requested_timezone = ZoneInfo(timezone_name)
-    local_date = datetime.now(timezone.utc).astimezone(requested_timezone).date()
+    local_date = FIXED_NOW_UTC.astimezone(requested_timezone).date()
     start = datetime.combine(local_date, time.min, requested_timezone).astimezone(timezone.utc)
     next_start = datetime.combine(
         local_date + timedelta(days=1), time.min, requested_timezone
@@ -302,7 +320,7 @@ def test_today_response_excludes_sensitive_fields(
         assert forbidden not in serialized
 
 
-def test_today_preserves_legacy_dashboard_follow_up_behavior(
+def test_today_coexists_with_canonical_dashboard_follow_up_behavior(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -311,15 +329,322 @@ def test_today_preserves_legacy_dashboard_follow_up_behavior(
         db_session,
         user_id=user["id"],
         title="Legacy role",
-        follow_up_on=date.today(),
+        follow_up_on=FIXED_NOW_UTC.date(),
     )
     start, _ = local_day_bounds("UTC")
     create_follow_up(db_session, application=application, title="Dedicated", due_at=start)
 
     summary = client.get("/dashboard/summary").json()
-    legacy_items = client.get("/dashboard/follow-ups").json()["items"]
+    dashboard_items = client.get("/dashboard/follow-ups").json()["items"]
     assert summary["follow_ups_due_today"] == 1
-    assert [item["id"] for item in legacy_items] == [str(application.id)]
+    assert [item["id"] for item in dashboard_items] == [str(application.id)]
+
+
+def test_dashboard_follow_up_contract_defaults_to_utc_and_ignores_legacy_date(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "dashboard-canonical-default@example.test")
+    start, _ = local_day_bounds("UTC")
+    canonical_application = create_application(
+        db_session,
+        user_id=user["id"],
+        title="Canonical role",
+        status="saved",
+    )
+    create_follow_up(
+        db_session,
+        application=canonical_application,
+        title="Canonical reminder",
+        due_at=start,
+    )
+    create_application(
+        db_session,
+        user_id=user["id"],
+        title="Legacy-only role",
+        follow_up_on=FIXED_NOW_UTC.date(),
+        status="applied",
+    )
+
+    summary_response = client.get("/dashboard/summary")
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["follow_ups_due_today"] == 1
+    assert summary["follow_ups_overdue"] == 0
+    assert summary["applications_saved"] == 1
+    assert summary["applications_applied"] == 1
+    assert summary["applications_interviewing"] == 0
+    assert summary["active_applications"] == 1
+
+    follow_ups_response = client.get("/dashboard/follow-ups")
+    assert follow_ups_response.status_code == 200
+    items = follow_ups_response.json()["items"]
+    assert [item["id"] for item in items] == [str(canonical_application.id)]
+    assert items[0]["follow_up_on"] == FIXED_NOW_UTC.date().isoformat()
+
+
+@pytest.mark.parametrize("path", ["/dashboard/summary", "/dashboard/follow-ups"])
+def test_dashboard_follow_up_contract_validates_iana_timezone(
+    client: TestClient,
+    path: str,
+) -> None:
+    register(client, f"dashboard-timezone-{path.rsplit('/', 1)[-1]}@example.test")
+
+    valid_response = client.get(path, params={"timezone": "America/New_York"})
+    assert valid_response.status_code == 200
+
+    invalid_response = client.get(path, params={"timezone": "Mars/Olympus_Mons"})
+    assert invalid_response.status_code == 422
+    assert invalid_response.json() == {"detail": "Invalid IANA timezone"}
+
+
+def test_dashboard_summary_counts_applications_by_earliest_open_follow_up(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "dashboard-earliest@example.test")
+    start, next_start = local_day_bounds("America/New_York")
+
+    overdue_application = create_application(
+        db_session, user_id=user["id"], title="Overdue role"
+    )
+    create_follow_up(
+        db_session,
+        application=overdue_application,
+        title="Earliest overdue",
+        due_at=start - timedelta(hours=2),
+    )
+    create_follow_up(
+        db_session,
+        application=overdue_application,
+        title="Also due today",
+        due_at=start + timedelta(hours=2),
+    )
+
+    due_application = create_application(
+        db_session, user_id=user["id"], title="Due-today role"
+    )
+    create_follow_up(
+        db_session,
+        application=due_application,
+        title="Start boundary",
+        due_at=start,
+    )
+    create_follow_up(
+        db_session,
+        application=due_application,
+        title="Second reminder",
+        due_at=start + timedelta(hours=1),
+    )
+
+    final_instant_application = create_application(
+        db_session, user_id=user["id"], title="Final-instant role"
+    )
+    create_follow_up(
+        db_session,
+        application=final_instant_application,
+        title="Completed earlier reminder",
+        due_at=start - timedelta(days=2),
+        completed_at=start - timedelta(days=1),
+    )
+    create_follow_up(
+        db_session,
+        application=final_instant_application,
+        title="Final instant",
+        due_at=next_start - timedelta(microseconds=1),
+    )
+
+    future_application = create_application(
+        db_session, user_id=user["id"], title="Future role"
+    )
+    create_follow_up(
+        db_session,
+        application=future_application,
+        title="Next midnight",
+        due_at=next_start,
+    )
+
+    completed_only_application = create_application(
+        db_session, user_id=user["id"], title="Completed-only role"
+    )
+    create_follow_up(
+        db_session,
+        application=completed_only_application,
+        title="Completed",
+        due_at=start,
+        completed_at=start,
+    )
+
+    response = client.get(
+        "/dashboard/summary", params={"timezone": "America/New_York"}
+    )
+    assert response.status_code == 200
+    summary = response.json()
+    assert summary["follow_ups_overdue"] == 1
+    assert summary["follow_ups_due_today"] == 2
+
+    item_ids = {
+        item["id"]
+        for item in client.get(
+            "/dashboard/follow-ups",
+            params={"timezone": "America/New_York"},
+        ).json()["items"]
+    }
+    assert str(completed_only_application.id) not in item_ids
+    assert str(future_application.id) not in item_ids
+
+
+def test_dashboard_follow_ups_are_application_centric_ordered_and_limited(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "dashboard-list@example.test")
+    start, _ = local_day_bounds("America/New_York")
+
+    first = create_application(db_session, user_id=user["id"], title="First role")
+    create_follow_up(
+        db_session,
+        application=first,
+        title="First open",
+        due_at=start - timedelta(hours=3),
+    )
+    create_follow_up(
+        db_session,
+        application=first,
+        title="Duplicate application reminder",
+        due_at=start + timedelta(hours=3),
+    )
+
+    second = create_application(db_session, user_id=user["id"], title="Second role")
+    create_follow_up(
+        db_session,
+        application=second,
+        title="Completed old reminder",
+        due_at=start - timedelta(days=3),
+        completed_at=start - timedelta(days=2),
+    )
+    create_follow_up(
+        db_session,
+        application=second,
+        title="Second open",
+        due_at=start,
+    )
+
+    third = create_application(db_session, user_id=user["id"], title="Third role")
+    create_follow_up(
+        db_session,
+        application=third,
+        title="Third open",
+        due_at=start + timedelta(hours=1),
+    )
+
+    response = client.get(
+        "/dashboard/follow-ups",
+        params={"timezone": "America/New_York", "limit": 2},
+    )
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [item["id"] for item in items] == [str(first.id), str(second.id)]
+    assert len({item["id"] for item in items}) == 2
+    assert items[0]["follow_up_on"] == (
+        FIXED_NOW_UTC.astimezone(ZoneInfo("America/New_York")).date()
+        - timedelta(days=1)
+    ).isoformat()
+    assert items[1]["follow_up_on"] == FIXED_NOW_UTC.astimezone(
+        ZoneInfo("America/New_York")
+    ).date().isoformat()
+
+
+def test_dashboard_follow_up_boundaries_use_dst_local_midnights(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(client, "dashboard-dst@example.test")
+    start, next_start = local_day_bounds("America/New_York")
+    assert next_start - start == timedelta(hours=23)
+
+    overdue = create_application(db_session, user_id=user["id"], title="Before start")
+    create_follow_up(
+        db_session,
+        application=overdue,
+        title="Before start",
+        due_at=start - timedelta(microseconds=1),
+    )
+    due_at_start = create_application(db_session, user_id=user["id"], title="At start")
+    create_follow_up(
+        db_session,
+        application=due_at_start,
+        title="At start",
+        due_at=start,
+    )
+    due_at_end = create_application(db_session, user_id=user["id"], title="At end")
+    create_follow_up(
+        db_session,
+        application=due_at_end,
+        title="At end",
+        due_at=next_start - timedelta(microseconds=1),
+    )
+    next_day = create_application(db_session, user_id=user["id"], title="Next day")
+    create_follow_up(
+        db_session,
+        application=next_day,
+        title="Next midnight",
+        due_at=next_start,
+    )
+
+    summary = client.get(
+        "/dashboard/summary", params={"timezone": "America/New_York"}
+    ).json()
+    assert summary["follow_ups_overdue"] == 1
+    assert summary["follow_ups_due_today"] == 2
+
+    items = client.get(
+        "/dashboard/follow-ups", params={"timezone": "America/New_York"}
+    ).json()["items"]
+    assert [item["id"] for item in items] == [
+        str(overdue.id),
+        str(due_at_start.id),
+        str(due_at_end.id),
+    ]
+    assert str(next_day.id) not in {item["id"] for item in items}
+
+
+def test_dashboard_follow_up_contract_preserves_owner_isolation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = register(client, "dashboard-owner@example.test")
+    start, _ = local_day_bounds("UTC")
+    owner_application = create_application(
+        db_session, user_id=owner["id"], title="Owner role"
+    )
+    create_follow_up(
+        db_session,
+        application=owner_application,
+        title="Owner reminder",
+        due_at=start,
+    )
+
+    other_client = TestClient(app)
+    try:
+        other = register(other_client, "dashboard-foreign@example.test")
+        foreign_application = create_application(
+            db_session, user_id=other["id"], title="Foreign role"
+        )
+        create_follow_up(
+            db_session,
+            application=foreign_application,
+            title="Foreign reminder",
+            due_at=start - timedelta(days=1),
+        )
+
+        summary = client.get("/dashboard/summary").json()
+        assert summary["follow_ups_due_today"] == 1
+        assert summary["follow_ups_overdue"] == 0
+        items = client.get("/dashboard/follow-ups").json()["items"]
+        assert [item["id"] for item in items] == [str(owner_application.id)]
+    finally:
+        other_client.close()
 
 
 def test_today_enriches_interview_linked_follow_up_with_context(
