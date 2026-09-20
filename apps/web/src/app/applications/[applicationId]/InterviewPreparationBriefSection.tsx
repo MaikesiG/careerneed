@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetch, InterviewPreparationBrief, isInterviewPreparationBrief } from "@/lib/api";
+import {
+  apiFetch,
+  InterviewPreparationBrief,
+  InterviewPreparationGroundedItem,
+  InterviewPreparationSource,
+  isInterviewPreparationBrief,
+} from "@/lib/api";
 import { formatActionableBrief } from "@/lib/preparationBrief";
 
 type Props = {
@@ -20,6 +26,38 @@ function TextList({ items }: { items: string[] }) {
   );
 }
 
+const SOURCE_LABELS: Record<InterviewPreparationSource, string> = {
+  job_description: "Job description",
+  selected_resume: "Selected resume",
+  interview_details: "Interview details",
+  interview_notes: "Interview notes",
+  participant_context: "Participant context",
+};
+
+function GroundedList({ items }: { items: InterviewPreparationGroundedItem[] }) {
+  if (!items.length) return <p className="text-muted-foreground text-sm">None provided.</p>;
+  return (
+    <ul className="space-y-2">
+      {items.map((item, index) => (
+        <li key={`${item.text}-${index}`} className="text-muted-foreground text-sm">
+          <p className="whitespace-pre-wrap">{item.text}</p>
+          {item.source_refs.length ? (
+            <div className="mt-1 flex flex-wrap gap-1" aria-label="Sources">
+              {item.source_refs.map((source) => (
+                <span
+                  key={source}
+                  className="border-border bg-card text-muted-foreground rounded-full border px-2 py-0.5 text-xs"
+                >
+                  {SOURCE_LABELS[source]}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function InterviewPreparationBriefSection({ applicationId, interviewId }: Props) {
   const [brief, setBrief] = useState<InterviewPreparationBrief | null>(null);
@@ -172,7 +210,7 @@ export default function InterviewPreparationBriefSection({ applicationId, interv
 
       {isGenerating ? (
         <div
-          className="border-border bg-muted/15 mt-3 space-y-4 rounded-lg border p-4 animate-pulse"
+          className="border-border bg-muted/15 mt-3 animate-pulse space-y-4 rounded-lg border p-4"
           aria-hidden="true"
         >
           {/* Block 1: Summary */}
@@ -250,6 +288,38 @@ export default function InterviewPreparationBriefSection({ applicationId, interv
           <div>
             <h6 className="text-foreground mb-1 text-sm font-semibold">Next steps</h6>
             <TextList items={brief.next_steps} />
+          </div>
+          <div className="border-border grid gap-4 border-t pt-4 md:grid-cols-2">
+            <div>
+              <h6 className="text-foreground mb-1 text-sm font-semibold">Evidence</h6>
+              <GroundedList items={brief.evidence} />
+            </div>
+            <div>
+              <h6 className="text-foreground mb-1 text-sm font-semibold">Analysis / inference</h6>
+              <GroundedList items={brief.inferences} />
+            </div>
+            <div>
+              <h6 className="text-foreground mb-1 text-sm font-semibold">
+                Recommended preparation
+              </h6>
+              <GroundedList items={brief.recommendations} />
+            </div>
+            <div>
+              <h6 className="text-foreground mb-1 text-sm font-semibold">
+                Missing or uncertain information
+              </h6>
+              {brief.uncertainties.length ? (
+                <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
+                  {brief.uncertainties.map((item, index) => (
+                    <li key={`${item.text}-${index}`} className="whitespace-pre-wrap">
+                      {item.text}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground text-sm">None provided.</p>
+              )}
+            </div>
           </div>
           <div className="border-primary/30 bg-primary/5 text-muted-foreground rounded-lg border p-3 text-xs">
             <p className="text-foreground font-medium">About this guidance</p>

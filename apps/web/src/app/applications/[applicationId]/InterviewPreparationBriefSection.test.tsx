@@ -16,7 +16,30 @@ const mockSuccessBrief = {
     },
   ],
   next_steps: ["Review Raft consensus paper and prepare latency calculation examples."],
-  disclaimer: "AI-generated preparation advice is for rehearsal only.",
+  evidence: [
+    {
+      text: "The role emphasizes distributed systems.",
+      source_refs: ["job_description" as const],
+    },
+  ],
+  inferences: [
+    {
+      text: "The architecture round may emphasize trade-off reasoning.",
+      source_refs: ["interview_details" as const],
+    },
+  ],
+  recommendations: [
+    {
+      text: "Practice explaining one reliability trade-off.",
+      source_refs: ["selected_resume" as const, "interview_notes" as const],
+    },
+  ],
+  uncertainties: [
+    {
+      text: "<img src=x onerror=alert('not executed')> The exact scenario is unavailable.",
+    },
+  ],
+  disclaimer: "AI-generated preparation guidance. Verify details before relying on it.",
 };
 
 describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Successful structured brief", () => {
@@ -26,6 +49,7 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("progresses from idle to accessible loading skeleton, then displays structured brief with server disclaimer", async () => {
@@ -37,10 +61,7 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
     vi.spyOn(globalThis, "fetch").mockImplementation(() => fetchPromise);
 
     render(
-      <InterviewPreparationBriefSection
-        applicationId="app-test-123"
-        interviewId="int-test-456"
-      />
+      <InterviewPreparationBriefSection applicationId="app-test-123" interviewId="int-test-456" />
     );
 
     // 1. Idle state verification
@@ -61,9 +82,7 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
     expect(loadingButton).toBeDisabled();
 
     // Verify accessible screen reader announcement for in-progress generation
-    expect(
-      screen.getByText("Generating your interview preparation brief…")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Generating your interview preparation brief…")).toBeInTheDocument();
 
     // 4. Resolve mock network request successfully
     resolveFetch(
@@ -84,9 +103,7 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
 
     // Questions to prepare
     expect(
-      screen.getByText(
-        "How do you design for high availability across multi-region deployments?"
-      )
+      screen.getByText("How do you design for high availability across multi-region deployments?")
     ).toBeInTheDocument();
 
     // Participant context
@@ -98,10 +115,23 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
 
     // Next steps
     expect(
-      screen.getByText(
-        "Review Raft consensus paper and prepare latency calculation examples."
-      )
+      screen.getByText("Review Raft consensus paper and prepare latency calculation examples.")
     ).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { name: "Evidence" })).toBeInTheDocument();
+    expect(screen.getByText("The role emphasizes distributed systems.")).toBeInTheDocument();
+    expect(screen.getByText("Job description")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Analysis / inference" })).toBeInTheDocument();
+    expect(screen.getByText("Interview details")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recommended preparation" })).toBeInTheDocument();
+    expect(screen.getByText("Selected resume")).toBeInTheDocument();
+    expect(screen.getByText("Interview notes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Missing or uncertain information" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/The exact scenario is unavailable/)).toBeInTheDocument();
+    expect(document.querySelector("img")).not.toBeInTheDocument();
+    expect(screen.queryByText("selected_resume")).not.toBeInTheDocument();
 
     // Server-owned disclaimer
     expect(screen.getByText(mockSuccessBrief.disclaimer)).toBeInTheDocument();
@@ -109,6 +139,33 @@ describe("InterviewPreparationBriefSection - Group 3: Idle → Skeleton → Succ
     // Buttons updated
     expect(screen.getByRole("button", { name: "Copy Brief" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate again" })).toBeInTheDocument();
+  });
+
+  it("copies the grounded brief using human-readable source labels", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(mockSuccessBrief), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    render(
+      <InterviewPreparationBriefSection applicationId="app-test-123" interviewId="int-test-456" />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate preparation brief" }));
+    await screen.findByText(mockSuccessBrief.summary);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Brief" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain("Evidence:");
+    expect(copied).toContain("Sources: Job description");
+    expect(copied).toContain("Analysis / Inference:");
+    expect(copied).toContain("Recommended Preparation:");
+    expect(copied).toContain("Missing or Uncertain Information:");
+    expect(copied).not.toContain("selected_resume");
   });
 });
 
@@ -132,10 +189,7 @@ describe("InterviewPreparationBriefSection - Group 4: Error resilience & safe me
     );
 
     render(
-      <InterviewPreparationBriefSection
-        applicationId="app-test-123"
-        interviewId="int-test-456"
-      />
+      <InterviewPreparationBriefSection applicationId="app-test-123" interviewId="int-test-456" />
     );
 
     const generateButton = screen.getByRole("button", {
@@ -191,10 +245,7 @@ describe("InterviewPreparationBriefSection - Group 4: Error resilience & safe me
     );
 
     render(
-      <InterviewPreparationBriefSection
-        applicationId="app-test-123"
-        interviewId="int-test-456"
-      />
+      <InterviewPreparationBriefSection applicationId="app-test-123" interviewId="int-test-456" />
     );
 
     const generateButton = screen.getByRole("button", {

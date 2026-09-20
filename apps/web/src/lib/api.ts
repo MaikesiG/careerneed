@@ -25,12 +25,7 @@ export async function getApiErrorMessage(response: Response, fallback: string): 
 }
 
 export type ApplicationStatus =
-  | "saved"
-  | "applied"
-  | "interviewing"
-  | "offer"
-  | "rejected"
-  | "withdrawn";
+  "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
 export type ApplicationListItem = {
   id: string;
@@ -123,12 +118,32 @@ export type InterviewPreparationBriefParticipantContext = {
   suggested_focus: string;
 };
 
+export type InterviewPreparationSource =
+  | "job_description"
+  | "selected_resume"
+  | "interview_details"
+  | "interview_notes"
+  | "participant_context";
+
+export type InterviewPreparationGroundedItem = {
+  text: string;
+  source_refs: InterviewPreparationSource[];
+};
+
+export type InterviewPreparationUncertainty = {
+  text: string;
+};
+
 export type InterviewPreparationBrief = {
   summary: string;
   likely_topics: string[];
   questions_to_prepare: string[];
   participant_context: InterviewPreparationBriefParticipantContext[];
   next_steps: string[];
+  evidence: InterviewPreparationGroundedItem[];
+  inferences: InterviewPreparationGroundedItem[];
+  recommendations: InterviewPreparationGroundedItem[];
+  uncertainties: InterviewPreparationUncertainty[];
   disclaimer: string;
 };
 
@@ -589,6 +604,29 @@ export function isParticipantRole(value: unknown): value is ParticipantRole {
   return value === "interviewer" || value === "coordinator" || value === "observer";
 }
 
+export function isInterviewPreparationSource(value: unknown): value is InterviewPreparationSource {
+  return (
+    value === "job_description" ||
+    value === "selected_resume" ||
+    value === "interview_details" ||
+    value === "interview_notes" ||
+    value === "participant_context"
+  );
+}
+
+function isInterviewPreparationGroundedItem(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.text === "string" &&
+    Array.isArray(value.source_refs) &&
+    value.source_refs.every(isInterviewPreparationSource)
+  );
+}
+
+function isInterviewPreparationUncertainty(value: unknown): boolean {
+  return isRecord(value) && typeof value.text === "string";
+}
+
 export function isInterviewPreparationBrief(value: unknown): value is InterviewPreparationBrief {
   return (
     isRecord(value) &&
@@ -604,6 +642,14 @@ export function isInterviewPreparationBrief(value: unknown): value is InterviewP
         typeof item.suggested_focus === "string"
     ) &&
     isStringArray(value.next_steps) &&
+    Array.isArray(value.evidence) &&
+    value.evidence.every(isInterviewPreparationGroundedItem) &&
+    Array.isArray(value.inferences) &&
+    value.inferences.every(isInterviewPreparationGroundedItem) &&
+    Array.isArray(value.recommendations) &&
+    value.recommendations.every(isInterviewPreparationGroundedItem) &&
+    Array.isArray(value.uncertainties) &&
+    value.uncertainties.every(isInterviewPreparationUncertainty) &&
     typeof value.disclaimer === "string"
   );
 }

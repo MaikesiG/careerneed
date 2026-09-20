@@ -696,6 +696,101 @@ class InterviewPreparationBriefParticipantContext(BaseModel):
         return value
 
 
+InterviewPreparationSource = Literal[
+    "job_description",
+    "selected_resume",
+    "interview_details",
+    "interview_notes",
+    "participant_context",
+]
+
+
+class InterviewPreparationEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+    source_refs: list[InterviewPreparationSource] = Field(min_length=1, max_length=5)
+
+    @field_validator("text")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Evidence text cannot be blank")
+        return value
+
+    @field_validator("source_refs")
+    @classmethod
+    def unique_source_refs(
+        cls, values: list[InterviewPreparationSource]
+    ) -> list[InterviewPreparationSource]:
+        if len(values) != len(set(values)):
+            raise ValueError("Evidence source references must be unique")
+        return values
+
+
+class InterviewPreparationInference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+    source_refs: list[InterviewPreparationSource] = Field(min_length=1, max_length=5)
+
+    @field_validator("text")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Inference text cannot be blank")
+        return value
+
+    @field_validator("source_refs")
+    @classmethod
+    def unique_source_refs(
+        cls, values: list[InterviewPreparationSource]
+    ) -> list[InterviewPreparationSource]:
+        if len(values) != len(set(values)):
+            raise ValueError("Inference source references must be unique")
+        return values
+
+
+class InterviewPreparationRecommendation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+    source_refs: list[InterviewPreparationSource] = Field(default_factory=list, max_length=5)
+
+    @field_validator("text")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Recommendation text cannot be blank")
+        return value
+
+    @field_validator("source_refs")
+    @classmethod
+    def unique_source_refs(
+        cls, values: list[InterviewPreparationSource]
+    ) -> list[InterviewPreparationSource]:
+        if len(values) != len(set(values)):
+            raise ValueError("Recommendation source references must be unique")
+        return values
+
+
+class InterviewPreparationUncertainty(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("text")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Uncertainty text cannot be blank")
+        return value
+
+
 class _InterviewPreparationBriefGenerated(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -707,6 +802,16 @@ class _InterviewPreparationBriefGenerated(BaseModel):
         max_length=20,
     )
     next_steps: list[str] = Field(default_factory=list, max_length=12)
+    evidence: list[InterviewPreparationEvidence] = Field(default_factory=list, max_length=12)
+    inferences: list[InterviewPreparationInference] = Field(default_factory=list, max_length=12)
+    recommendations: list[InterviewPreparationRecommendation] = Field(
+        default_factory=list,
+        max_length=12,
+    )
+    uncertainties: list[InterviewPreparationUncertainty] = Field(
+        default_factory=list,
+        max_length=12,
+    )
 
     @field_validator("summary")
     @classmethod
