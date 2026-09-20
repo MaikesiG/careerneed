@@ -1,15 +1,13 @@
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
 from app.main import app
 from app.models import Application, FollowUp, Job, Resume
-from app.routers import applications as applications_router
 
 
 @pytest.fixture
@@ -728,3 +726,159 @@ def test_dashboard_returns_only_current_users_counts_and_follow_ups(
         assert other_summary["follow_ups_overdue"] == 1
     finally:
         other_client.close()
+
+
+@pytest.mark.parametrize("legacy_value", ["2026-10-01", None])
+def test_application_update_rejects_explicit_legacy_follow_up_without_mutation(
+    client: TestClient,
+    db_session: Session,
+    legacy_value: str | None,
+) -> None:
+    owner_id = register(client, f"legacy-follow-up-{legacy_value}@example.test")
+    original_resume = create_resume(db_session, user_id=owner_id)
+    replacement_resume = create_resume(db_session, user_id=owner_id)
+    application = create_application(
+        db_session,
+        user_id=owner_id,
+        job=create_job(db_session, title="Legacy follow-up freeze role"),
+        status="saved",
+        follow_up_on=date(2026, 9, 30),
+    )
+    application.notes = "Keep these notes"
+    application.resume_id = original_resume.id
+    db_session.flush()
+    original_updated_at = application.updated_at
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={
+            "follow_up_on": legacy_value,
+            "status": "applied",
+            "notes": "Must not be persisted",
+            "resume_id": str(replacement_resume.id),
+            "applied_at": "2026-10-01T12:00:00Z",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "follow_up_on is deprecated; use the FollowUp endpoints instead"
+    }
+    db_session.refresh(application)
+    assert application.follow_up_on == date(2026, 9, 30)
+    assert application.status == "saved"
+    assert application.notes == "Keep these notes"
+    assert application.resume_id == original_resume.id
+    assert application.applied_at is None
+    assert application.updated_at == original_updated_at
+
+
+def test_application_update_allowlist_preserves_supported_fields_and_response(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner_id = register(client, "application-update-allowlist@example.test")
+    resume = create_resume(db_session, user_id=owner_id)
+    application = create_application(
+        db_session,
+        user_id=owner_id,
+        job=create_job(db_session, title="Application update allowlist role"),
+        status="saved",
+        follow_up_on=date(2026, 9, 30),
+    )
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={
+            "status": "applied",
+            "resume_id": str(resume.id),
+            "applied_at": "2026-10-02T12:30:00Z",
+            "notes": "Updated through the supported allowlist",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "applied"
+    assert payload["resume_id"] == str(resume.id)
+    applied_at = datetime.fromisoformat(payload["applied_at"].replace("Z", "+00:00"))
+    assert applied_at == datetime(
+        2026,
+        10,
+        2,
+        12,
+        30,
+        tzinfo=timezone.utc,
+    )
+    assert applied_at.utcoffset() == timedelta(0)
+    assert payload["notes"] == "Updated through the supported allowlist"
+    assert payload["follow_up_on"] == "2026-09-30"
+
+
+def test_application_update_normalizes_offset_applied_at_to_utc(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner_id = register(client, "application-offset-applied-at@example.test")
+    application = create_application(
+        db_session,
+        user_id=owner_id,
+        job=create_job(db_session, title="Offset applied timestamp role"),
+        status="saved",
+    )
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={"applied_at": "2026-10-02T08:30:00-04:00"},
+    )
+
+    assert response.status_code == 200
+    applied_at = datetime.fromisoformat(response.json()["applied_at"].replace("Z", "+00:00"))
+    assert applied_at == datetime(2026, 10, 2, 12, 30, tzinfo=timezone.utc)
+    assert applied_at.utcoffset() == timedelta(0)
+
+
+def test_application_update_rejects_naive_applied_at(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner_id = register(client, "application-naive-applied-at@example.test")
+    application = create_application(
+        db_session,
+        user_id=owner_id,
+        job=create_job(db_session, title="Naive applied timestamp role"),
+        status="saved",
+    )
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={"applied_at": "2026-10-02T12:30:00"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["msg"] == (
+        "Value error, applied_at must be a timezone-aware datetime"
+    )
+
+
+def test_application_update_status_applied_still_sets_applied_at(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner_id = register(client, "application-auto-applied-at@example.test")
+    application = create_application(
+        db_session,
+        user_id=owner_id,
+        job=create_job(db_session, title="Automatic applied timestamp role"),
+        status="saved",
+    )
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={"status": "applied"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "applied"
+    applied_at = datetime.fromisoformat(response.json()["applied_at"].replace("Z", "+00:00"))
+    assert applied_at.utcoffset() == timedelta(0)

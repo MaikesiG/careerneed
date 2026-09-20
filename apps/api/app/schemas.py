@@ -4,7 +4,14 @@ from typing import Literal
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 JobStatus = Literal["new", "saved", "applied", "dismissed"]
 
@@ -109,6 +116,14 @@ class ApplicationCreate(BaseModel):
     notes: str | None = None
 
 
+def _normalize_persisted_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 class ApplicationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,6 +136,10 @@ class ApplicationOut(BaseModel):
     follow_up_on: date | None
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("applied_at")
+    def serialize_applied_at(self, value: datetime | None) -> datetime | None:
+        return _normalize_persisted_utc(value)
 
 
 class ApplicationJobSummary(BaseModel):
@@ -151,6 +170,11 @@ class ApplicationUpdate(BaseModel):
     notes: str | None = None
     follow_up_on: date | None = None
 
+    @field_validator("applied_at")
+    @classmethod
+    def normalize_applied_at(cls, value: datetime | None) -> datetime | None:
+        return _normalize_aware_utc(value, "applied_at")
+
 
 class ApplicationByJobUpdate(BaseModel):
     status: ApplicationStatus
@@ -166,6 +190,10 @@ class ApplicationJobState(BaseModel):
     applied_at: datetime | None
     notes: str | None
     follow_up_on: date | None
+
+    @field_serializer("applied_at")
+    def serialize_applied_at(self, value: datetime | None) -> datetime | None:
+        return _normalize_persisted_utc(value)
 
 
 class ApplicationJobStateMap(BaseModel):

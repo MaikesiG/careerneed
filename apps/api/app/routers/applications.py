@@ -232,7 +232,7 @@ def upsert_application_for_job(
             job_id=job_id,
             resume_id=payload.resume_id,
             status=payload.status,
-            applied_at=datetime.utcnow() if payload.status == "applied" else None,
+            applied_at=datetime.now(timezone.utc) if payload.status == "applied" else None,
             notes=payload.notes,
         )
         db.add(application)
@@ -245,7 +245,7 @@ def upsert_application_for_job(
             application.notes = payload.notes
 
         if payload.status == "applied" and application.applied_at is None:
-            application.applied_at = datetime.utcnow()
+            application.applied_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(application)
@@ -571,7 +571,7 @@ def save_job(
         job_id=payload.job_id,
         resume_id=payload.resume_id,
         status=payload.status,
-        applied_at=datetime.utcnow() if payload.status == "applied" else None,
+        applied_at=datetime.now(timezone.utc) if payload.status == "applied" else None,
         notes=payload.notes,
     )
     db.add(application)
@@ -614,7 +614,7 @@ def update_application(
             raise HTTPException(status_code=404, detail="Resume not found")
 
     if update_data.get("status") == "applied" and application.applied_at is None:
-        update_data.setdefault("applied_at", datetime.utcnow())
+        update_data.setdefault("applied_at", datetime.now(timezone.utc))
 
     for field in ("status", "resume_id", "applied_at", "notes"):
         if field in update_data:

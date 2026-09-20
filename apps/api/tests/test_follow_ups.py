@@ -102,21 +102,28 @@ def test_follow_up_routes_require_authentication(client: TestClient) -> None:
     application_id = uuid.uuid4()
     follow_up_id = uuid.uuid4()
 
-    assert client.post(
-        f"/applications/{application_id}/follow-ups",
-        json=follow_up_payload(),
-    ).status_code == 401
+    assert (
+        client.post(
+            f"/applications/{application_id}/follow-ups",
+            json=follow_up_payload(),
+        ).status_code
+        == 401
+    )
     assert client.get(f"/applications/{application_id}/follow-ups").status_code == 401
-    assert client.get(
-        f"/applications/{application_id}/follow-ups/{follow_up_id}"
-    ).status_code == 401
-    assert client.patch(
-        f"/applications/{application_id}/follow-ups/{follow_up_id}",
-        json={"title": "Updated"},
-    ).status_code == 401
-    assert client.delete(
-        f"/applications/{application_id}/follow-ups/{follow_up_id}"
-    ).status_code == 401
+    assert (
+        client.get(f"/applications/{application_id}/follow-ups/{follow_up_id}").status_code == 401
+    )
+    assert (
+        client.patch(
+            f"/applications/{application_id}/follow-ups/{follow_up_id}",
+            json={"title": "Updated"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.delete(f"/applications/{application_id}/follow-ups/{follow_up_id}").status_code
+        == 401
+    )
 
 
 def test_follow_up_crud_filters_and_deletion(
@@ -142,9 +149,7 @@ def test_follow_up_crud_filters_and_deletion(
     )
 
     follow_up_id = created["id"]
-    get_response = client.get(
-        f"/applications/{application.id}/follow-ups/{follow_up_id}"
-    )
+    get_response = client.get(f"/applications/{application.id}/follow-ups/{follow_up_id}")
     assert get_response.status_code == 200
 
     list_response = client.get(
@@ -168,9 +173,9 @@ def test_follow_up_crud_filters_and_deletion(
     assert updated["type"] == "status_check"
     assert updated["title"] == "Check status"
     assert updated["notes"] is None
-    assert datetime.fromisoformat(
-        updated["completed_at"].replace("Z", "+00:00")
-    ) == datetime(2026, 9, 21, 14, 30, tzinfo=timezone.utc)
+    assert datetime.fromisoformat(updated["completed_at"].replace("Z", "+00:00")) == datetime(
+        2026, 9, 21, 14, 30, tzinfo=timezone.utc
+    )
 
     completed_response = client.get(
         f"/applications/{application.id}/follow-ups",
@@ -186,13 +191,11 @@ def test_follow_up_crud_filters_and_deletion(
     assert reopen_response.json()["completed_at"] is None
     assert reopen_response.json()["interview_id"] is None
 
-    delete_response = client.delete(
-        f"/applications/{application.id}/follow-ups/{follow_up_id}"
-    )
+    delete_response = client.delete(f"/applications/{application.id}/follow-ups/{follow_up_id}")
     assert delete_response.status_code == 204
-    assert client.get(
-        f"/applications/{application.id}/follow-ups/{follow_up_id}"
-    ).status_code == 404
+    assert (
+        client.get(f"/applications/{application.id}/follow-ups/{follow_up_id}").status_code == 404
+    )
     assert client.get(f"/applications/{application.id}/follow-ups").json() == []
 
 
@@ -210,25 +213,27 @@ def test_follow_up_owner_isolation_for_all_operations(
     other_client = TestClient(app)
     try:
         register(other_client, "follow-up-other@example.test")
-        item_path = (
-            f"/applications/{owner_application.id}/follow-ups/{created['id']}"
+        item_path = f"/applications/{owner_application.id}/follow-ups/{created['id']}"
+        assert (
+            other_client.get(f"/applications/{owner_application.id}/follow-ups").status_code == 404
         )
-        assert other_client.get(
-            f"/applications/{owner_application.id}/follow-ups"
-        ).status_code == 404
-        assert other_client.post(
-            f"/applications/{owner_application.id}/follow-ups",
-            json=follow_up_payload(),
-        ).status_code == 404
+        assert (
+            other_client.post(
+                f"/applications/{owner_application.id}/follow-ups",
+                json=follow_up_payload(),
+            ).status_code
+            == 404
+        )
         assert other_client.get(item_path).status_code == 404
         assert other_client.patch(item_path, json={"title": "Stolen"}).status_code == 404
         assert other_client.delete(item_path).status_code == 404
     finally:
         other_client.close()
 
-    assert client.get(
-        f"/applications/{owner_application.id}/follow-ups/{created['id']}"
-    ).status_code == 200
+    assert (
+        client.get(f"/applications/{owner_application.id}/follow-ups/{created['id']}").status_code
+        == 200
+    )
 
 
 def test_interview_relationship_validation_on_create_update_and_filter(
@@ -256,14 +261,20 @@ def test_interview_relationship_validation_on_create_update_and_filter(
         json=follow_up_payload(),
     ).json()
     item_path = f"/applications/{application.id}/follow-ups/{created['id']}"
-    assert client.patch(
-        item_path,
-        json={"interview_id": str(mismatched_interview.id)},
-    ).status_code == 404
-    assert client.get(
-        f"/applications/{application.id}/follow-ups",
-        params={"interview_id": str(mismatched_interview.id)},
-    ).status_code == 404
+    assert (
+        client.patch(
+            item_path,
+            json={"interview_id": str(mismatched_interview.id)},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/applications/{application.id}/follow-ups",
+            params={"interview_id": str(mismatched_interview.id)},
+        ).status_code
+        == 404
+    )
 
     other_client = TestClient(app)
     try:
@@ -274,14 +285,20 @@ def test_interview_relationship_validation_on_create_update_and_filter(
             application=foreign_application,
             title="Foreign interview",
         )
-        assert client.post(
-            f"/applications/{application.id}/follow-ups",
-            json=follow_up_payload(interview_id=str(foreign_interview.id)),
-        ).status_code == 404
-        assert client.patch(
-            item_path,
-            json={"interview_id": str(foreign_interview.id)},
-        ).status_code == 404
+        assert (
+            client.post(
+                f"/applications/{application.id}/follow-ups",
+                json=follow_up_payload(interview_id=str(foreign_interview.id)),
+            ).status_code
+            == 404
+        )
+        assert (
+            client.patch(
+                item_path,
+                json={"interview_id": str(foreign_interview.id)},
+            ).status_code
+            == 404
+        )
     finally:
         other_client.close()
 
@@ -362,11 +379,84 @@ def test_dedicated_follow_up_drives_dashboard_without_changing_legacy_date(
     assert application.follow_up_on == today
     after_summary = client.get("/dashboard/summary").json()
     after_items = client.get("/dashboard/follow-ups").json()["items"]
-    assert after_summary["follow_ups_due_today"] == (
-        before_summary["follow_ups_due_today"] + 1
-    )
+    assert after_summary["follow_ups_due_today"] == (before_summary["follow_ups_due_today"] + 1)
     assert after_summary["follow_ups_overdue"] == before_summary["follow_ups_overdue"]
     before_item_ids = {item["id"] for item in before_items}
     after_item_ids = {item["id"] for item in after_items}
     assert str(application.id) not in before_item_ids
     assert str(application.id) in after_item_ids
+
+    follow_up_id = create_response.json()["id"]
+    item_path = f"/applications/{application.id}/follow-ups/{follow_up_id}"
+    complete_response = client.patch(
+        item_path,
+        json={"completed_at": due_today.isoformat()},
+    )
+    assert complete_response.status_code == 200
+    db_session.refresh(application)
+    assert application.follow_up_on == today
+
+    reopen_response = client.patch(item_path, json={"completed_at": None})
+    assert reopen_response.status_code == 200
+    db_session.refresh(application)
+    assert application.follow_up_on == today
+
+    delete_response = client.delete(item_path)
+    assert delete_response.status_code == 204
+    db_session.refresh(application)
+    assert application.follow_up_on == today
+
+
+@pytest.mark.parametrize(
+    "deprecated_value",
+    [
+        "2026-09-20",
+        None,
+    ],
+)
+def test_update_application_rejects_deprecated_follow_up_on(
+    client: TestClient,
+    db_session: Session,
+    deprecated_value: str | None,
+) -> None:
+    user = register(
+        client,
+        f"application-deprecated-follow-up-{uuid.uuid4()}@example.test",
+    )
+    application = create_application(
+        db_session,
+        user_id=user["id"],
+        follow_up_on=date(2026, 9, 19),
+    )
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={"follow_up_on": deprecated_value},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "follow_up_on is deprecated; use the FollowUp endpoints instead"
+    }
+
+    db_session.refresh(application)
+    assert application.follow_up_on == date(2026, 9, 19)
+
+
+def test_update_application_without_follow_up_on_still_succeeds(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = register(
+        client,
+        f"application-update-without-follow-up-{uuid.uuid4()}@example.test",
+    )
+    application = create_application(db_session, user_id=user["id"])
+
+    response = client.patch(
+        f"/applications/{application.id}",
+        json={"status": "applied"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "applied"
