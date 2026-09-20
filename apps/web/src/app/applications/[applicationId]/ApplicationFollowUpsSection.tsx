@@ -72,15 +72,16 @@ export function interviewContextLabel(
   followUp: Pick<InterviewFollowUp, "interview_id">,
   interview: Pick<Interview, "round" | "title"> | undefined
 ): string {
-  if (!followUp.interview_id) return "General";
+  if (!followUp.interview_id) return "Application";
   if (!interview) return "Interview follow-up";
 
   const title = interview.title.trim();
   const round = Number.isInteger(interview.round) && interview.round > 0
     ? `Round ${interview.round}`
     : "";
-  if (round && title) return `${round} · ${title}`;
-  return title || round || "Interview follow-up";
+  if (round && title) return `Interview · ${round} · ${title}`;
+  if (round || title) return `Interview · ${round || title}`;
+  return "Interview follow-up";
 }
 
 export default function ApplicationFollowUpsSection({
@@ -408,7 +409,13 @@ export default function ApplicationFollowUpsSection({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-foreground text-sm font-semibold">{followUp.title}</h3>
-              <span className="border-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs">
+              <span
+                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  followUp.interview_id
+                    ? "border-primary/30 bg-primary/10 text-primary"
+                    : "border-border bg-muted text-muted-foreground"
+                }`}
+              >
                 {contextLabel}
               </span>
               <span className="border-border bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs">

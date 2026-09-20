@@ -109,13 +109,26 @@ describe("ApplicationFollowUpsSection", () => {
     const view = renderFollowUpsSection();
 
     expect(screen.getByText("Loading follow-ups…")).toBeInTheDocument();
-    expect(await screen.findByText("Check application status")).toBeInTheDocument();
-    expect(screen.getByText("General")).toBeInTheDocument();
+    const openRow = (await screen.findByText("Check application status")).closest("article")!;
+    expect(within(openRow).getByText("Application")).toBeInTheDocument();
+    expect(within(openRow).getByText(/· UTC$/)).toBeInTheDocument();
+    expect(within(openRow).getByRole("button", { name: "Mark complete" })).toBeInTheDocument();
+    expect(within(openRow).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(openRow).getByRole("button", { name: "Delete" })).toBeInTheDocument();
     expect(screen.queryByText("Send thank-you")).not.toBeInTheDocument();
 
+    const initialInterviewGets = fetchSpy.mock.calls.filter(([input]) =>
+      input.toString().endsWith(`/applications/${applicationId}/interviews`)
+    );
+    expect(initialInterviewGets).toHaveLength(1);
+
     fireEvent.click(screen.getByRole("button", { name: "Completed (1)" }));
-    expect(screen.getByText("Send thank-you")).toBeInTheDocument();
-    expect(screen.getByText("Round 2 · System design")).toBeInTheDocument();
+    const completedRow = screen.getByText("Send thank-you").closest("article")!;
+    expect(within(completedRow).getByText("Interview · Round 2 · System design")).toBeInTheDocument();
+    expect(within(completedRow).getByText(/· UTC$/)).toBeInTheDocument();
+    expect(within(completedRow).getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+    expect(within(completedRow).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(completedRow).getByRole("button", { name: "Delete" })).toBeInTheDocument();
 
     view.rerender(
       <ApplicationFollowUpsSection
@@ -134,11 +147,11 @@ describe("ApplicationFollowUpsSection", () => {
 
   it("uses complete, title-only, round-only, and missing interview label fallbacks", () => {
     const linked = followUp({ interview_id: "interview-1" });
-    expect(interviewContextLabel(linked, interview())).toBe("Round 2 · System design");
-    expect(interviewContextLabel(linked, interview({ round: 0, title: "Panel" }))).toBe("Panel");
-    expect(interviewContextLabel(linked, interview({ round: 3, title: "  " }))).toBe("Round 3");
+    expect(interviewContextLabel(linked, interview())).toBe("Interview · Round 2 · System design");
+    expect(interviewContextLabel(linked, interview({ round: 0, title: "Panel" }))).toBe("Interview · Panel");
+    expect(interviewContextLabel(linked, interview({ round: 3, title: "  " }))).toBe("Interview · Round 3");
     expect(interviewContextLabel(linked, undefined)).toBe("Interview follow-up");
-    expect(interviewContextLabel(followUp(), undefined)).toBe("General");
+    expect(interviewContextLabel(followUp(), undefined)).toBe("Application");
   });
 
   it("quick-add posts an application-level record with null interview, timezone, and UTC due time", async () => {
@@ -233,14 +246,14 @@ describe("ApplicationFollowUpsSection", () => {
 
     renderFollowUpsSection();
     const row = (await screen.findByText("Original title")).closest("article")!;
-    expect(within(row).getByText("Round 2 · System design")).toBeInTheDocument();
+    expect(within(row).getByText("Interview · Round 2 · System design")).toBeInTheDocument();
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Updated title" } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save changes" }));
 
     const updatedRow = (await screen.findByText("Updated title")).closest("article")!;
     expect(patchBody).not.toHaveProperty("interview_id");
-    expect(within(updatedRow).getByText("Round 2 · System design")).toBeInTheDocument();
+    expect(within(updatedRow).getByText("Interview · Round 2 · System design")).toBeInTheDocument();
   });
 
   it("delete uses ConfirmDialog; cancel makes no request and confirm makes exactly one DELETE", async () => {
