@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative Architecture Standard  
 > **Owner:** CareerNeed Platform & Data Engineering  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** RESTful API conventions, owner-scoped authorization, safe 404 behavior, error envelope, pagination, idempotency, timestamps, Alembic migrations, and private file storage standards.
 
 ---
@@ -61,8 +61,43 @@ if app is None:
 - Repeated submissions with the same key within a 24-hour window return the cached initial response without executing duplicate database mutations.
 
 ### 3.3 UTC Timestamps and IANA Timezones
-- All database columns storing timestamps use `DateTime(timezone=True)` storing UTC.
-- User-facing schedule calculations store the associated IANA timezone (e.g. `America/Toronto`).
+
+- Canonical FollowUp scheduling stores a timezone-aware UTC instant in `due_at_utc` and a validated
+  IANA `timezone` for workflow/display context.
+- Date-sensitive APIs accept `timezone`; omission defaults to UTC where the route makes the
+  parameter optional. Invalid identifiers return HTTP 422 without exposing internals.
+- Local-day boundaries **MUST** be constructed as consecutive local calendar midnights in the
+  requested `ZoneInfo`, then converted to UTC. Classification uses the half-open interval
+  `[utc_start, utc_next_start)`.
+- Code **MUST NOT** use server-local `date.today()` or derive the next boundary by adding 24 hours
+  to the UTC start. This preserves 23-hour and 25-hour DST days.
+- Exact next local midnight belongs to the new day.
+
+`Application.applied_at` is a compatibility exception: its current database column is
+timezone-naive. Explicit update input **MUST** be aware and is normalized to UTC; automatic writes
+use `datetime.now(timezone.utc)`. Response serializers interpret historical naive values as UTC
+without mutating ORM state or writing data. This does not imply repository-wide UTC cleanup.
+
+### 3.4 Canonical FollowUp aggregation
+
+Application summaries **MUST** aggregate owner-scoped incomplete FollowUps by `application_id`
+before joining Applications:
+
+- `MIN(due_at_utc)` becomes `next_open_follow_up_at`;
+- `COUNT(id)` becomes `open_follow_up_count`;
+- completed rows are excluded; and
+- an outer join preserves Applications with no open rows.
+
+A raw one-to-many join **MUST NOT** duplicate Application rows or corrupt pagination/counts.
+Dashboard due/overdue metrics remain Application counts based on each Application's earliest open
+FollowUp. See [ADR-0002](../07-decisions/ADR-0002-canonical-follow-up-migration.md).
+
+### 3.5 Legacy FollowUp write rejection
+
+`Application.follow_up_on` is a temporary compatibility field, not an active scheduler.
+`PATCH /applications/{application_id}` rejects its presence, including null, with HTTP 422 and
+detail `follow_up_on is deprecated; use the FollowUp endpoints instead`. The API **MUST NOT**
+silently ignore or automatically convert it.
 
 ---
 

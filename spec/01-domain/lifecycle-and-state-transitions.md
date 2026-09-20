@@ -2,7 +2,7 @@
 
 > **Status:** Implemented (Core Statuses) / Planned (Timeline & Snapshots)  
 > **Owner:** CareerNeed Platform Engineering  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** Application state machine, interview stages and statuses, follow-up lifecycles, job lifecycles, user job states, immutable snapshots, and event timelines.
 
 ---
@@ -66,6 +66,17 @@ When a user submits an application, CareerNeed captures an **immutable snapshot*
 - **Explicit Reopening**: Transitioning out of a terminal state (`accepted`, `declined`, `rejected`, `withdrawn`) is permitted only through a deliberate user action that logs a re-opened event.
 - **Transactional Mutation**: Every application status change must validate ownership, record the new status, update timestamps, and insert an immutable `career_event` in a single transaction.
 
+### Applied timestamp compatibility contract
+
+- Explicit `ApplicationUpdate.applied_at` input **MUST** be timezone-aware. Accepted values are
+  normalized to UTC; naive values are rejected by schema validation.
+- Automatic Application assignments use `datetime.now(timezone.utc)`.
+- Because the current Application column is timezone-naive, historical naive values are treated
+  as UTC at the response boundary. This serialization step is pure: it does not mutate ORM state
+  or write to the database.
+- This narrow compatibility rule does not assert that every timestamp in the repository has been
+  migrated. A repository-wide `datetime.utcnow()` audit is deferred.
+
 ---
 
 ## 3. Interview Lifecycle
@@ -105,22 +116,22 @@ Scheduled ──► Rescheduled ──► Completed ──► [ Outcome: Advance
 
 ---
 
-## 4. Follow-up Action Lifecycle
+## 4. Canonical FollowUp Lifecycle
 
-Follow-ups represent critical workflow obligations associated with an application or interview round:
+FollowUps are owner-scoped actions associated with an Application and, optionally, one Interview.
+They support create, edit, complete, reopen, and delete.
 
-- **Follow-up Types**:
-  - `thank_you`: Gratitude and key technical clarification message sent after an interview round.
-  - `status_check`: Polite inquiry following an elapsed response window.
-  - `recruiter_reply`: Response to an inbound recruiter email or scheduling request.
-  - `preparation`: Self-study task (e.g., "Review system design for payment gateways").
-  - `custom`: Candidate-defined reminder.
-- **Status Progression**:
-  - `pending` (Scheduled for future date/time).
-  - `due_today` (Calculated dynamically against user timezone).
-  - `overdue` (Calculated dynamically when due time has elapsed).
-  - `completed` (Resolved with explicit `completed_at` timestamp).
-  - `dismissed` (Safely removed without execution).
+- `thank_you`, `status_check`, `recruiter_reply`, `preparation`, and `custom` are the current types.
+- Open means `completed_at IS NULL`; complete means `completed_at IS NOT NULL`.
+- Complete sets a timestamp and reopen clears it. Due-today and overdue are calculated views, not
+  persisted lifecycle statuses.
+- `due_at_utc` is a timezone-aware instant and `timezone` is a validated IANA identifier used to
+  retain workflow/display context.
+- Lifecycle operations **MUST NOT** mutate `Application.follow_up_on`.
+
+Date-sensitive classification uses the requested local calendar day's UTC boundaries. See
+[API and data conventions](../06-architecture/api-and-data-conventions.md) and
+[ADR-0002](../07-decisions/ADR-0002-canonical-follow-up-migration.md).
 
 ---
 

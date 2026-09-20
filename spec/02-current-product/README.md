@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative Capability Registry  
 > **Owner:** CareerNeed Product & Engineering  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** Consolidated tracking index of all functional product capabilities, implementation statuses, primary specifications, and architectural dependencies.
 
 ---
@@ -16,12 +16,12 @@ This document serves as the single authoritative status matrix for CareerNeed's 
 | **Jobs Catalog & Ingestion** | **Implemented** | [`jobs-and-job-sources.md`](jobs-and-job-sources.md) | Ashby, Greenhouse, Lever connectors, manual entry (`/jobs/add`), deduplication by `(source, external_job_id)`. |
 | **Jobs Workspace & Filters** | **In progress** | [`jobs-and-job-sources.md`](jobs-and-job-sources.md) | Direction-aware two-column desktop layout (`lg`), mobile drawer, workplace type, source, match score, offset pagination. |
 | **Applications Tracking** | **Implemented** | [`applications.md`](applications.md) | User-scoped CRUD, List and Kanban Board (`/applications/board`), Status Editor, Notes Editor. |
-| **Application Detail Workspace** | **Implemented** | [`applications.md`](applications.md) | Client-side detail view (`/applications/[id]`), Resume Linker, Follow-up Date Editor, linked contacts. |
+| **Application Detail Workspace** | **Implemented** | [`applications.md`](applications.md) | Client-side detail view (`/applications/[id]`), status and notes editing, canonical application/interview FollowUps, linked contacts. The legacy date-only Follow-up editor is removed. |
 | **Application Snapshots** | **In progress** | [`applications.md`](applications.md) | Immutable freezing of job description, applied resume text, and match evaluation at submission time. |
 | **Interviews Management** | **Implemented** | [`interviews-and-preparation.md`](interviews-and-preparation.md) | Multi-round interview CRUD, stages, statuses, outcomes, UTC scheduled timestamps, IANA timezones. |
 | **Contacts & Participants** | **Implemented** | [`contacts-follow-ups-and-todos.md`](contacts-follow-ups-and-todos.md) | Global reusable contacts (`/contacts`), application contacts (`ApplicationContact`), participant linking. |
 | **Questions & Reflections** | **Implemented** | [`interviews-and-preparation.md`](interviews-and-preparation.md) | Independent `interview_questions` table, categories, answer notes, reflections, validated HTTPS LeetCode URLs. |
-| **Follow-ups & Today Dashboard** | **Implemented** | [`contacts-follow-ups-and-todos.md`](contacts-follow-ups-and-todos.md) | Actionable `FollowUp` entities, due/overdue calculation, Today daily action dashboard (`/todo`). |
+| **Follow-ups & Today Dashboard** | **Implemented** | [`contacts-follow-ups-and-todos.md`](contacts-follow-ups-and-todos.md) | Canonical owner-scoped `FollowUp` entities, application aggregates, IANA local-day classification, and Today (`/todo`). See [ADR-0002](../07-decisions/ADR-0002-canonical-follow-up-migration.md). |
 | **Resume Foundation** | **Implemented** | [`resumes.md`](resumes.md) | PDF upload (10MB limit), `pdfplumber` text extraction, skill extraction with regex fallback, labeling, soft archive, single default. |
 | **AI Server-Side Routing** | **In progress / mock-tested** | [`../03-ai/controlled-ai-architecture.md`](../03-ai/controlled-ai-architecture.md) | Centralized server-side model routing, secure environment/platform secret configuration, timeout controls, safe error normalization. Not production-validated. |
 | **OpenAI Structured-Output Adapter** | **In progress / mock-tested** | [`../03-ai/controlled-ai-architecture.md`](../03-ai/controlled-ai-architecture.md) | Live provider smoke test pending or blocked until billing/model entitlement succeeds. Not production-validated. |

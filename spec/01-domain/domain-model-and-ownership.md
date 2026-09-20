@@ -2,7 +2,7 @@
 
 > **Status:** Implemented (Core Tables) / Planned (Direction & Context Extensions)  
 > **Owner:** CareerNeed Platform & Data Architecture  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** Canonical domain entities, relationships, ownership boundaries, visibility tiers, and the single domain object rule.
 
 ---
@@ -66,6 +66,24 @@ To ensure long-term architectural durability and avoid costly database redesigns
 6. **Follow-up ≠ Notification**:
    - A `Follow-up` is a business action record (e.g., "Send thank-you to interviewer").
    - A `Notification` is a reminder that an action is due.
+
+### Canonical FollowUp boundary
+
+`FollowUp` is the canonical behavioral source of truth for reminders. It owns `id`, `user_id`,
+`application_id`, optional `interview_id`, `title`, `type`, `due_at_utc`, `timezone`,
+`completed_at`, `created_at`, and `updated_at`.
+
+- An open FollowUp **MUST** have `completed_at IS NULL`; a completed FollowUp **MUST** have
+  `completed_at IS NOT NULL`.
+- An application-scoped FollowUp has an `application_id` and a null `interview_id`.
+- An interview-scoped FollowUp has both identifiers. The Interview workspace and Application
+  overview may show that same record; this is not duplicate data.
+- `FollowUp.user_id` **MUST** match the owner of its Application. A supplied Interview **MUST**
+  belong to that Application and owner.
+- FollowUp lifecycle operations **MUST NOT** write the legacy `Application.follow_up_on` column.
+
+See [ADR-0002](../07-decisions/ADR-0002-canonical-follow-up-migration.md) and the
+[current FollowUp workflow](../02-current-product/contacts-follow-ups-and-todos.md).
 
 ---
 
@@ -131,14 +149,15 @@ users (id, email, password_hash, created_at)
   │
   ├── contacts (id, user_id, name, title, email, linkedin_url, relationship_type)
   │
-  ├── applications (id, user_id, job_id, resume_version_id, status, applied_at, notes)
+  ├── applications (id, user_id, job_id, resume_id, status, applied_at, notes, follow_up_on [legacy])
   │     ├── application_contacts (id, application_id, contact_id, name, role, email)
   │     │
   │     ├── interviews (id, application_id, round, stage, scheduled_at, status, outcome)
   │     │     ├── interview_participants (id, interview_id, contact_id, role)
   │     │     └── interview_questions (id, interview_id, question, category, reflection, leetcode_url)
   │     │
-  │     └── follow_ups (id, application_id, interview_id, type, title, due_at, completed_at)
+  │     └── follow_ups (id, user_id, application_id, interview_id, type, title,
+  │                     due_at_utc, timezone, completed_at, created_at, updated_at)
   │
   ├── ai_suggestions (id, user_id, entity_type, entity_id, suggestion_type, status)
   │

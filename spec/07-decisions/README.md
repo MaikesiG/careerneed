@@ -2,7 +2,7 @@
 
 > **Status:** Active Registry  
 > **Owner:** CareerNeed Product & Engineering Architecture  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** Index and standards for Architecture Decision Records in CareerNeed.
 
 ---
@@ -30,3 +30,4 @@ Every ADR must follow this format:
 | ADR ID | Title | Date | Status | Summary |
 |---|---|---|:---:|---|
 | [`ADR-0001`](ADR-0001-product-scope-and-phasing.md) | Product Scope, Technical ICP, and 6-Phase Strategic Roadmap | 2026-09-19 | **Accepted** | Establishes US/CA technical job seekers as initial operational market with global portability, defines the 4 core pillars, and enforces the 6-phase roadmap. |
+| [`ADR-0002`](ADR-0002-canonical-follow-up-migration.md) | Canonical FollowUp Migration and Legacy Application.follow_up_on Deprecation | 2026-09-20 | **Accepted / Current Compatibility State** | Makes owner-scoped FollowUp the behavioral source, defines application-safe aggregation and IANA day boundaries, and freezes legacy writes while storage/response compatibility remains. |

@@ -2,14 +2,14 @@
 
 > **Status:** Authoritative Frontend Standard  
 > **Owner:** CareerNeed Frontend Engineering  
-> **Last Updated:** 2026-09-19  
-> **Scope:** Next.js App Router boundaries, four-tier state ownership, loading/error/empty states, web accessibility, and safe AI text rendering.
+> **Last Updated:** 2026-09-20  
+> **Scope:** Next.js App Router boundaries, current state ownership, loading/error/empty states, web accessibility, and safe AI text rendering.
 
 ---
 
 ## 1. Next.js Server and Client Component Boundaries
 
-CareerNeed uses the Next.js App Router (`apps/web/app/`):
+CareerNeed uses the Next.js App Router (`apps/web/src/app/`):
 
 ```text
 Server Component (Layout / Shell)
@@ -19,9 +19,9 @@ Server Component (Layout / Shell)
       │
       ▼
 Client Component ('use client')
-      ├── Manages Interactive State (Modals, Forms, Tabs)
-      ├── Subscribes to TanStack Query for Dynamic Mutations
-      └── Handles Optimistic UI Updates
+      ├── Calls the route-local `apiFetch` client
+      ├── Owns loading, error, empty, form, and disclosure state
+      └── Uses request guards and abort/mounted checks where needed
 ```
 
 - **Boundary Invariant**: Keep server components as high in the tree as possible. Introduce `'use client'` only at interactive leaf components (e.g. `ApplicationStatusEditor`, `InterviewModal`, `JobFilterDrawer`).
@@ -29,16 +29,35 @@ Client Component ('use client')
 
 ---
 
-## 2. Four-Tier State Ownership Standard
+## 2. Current state and request ownership
 
-To eliminate state duplication and stale UI bugs, every piece of frontend data belongs to exactly one tier:
+The current implementation uses route-local `apiFetch` calls and component-owned state. Client
+components use `useState`, `useRef`, `useCallback`, and `useEffect` for loading/error/empty states,
+forms, disclosure, in-flight guards, cancellation, and stale-response protection.
 
-| State Tier | Responsible Tool | Use Cases | State Invariant |
-|---|---|---|---|
-| **1. Server State** | TanStack Query | Jobs, Applications, Interviews, Questions, Resumes, Contacts. | Never duplicated into local React state or global store. Relies on query invalidation. |
-| **2. URL State** | Next.js Router / SearchParams | Active filters, sort keys, page offsets, active direction ID. | Single source of truth for list views. Back button and refresh must reproduce state. |
-| **3. Form State** | React Hook Form + Zod | Application editing, interview question drafts, prep notes. | Managed locally in form hook; validated with Zod before network submission. |
-| **4. Local UI State** | React `useState` | Modal open/close, accordion toggles, dropdown active item. | Component-scoped ephemeral state. |
+- Visible URL parameters are for user-controlled, shareable, restorable page state such as list
+  filters, sorting, and pagination.
+- Browser timezone is API-only request context. Transient dialogs, disclosure state, pending form
+  state, and timezone **MUST NOT** be added to visible query parameters.
+- Global state SHOULD be avoided unless a demonstrated cross-route ownership problem requires it.
+- A query/cache library or form library MAY be adopted later when measured complexity justifies
+  it. TanStack Query, React Hook Form, and Zod are not mandatory current architecture.
+
+### Route-local FollowUp synchronization
+
+Application Detail lifts a numeric `followUpsRevision` and stable `onFollowUpsChanged` callback to
+`ApplicationDetailClient`. Successful canonical mutations update the mutating component locally,
+then increment the revision once. Other mounted Application or Interview FollowUp sections refetch
+their own scope once per external revision while ignoring their own notification. Implementations
+use in-flight, mounted, and abort protections and **MUST NOT** introduce a global event bus or cache
+for this route-local requirement.
+
+### Interview workspace disclosure ownership
+
+Questions, Participants, and Interview Follow-ups each own their single disclosure control in the
+corresponding child component. Parent visual containers **MUST NOT** duplicate heading, count,
+Show/Hide text, caret, disclosure state, or accessibility relationship. See
+[Interviews and preparation](../02-current-product/interviews-and-preparation.md).
 
 ---
 

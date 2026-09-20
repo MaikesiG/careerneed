@@ -2,7 +2,7 @@
 
 > **Status:** Implemented (CRUD, Questions, LeetCode, Participants) / In Progress (Preparation Brief Integration)  
 > **Owner:** CareerNeed Product & Engineering  
-> **Last Updated:** 2026-09-19  
+> **Last Updated:** 2026-09-20  
 > **Scope:** Multi-round interview scheduling, participants, interview questions, reflections, LeetCode links, preparation notes, and outcome debriefs.
 
 ---
@@ -83,6 +83,12 @@ Interview (1) ──► InterviewParticipant (N) ◄── Contact (1)
   - `coordinator`: Recruiting coordinator handling logistics and links.
   - `observer`: Shadow interviewer or apprentice evaluator.
 - **Data Safety**: Adding a participant links an existing canonical contact or creates an application snapshot contact. Deleting a contact removes participant links without deleting the parent interview or application.
+- A participant is the assignment of one canonical Contact to one Interview with role
+  `interviewer`, `coordinator`, or `observer`.
+- Adding a participant also ensures one linked `ApplicationContact` exists for that Contact and
+  Application. Existing linked snapshot fields are preserved rather than overwritten.
+- Editing participant role changes only `InterviewParticipant.role`; it does not modify Contact or
+  ApplicationContact data.
 
 ---
 
@@ -135,3 +141,27 @@ Next Opportunities ◄── Actionable Gaps ◄── Outcome Debrief ◄──
    - Immediately following the round, candidate logs questions while memory is fresh.
    - Candidate records reflections: what trade-offs were missed, which behavioral answer lacked data, or where the algorithm stumbled.
    - Reflections feed into the next round's preparation and daily study tasks in Todo.
+
+---
+
+## 6. Interview workspace ownership
+
+Each conceptual workspace section **MUST** have one disclosure owner:
+
+| Section | Disclosure owner |
+|---|---|
+| Questions and reflections | `InterviewQuestionsSection` |
+| Participants | `InterviewParticipantsSection` |
+| Interview Follow-ups | `InterviewFollowUpsSection` |
+
+Parent containers MAY provide static visual grouping, but **MUST NOT** duplicate headings, counts,
+Show/Hide text, carets, disclosure state, or `aria-expanded`/controlled-region relationships.
+Detailed preparation material has one primary detailed display location:
+`InterviewPreparationBriefSection`; interview summaries should not repeat long preparation output.
+
+Interview completion MAY create a canonical `thank_you` FollowUp scoped to both the Application
+and Interview when the user keeps that option selected. Completion does not automatically complete
+another FollowUp and **MUST NOT** mutate `Application.follow_up_on`.
+
+See the [canonical FollowUp workflow](contacts-follow-ups-and-todos.md) and
+[ADR-0002](../07-decisions/ADR-0002-canonical-follow-up-migration.md).
