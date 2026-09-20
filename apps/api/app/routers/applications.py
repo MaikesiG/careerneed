@@ -597,6 +597,11 @@ def update_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "follow_up_on" in update_data:
+        raise HTTPException(
+            status_code=422,
+            detail="follow_up_on is deprecated; use the FollowUp endpoints instead",
+        )
 
     if update_data.get("resume_id") is not None:
         resume = db.scalar(
@@ -611,8 +616,9 @@ def update_application(
     if update_data.get("status") == "applied" and application.applied_at is None:
         update_data.setdefault("applied_at", datetime.utcnow())
 
-    for field, value in update_data.items():
-        setattr(application, field, value)
+    for field in ("status", "resume_id", "applied_at", "notes"):
+        if field in update_data:
+            setattr(application, field, update_data[field])
 
     db.commit()
     db.refresh(application)
