@@ -1,12 +1,24 @@
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from app.config import AIModelConfig, AIModelRegistry
 from app.services.ai import OpenAIAdapter, SafeUsageMetadata
 from app.services.ai import interview_preparation_brief as brief_service
 from app.services.ai import openai_adapter as adapter_module
+from app.services.ai.routing import AIModelRoutingError
 
 
 class FakeResponses:
@@ -158,16 +170,95 @@ def test_missing_usage_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert generate(OpenAIAdapter()).usage is None
 
 
-def test_sdk_request_exception_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+def openai_status_error(error_type: type[APIError], status_code: int) -> APIError:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    response = httpx.Response(status_code, request=request)
+    return error_type(
+        "raw provider detail with test-api-key and private prompt",
+        response=response,
+        body={"error": "raw provider body"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("sdk_error", "expected_code", "expected_message"),
+    [
+        (
+            openai_status_error(AuthenticationError, 401),
+            "provider_authentication_failed",
+            "AI provider authentication failed.",
+        ),
+        (
+            openai_status_error(PermissionDeniedError, 403),
+            "provider_permission_denied",
+            "AI provider permission was denied.",
+        ),
+        (
+            openai_status_error(NotFoundError, 404),
+            "provider_resource_not_found",
+            "Requested AI provider resource was not found.",
+        ),
+        (
+            openai_status_error(RateLimitError, 429),
+            "provider_rate_limited",
+            "AI provider rate limit was reached.",
+        ),
+        (
+            openai_status_error(BadRequestError, 400),
+            "provider_invalid_request",
+            "AI provider rejected the request.",
+        ),
+        (
+            APITimeoutError(httpx.Request("POST", "https://api.openai.com/v1/responses")),
+            "provider_timeout",
+            "AI provider request timed out.",
+        ),
+        (
+            APIConnectionError(
+                message="raw connection detail with test-api-key",
+                request=httpx.Request("POST", "https://api.openai.com/v1/responses"),
+            ),
+            "provider_connection_failed",
+            "Unable to connect to the AI provider.",
+        ),
+        (
+            APIError(
+                "unknown raw provider detail with test-api-key",
+                httpx.Request("POST", "https://api.openai.com/v1/responses"),
+                body={"error": "raw provider body"},
+            ),
+            "provider_request_failed",
+            "AI provider request failed.",
+        ),
+    ],
+)
+def test_sdk_request_errors_are_safely_classified(
+    monkeypatch: pytest.MonkeyPatch,
+    sdk_error: APIError,
+    expected_code: str,
+    expected_message: str,
+) -> None:
     class FailingResponses:
         def create(self, **kwargs: object) -> object:
-            raise TimeoutError("request timed out")
+            raise sdk_error
 
     client = SimpleNamespace(responses=FailingResponses())
     monkeypatch.setattr(adapter_module, "OpenAI", lambda **kwargs: client)
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(AIModelRoutingError) as captured:
         generate(OpenAIAdapter())
+
+    assert captured.value.code == expected_code
+    assert str(captured.value) == expected_message
+    serialized_error = repr(captured.value)
+    for private_value in (
+        "test-api-key",
+        "raw provider detail",
+        "raw provider body",
+        "private prompt",
+    ):
+        assert private_value not in serialized_error
+    assert captured.value.__context__ is None
 
 
 def test_registered_openai_adapter_controls_model_availability(

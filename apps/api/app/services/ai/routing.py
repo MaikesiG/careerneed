@@ -45,6 +45,36 @@ class ProviderRequestError(AIModelRoutingError):
     safe_message = "AI provider request failed."
 
 
+class ProviderAuthenticationError(AIModelRoutingError):
+    code = "provider_authentication_failed"
+    safe_message = "AI provider authentication failed."
+
+
+class ProviderPermissionDeniedError(AIModelRoutingError):
+    code = "provider_permission_denied"
+    safe_message = "AI provider permission was denied."
+
+
+class ProviderResourceNotFoundError(AIModelRoutingError):
+    code = "provider_resource_not_found"
+    safe_message = "Requested AI provider resource was not found."
+
+
+class ProviderRateLimitError(AIModelRoutingError):
+    code = "provider_rate_limited"
+    safe_message = "AI provider rate limit was reached."
+
+
+class ProviderInvalidRequestError(AIModelRoutingError):
+    code = "provider_invalid_request"
+    safe_message = "AI provider rejected the request."
+
+
+class ProviderConnectionError(AIModelRoutingError):
+    code = "provider_connection_failed"
+    safe_message = "Unable to connect to the AI provider."
+
+
 class InvalidGenerationRequestError(AIModelRoutingError):
     code = "invalid_generation_request"
     safe_message = "AI generation request is invalid."
@@ -230,6 +260,8 @@ class ModelRouter:
                 timeout_seconds=timeout,
                 max_output_tokens=token_limit,
             )
+        except AIModelRoutingError as error:
+            normalized_error = error
         except TimeoutError:
             normalized_error = ProviderTimeoutError()
         except Exception:

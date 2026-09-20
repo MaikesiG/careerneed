@@ -23,7 +23,7 @@ from app.services.ai import (
     SafeUsageMetadata,
     UnsupportedCapabilityError,
 )
-from app.services.ai.routing import ProviderRequestError
+from app.services.ai.routing import ProviderAuthenticationError, ProviderRequestError
 
 
 def model_config(
@@ -376,6 +376,7 @@ def test_invalid_adapter_result_content_is_safely_normalized(
     ("failure", "expected_code"),
     [
         (TimeoutError("provider timeout with sk-secret"), "provider_timeout"),
+        (ProviderAuthenticationError(), "provider_authentication_failed"),
         (RuntimeError("raw provider body with sk-secret"), "provider_request_failed"),
     ],
 )

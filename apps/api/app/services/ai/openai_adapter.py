@@ -1,12 +1,31 @@
 import json
 from collections.abc import Mapping
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    OpenAI,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from app.config import AIProviderId
 from app.services.ai.routing import (
     AdapterGenerationResult,
+    AIModelRoutingError,
+    ProviderAuthenticationError,
     ProviderCapabilities,
+    ProviderConnectionError,
+    ProviderInvalidRequestError,
+    ProviderPermissionDeniedError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+    ProviderResourceNotFoundError,
+    ProviderTimeoutError,
     SafeUsageMetadata,
 )
 
@@ -32,28 +51,35 @@ class OpenAIAdapter:
         timeout_seconds: float,
         max_output_tokens: int,
     ) -> AdapterGenerationResult:
-        client = OpenAI(api_key=api_key, timeout=timeout_seconds)
-        response = client.responses.create(
-            model=model,
-            instructions=system_instruction,
-            input=json.dumps(
-                user_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ),
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": _STRUCTURED_OUTPUT_NAME,
-                    "schema": dict(output_schema),
-                    "strict": True,
-                }
-            },
-            max_output_tokens=max_output_tokens,
-            stream=False,
-            timeout=timeout_seconds,
-        )
+        normalized_error: AIModelRoutingError | None = None
+        response: object | None = None
+        try:
+            client = OpenAI(api_key=api_key, timeout=timeout_seconds)
+            response = client.responses.create(
+                model=model,
+                instructions=system_instruction,
+                input=json.dumps(
+                    user_payload,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": _STRUCTURED_OUTPUT_NAME,
+                        "schema": dict(output_schema),
+                        "strict": True,
+                    }
+                },
+                max_output_tokens=max_output_tokens,
+                stream=False,
+                timeout=timeout_seconds,
+            )
+        except APIError as error:
+            normalized_error = _normalize_openai_error(error)
+        if normalized_error is not None:
+            raise normalized_error
 
         try:
             output_text = response.output_text
@@ -73,6 +99,24 @@ class OpenAIAdapter:
             content=content,
             usage=_parse_usage(response),
         )
+
+
+def _normalize_openai_error(error: APIError) -> AIModelRoutingError:
+    if isinstance(error, AuthenticationError):
+        return ProviderAuthenticationError()
+    if isinstance(error, PermissionDeniedError):
+        return ProviderPermissionDeniedError()
+    if isinstance(error, NotFoundError):
+        return ProviderResourceNotFoundError()
+    if isinstance(error, RateLimitError):
+        return ProviderRateLimitError()
+    if isinstance(error, BadRequestError):
+        return ProviderInvalidRequestError()
+    if isinstance(error, APITimeoutError):
+        return ProviderTimeoutError()
+    if isinstance(error, APIConnectionError):
+        return ProviderConnectionError()
+    return ProviderRequestError()
 
 
 def _parse_usage(response: object) -> SafeUsageMetadata | None:
