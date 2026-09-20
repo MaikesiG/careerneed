@@ -8,7 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 API_ROOT = Path(__file__).resolve().parents[1]
 
 if os.getenv("APP_ENV", "development") == "development":
-    load_dotenv(API_ROOT / ".env.local", override=True)
+    load_dotenv(API_ROOT / ".env.local", override=False)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 

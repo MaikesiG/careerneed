@@ -17,6 +17,7 @@ from app.schemas import (
     InterviewPreparationSource,
     _InterviewPreparationBriefGenerated,
 )
+from app.services.ai.gemini_adapter import GeminiAdapter
 from app.services.ai.openai_adapter import OpenAIAdapter
 from app.services.ai.routing import (
     AIModelRoutingError,
@@ -55,6 +56,7 @@ MAX_PARTICIPANTS = 20
 
 _PROVIDER_ADAPTERS: dict[AIProviderId, ProviderAdapter] = {
     "openai": OpenAIAdapter(),
+    "google": GeminiAdapter(),
 }
 
 

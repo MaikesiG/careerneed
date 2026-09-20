@@ -148,6 +148,37 @@ def test_disabled_missing_key_and_unknown_models_are_unavailable() -> None:
             generate(router, provider, model)
 
 
+def test_google_model_availability_requires_enabled_key_and_adapter() -> None:
+    enabled = model_config(provider="google", model_id="gemini-test")
+    disabled = model_config(provider="google", model_id="gemini-disabled", enabled=False)
+    adapter = FakeAdapter(provider="google")
+
+    available_router = make_router(
+        [enabled, disabled],
+        {"google": adapter},
+        {"google": "google-server-key"},
+    )
+    assert available_router.available_models() == (enabled,)
+    result = generate(available_router, "google", "gemini-test")
+    assert result.provider == "google"
+    assert result.model == "gemini-test"
+    assert result.content == {"answer": "structured"}
+
+    missing_key_router = make_router(
+        [enabled],
+        {"google": adapter},
+        {"google": None},
+    )
+    assert missing_key_router.available_models() == ()
+
+    missing_adapter_router = make_router(
+        [enabled],
+        {},
+        {"google": "google-server-key"},
+    )
+    assert missing_adapter_router.available_models() == ()
+
+
 def test_router_dispatches_to_matching_adapter_with_bounded_inputs() -> None:
     adapter = FakeAdapter(provider="anthropic")
     configured = model_config(provider="anthropic", model_id="claude-test")

@@ -55,24 +55,38 @@ def install_fake_client(
     return client, client_arguments
 
 
-def generate(adapter: GeminiAdapter):
+def generate(
+    adapter: GeminiAdapter,
+    *,
+    api_key: str = "test-google-key",
+    model: str = "gemini-test-model",
+    system_instruction: str = "Return the requested structured object.",
+    user_payload: dict[str, object] | None = None,
+    output_schema: dict[str, object] | None = None,
+):
     return adapter.generate_structured(
-        api_key="test-google-key",
-        model="gemini-test-model",
-        system_instruction="Return the requested structured object.",
-        user_payload={"second": [2, 1], "first": "untrusted value"},
-        output_schema={
-            "type": "object",
-            "properties": {
-                "answer": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                }
-            },
-            "required": ["answer"],
-            "additionalProperties": False,
-        },
+        api_key=api_key,
+        model=model,
+        system_instruction=system_instruction,
+        user_payload=(
+            {"second": [2, 1], "first": "untrusted value"} if user_payload is None else user_payload
+        ),
+        output_schema=(
+            {
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                    }
+                },
+                "required": ["answer"],
+                "additionalProperties": False,
+            }
+            if output_schema is None
+            else output_schema
+        ),
         timeout_seconds=12.5,
         max_output_tokens=512,
     )
@@ -137,6 +151,72 @@ def test_missing_usage_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "expected_error"),
+    [
+        ("model", adapter_module.GeminiInvalidModelIdentifierError),
+        ("api_key", adapter_module.GeminiInvalidApiKeyError),
+    ],
+)
+def test_ascii_constrained_fields_reject_unicode_before_client_construction(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    expected_error: type[AIModelRoutingError],
+) -> None:
+    client, client_arguments = install_fake_client(
+        monkeypatch,
+        response=SimpleNamespace(text='{"answer":"ready"}', usage_metadata=None),
+    )
+    arguments = {field: "invalid-秘密"}
+
+    with pytest.raises(expected_error) as captured:
+        generate(GeminiAdapter(), **arguments)
+
+    assert client_arguments == {}
+    assert client.models.received is None
+    assert "invalid" not in repr(captured.value)
+    assert "秘密" not in repr(captured.value)
+
+
+def test_unicode_content_remains_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = install_fake_client(
+        monkeypatch,
+        response=SimpleNamespace(text='{"answer":"ready"}', usage_metadata=None),
+    )
+    user_payload = {
+        "resume_text": "后端工程师",
+        "job_description": "设计可靠的数据平台",
+        "interview_notes": "讨论了系统设计",
+    }
+    output_schema = {
+        "type": "object",
+        "description": "返回简洁的准备建议",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    }
+
+    result = generate(
+        GeminiAdapter(),
+        system_instruction="请返回结构化结果。",
+        user_payload=user_payload,
+        output_schema=output_schema,
+    )
+
+    assert result.content == {"answer": "ready"}
+    assert client.models.received is not None
+    serialized_payload = client.models.received["contents"]
+    assert isinstance(serialized_payload, str)
+    for expected_text in user_payload.values():
+        assert expected_text in serialized_payload
+    config = client.models.received["config"]
+    assert isinstance(config, types.GenerateContentConfig)
+    assert config.system_instruction == "请返回结构化结果。"
+    assert config.response_json_schema == output_schema
+
+
+@pytest.mark.parametrize(
     "response",
     [
         SimpleNamespace(text="provider-body: not-json", usage_metadata=None),
@@ -161,6 +241,54 @@ def test_invalid_structured_output_fails_without_leaking_content(
     assert str(captured.value) == "AI provider returned an invalid structured response."
     assert "test-google-key" not in repr(captured.value)
     assert "provider-body" not in repr(captured.value)
+
+
+def test_unicode_encode_error_retains_only_safe_structural_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private_source = "private prompt 秘密"
+    install_fake_client(
+        monkeypatch,
+        failure=UnicodeEncodeError(
+            "ascii",
+            private_source,
+            15,
+            16,
+            "raw reason containing fake-key",
+        ),
+    )
+
+    with pytest.raises(adapter_module.GeminiUnhandledProviderError) as captured:
+        generate(
+            GeminiAdapter(),
+            system_instruction="Unicode 指令",
+            user_payload={"context": "Unicode 内容"},
+            output_schema={
+                "type": "object",
+                "description": "Unicode 描述",
+            },
+        )
+
+    error = captured.value
+    assert error.exception_type == "builtins.UnicodeEncodeError"
+    diagnostic = error.unicode_diagnostic
+    assert diagnostic is not None
+    assert diagnostic.stage == "generate_content"
+    assert diagnostic.encoding == "ascii"
+    assert diagnostic.start == 15
+    assert diagnostic.end == 16
+    assert diagnostic.reason == "character cannot be encoded"
+    assert {field.name: field.ascii_compatible for field in diagnostic.fields} == {
+        "model": True,
+        "api_key": True,
+        "system_instruction": False,
+        "user_payload": False,
+        "schema": False,
+    }
+    assert not hasattr(diagnostic, "object")
+    for private_value in (private_source, "raw reason", "fake-key"):
+        assert private_value not in repr(error)
+        assert private_value not in repr(diagnostic)
 
 
 def gemini_api_error(code: int, status: str, reason: str | None = None) -> errors.APIError:
@@ -264,6 +392,28 @@ def test_provider_errors_are_safely_classified(
     assert captured.value.__context__ is None
 
 
+def test_unclassified_gemini_api_error_preserves_only_safe_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk_error = gemini_api_error(500, "INTERNAL")
+    install_fake_client(monkeypatch, failure=sdk_error)
+
+    with pytest.raises(adapter_module.GeminiUnhandledProviderError) as captured:
+        generate(GeminiAdapter())
+
+    error = captured.value
+    assert error.code == "provider_request_failed"
+    assert str(error) == "AI provider request failed."
+    assert error.failure_stage == "generate_content"
+    assert error.exception_module == "google.genai.errors"
+    assert error.exception_name == "APIError"
+    assert error.http_status == 500
+    assert "raw provider detail" not in repr(error)
+    assert "test-google-key" not in repr(error)
+    assert "private prompt" not in repr(error)
+    assert error.__context__ is None
+
+
 @pytest.mark.parametrize(
     "sdk_error",
     [
@@ -317,9 +467,13 @@ def test_unclassified_sdk_exception_is_generic_through_router(
 
     assert captured.value.code == "provider_request_failed"
     assert str(captured.value) == "AI provider request failed."
+    assert isinstance(captured.value, adapter_module.GeminiUnhandledProviderError)
+    expected_exception_type = f"{type(sdk_error).__module__}.{type(sdk_error).__name__}"
+    assert captured.value.exception_type == expected_exception_type
     assert "raw SDK validation failure" not in repr(captured.value)
     assert "raw unknown provider failure" not in repr(captured.value)
     assert "test-google-key" not in repr(captured.value)
+    assert captured.value.__context__ is None
 
 
 def test_registered_gemini_adapter_controls_model_availability(
