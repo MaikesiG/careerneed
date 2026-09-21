@@ -36,9 +36,15 @@ def get_or_create_company(db: Session, board_token: str, company_name: str) -> C
     return company
 
 
-def sync_greenhouse_jobs(db: Session, board_token: str, company_name: str) -> dict:
+def sync_greenhouse_jobs(
+    db: Session,
+    board_token: str,
+    company_name: str,
+    *,
+    company: Company | None = None,
+) -> dict:
     raw_jobs = fetch_greenhouse_jobs(board_token)
-    company = get_or_create_company(db, board_token, company_name)
+    company = company or get_or_create_company(db, board_token, company_name)
 
     created = 0
     skipped = 0

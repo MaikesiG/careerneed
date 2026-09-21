@@ -41,9 +41,15 @@ def get_or_create_company(db: Session, company_slug: str, company_name: str) -> 
     return company
 
 
-def sync_lever_jobs(db: Session, company_slug: str, company_name: str) -> dict:
+def sync_lever_jobs(
+    db: Session,
+    company_slug: str,
+    company_name: str,
+    *,
+    company: Company | None = None,
+) -> dict:
     raw_jobs = fetch_lever_jobs(company_slug)
-    company = get_or_create_company(db, company_slug, company_name)
+    company = company or get_or_create_company(db, company_slug, company_name)
 
     created = 0
     skipped = 0

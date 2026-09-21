@@ -2,29 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import type { ApplicationListItem } from "@/lib/api";
+import { getApplicationFollowUpSummaryDisplay } from "@/lib/applicationFollowUpSummary";
 
-type ApplicationStatus = "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
+type ApplicationStatus = ApplicationListItem["status"];
 
-export type PipelineApplication = {
-  id: string;
-  job_id: string;
-  resume_id: string | null;
-  status: ApplicationStatus;
-  applied_at: string | null;
-  notes: string | null;
-  follow_up_on: string | null;
-  created_at: string;
-  updated_at: string;
-  job: {
-    id: string;
-    company_name: string;
-    source: string;
-    title: string;
-    location: string | null;
-    workplace_type: string | null;
-    application_url: string;
-  };
-};
+export type PipelineApplication = ApplicationListItem;
 
 type PipelineColumnKey = "saved" | "applied" | "interviewing" | "offer" | "closed";
 
@@ -99,50 +82,6 @@ function statusClass(status: ApplicationStatus): string {
   return "border-border bg-muted text-muted-foreground";
 }
 
-function localDateKey(): string {
-  const today = new Date();
-
-  return [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function followUpLabel(value: string | null): {
-  label: string;
-  className: string;
-  needsAttention: boolean;
-} | null {
-  if (!value) {
-    return null;
-  }
-
-  const today = localDateKey();
-
-  if (value === today) {
-    return {
-      label: "Due today",
-      className: "border-warning-border bg-warning-background text-warning",
-      needsAttention: true,
-    };
-  }
-
-  if (value < today) {
-    return {
-      label: "Overdue",
-      className: "border-error-border bg-error-background text-destructive",
-      needsAttention: true,
-    };
-  }
-
-  return {
-    label: `Follow up ${value}`,
-    className: "border-border bg-muted text-muted-foreground",
-    needsAttention: false,
-  };
-}
-
 function columnClass(column: PipelineColumn): string {
   if (column.key === "interviewing") {
     return "border-primary/40 bg-primary/5";
@@ -160,7 +99,10 @@ function columnClass(column: PipelineColumn): string {
 }
 
 function ColumnCard({ application }: { application: PipelineApplication }) {
-  const followUp = followUpLabel(application.follow_up_on);
+  const followUp = getApplicationFollowUpSummaryDisplay(
+    application.next_open_follow_up_at,
+    application.open_follow_up_count
+  );
 
   return (
     <Link
@@ -188,6 +130,7 @@ function ColumnCard({ application }: { application: PipelineApplication }) {
             className={`rounded-full border px-2 py-1 text-xs font-semibold ${followUp.className}`}
           >
             {followUp.label}
+            {followUp.countLabel ? ` · ${followUp.countLabel}` : ""}
           </span>
         ) : null}
       </div>
@@ -229,7 +172,10 @@ export default function PipelineBoard({ applications }: PipelineBoardProps) {
       {PIPELINE_COLUMNS.map((column) => {
         const columnApplications = applicationsByColumn[column.key];
         const attentionCount = columnApplications.filter((application) => {
-          const followUp = followUpLabel(application.follow_up_on);
+          const followUp = getApplicationFollowUpSummaryDisplay(
+            application.next_open_follow_up_at,
+            application.open_follow_up_count
+          );
           return followUp?.needsAttention ?? false;
         }).length;
 

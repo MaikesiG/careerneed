@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -195,8 +196,19 @@ def test_logout_revokes_session_and_clears_cookie(
     registered = client.post("/auth/register", json=credentials())
     assert registered.status_code == 201
 
-    session = db_session.scalar(select(UserSession))
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    session_token_hash = hash_session_token(session_token)
+    registered_user_id = uuid.UUID(registered.json()["id"])
+
+    session = db_session.scalar(
+        select(UserSession).where(
+            UserSession.user_id == registered_user_id,
+            UserSession.token_hash == session_token_hash,
+        )
+    )
     assert session is not None
+    session_id = session.id
 
     response = client.post("/auth/logout")
 
@@ -206,7 +218,7 @@ def test_logout_revokes_session_and_clears_cookie(
     assert SESSION_COOKIE_NAME in response.headers["set-cookie"]
     assert "Max-Age=0" in response.headers["set-cookie"]
     db_session.expire_all()
-    assert db_session.get(UserSession, session.id) is None
+    assert db_session.get(UserSession, session_id) is None
 
     after_logout = client.get("/auth/me")
     assert after_logout.status_code == 401

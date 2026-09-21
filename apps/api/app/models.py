@@ -1,11 +1,26 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -21,6 +36,22 @@ class User(Base):
     applications: Mapped[list["Application"]] = relationship(back_populates="user")
     companies: Mapped[list["Company"]] = relationship(back_populates="user")
     sessions: Mapped[list["UserSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    ai_suggestions: Mapped[list["AISuggestion"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    reusable_contacts: Mapped[list["Contact"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -78,6 +109,7 @@ class Company(Base):
 
     user: Mapped["User"] = relationship(back_populates="companies")
     jobs: Mapped[list["Job"]] = relationship(back_populates="company")
+    contacts: Mapped[list["Contact"]] = relationship(back_populates="company")
 
 
 class Job(Base):
@@ -185,6 +217,15 @@ class Application(Base):
         back_populates="application",
         cascade="all, delete-orphan",
     )
+    interviews: Mapped[list["Interview"]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="Interview.round",
+    )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApplicationContact(Base):
@@ -195,6 +236,12 @@ class ApplicationContact(Base):
         UUID(as_uuid=True),
         ForeignKey("applications.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -210,6 +257,7 @@ class ApplicationContact(Base):
     )
 
     application: Mapped["Application"] = relationship(back_populates="contacts")
+    contact: Mapped["Contact | None"] = relationship(back_populates="application_contacts")
 
 
 class LLMCredential(Base):
@@ -251,3 +299,393 @@ class UsageLog(Base):
         default=datetime.utcnow,
         index=True,
     )
+
+
+class AIRun(Base):
+    __tablename__ = "ai_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('started', 'succeeded', 'failed')",
+            name="ck_ai_runs_status",
+        ),
+        CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_ai_runs_duration_ms_non_negative",
+        ),
+        CheckConstraint(
+            "input_tokens IS NULL OR input_tokens >= 0",
+            name="ck_ai_runs_input_tokens_non_negative",
+        ),
+        CheckConstraint(
+            "output_tokens IS NULL OR output_tokens >= 0",
+            name="ck_ai_runs_output_tokens_non_negative",
+        ),
+        CheckConstraint(
+            "total_tokens IS NULL OR total_tokens >= 0",
+            name="ck_ai_runs_total_tokens_non_negative",
+        ),
+        Index(
+            "ix_ai_runs_user_feature_created",
+            "user_id",
+            "feature_name",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    feature_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="started")
+    safe_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        UniqueConstraint(
+            "token_hash",
+            name="password_reset_tokens_token_hash_key",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        index=True,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
+
+
+class Interview(Base):
+    __tablename__ = "interviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    round: Mapped[int] = mapped_column(default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    interview_type: Mapped[str] = mapped_column(String(50), nullable=False, default="technical")
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    duration_minutes: Mapped[int | None] = mapped_column(nullable=True, default=60)
+    timezone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="scheduled", index=True)
+    result: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", index=True)
+    interviewer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    interviewer_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    interviewer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    meeting_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    application: Mapped["Application"] = relationship(back_populates="interviews")
+    questions: Mapped[list["InterviewQuestion"]] = relationship(
+        back_populates="interview",
+        cascade="all, delete-orphan",
+        order_by="InterviewQuestion.created_at",
+    )
+    ai_suggestions: Mapped[list["AISuggestion"]] = relationship(
+        back_populates="interview",
+        cascade="all, delete-orphan",
+        order_by="AISuggestion.created_at.desc()",
+    )
+    follow_ups: Mapped[list["FollowUp"]] = relationship(back_populates="interview")
+    participants: Mapped[list["InterviewParticipant"]] = relationship(
+        back_populates="interview",
+        cascade="all, delete-orphan",
+        order_by="InterviewParticipant.created_at",
+    )
+
+
+class Contact(Base):
+    __tablename__ = "contacts"
+    __table_args__ = (
+        CheckConstraint(
+            "relationship_type IN ('recruiter', 'interviewer', 'hiring_manager', "
+            "'referral', 'networking', 'other')",
+            name="ck_contacts_relationship_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    relationship_type: Mapped[str] = mapped_column(String(50), nullable=False, default="other")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="reusable_contacts")
+    company: Mapped["Company | None"] = relationship(back_populates="contacts")
+    participants: Mapped[list["InterviewParticipant"]] = relationship(
+        back_populates="contact",
+        cascade="all, delete-orphan",
+    )
+    application_contacts: Mapped[list["ApplicationContact"]] = relationship(
+        back_populates="contact",
+        passive_deletes=True,
+    )
+
+
+class InterviewParticipant(Base):
+    __tablename__ = "interview_participants"
+    __table_args__ = (
+        UniqueConstraint(
+            "interview_id",
+            "contact_id",
+            name="uq_interview_participants_interview_contact",
+        ),
+        CheckConstraint(
+            "role IN ('interviewer', 'coordinator', 'observer')",
+            name="ck_interview_participants_role",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    interview: Mapped["Interview"] = relationship(back_populates="participants")
+    contact: Mapped["Contact"] = relationship(back_populates="participants")
+
+
+class InterviewQuestion(Base):
+    __tablename__ = "interview_questions"
+    __table_args__ = (
+        Index("ix_interview_questions_interview_id_created_at", "interview_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="technical")
+    difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
+    answer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leetcode_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    asked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    interview: Mapped["Interview"] = relationship(back_populates="questions")
+
+
+class FollowUp(Base):
+    __tablename__ = "follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('thank_you', 'status_check', 'recruiter_reply', 'preparation', 'custom')",
+            name="ck_follow_ups_type",
+        ),
+        Index("ix_follow_ups_application_due", "application_id", "due_at_utc"),
+        Index("ix_follow_ups_application_interview", "application_id", "interview_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    interview_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    due_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="follow_ups")
+    application: Mapped["Application"] = relationship(back_populates="follow_ups")
+    interview: Mapped["Interview | None"] = relationship(back_populates="follow_ups")
+
+
+class AISuggestion(Base):
+    __tablename__ = "ai_suggestions"
+    __table_args__ = (
+        Index(
+            "ix_ai_suggestions_user_interview_type_status_created",
+            "user_id",
+            "interview_id",
+            "suggestion_type",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, default="interview")
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    suggestion_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    proposed_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(150), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    output_schema_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", index=True)
+    resolved_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="ai_suggestions")
+    interview: Mapped["Interview"] = relationship(back_populates="ai_suggestions")

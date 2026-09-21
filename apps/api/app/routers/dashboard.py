@@ -1,16 +1,30 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, Job, User
-from app.schemas import DashboardFollowUpsOut, DashboardSummaryOut
+from app.models import Application, FollowUp, Interview, Job, User
+from app.schemas import (
+    DashboardFollowUpsOut,
+    DashboardSummaryOut,
+    TodayPrioritiesOut,
+    TodayPriorityGroup,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+TODAY_GROUPS = (
+    ("overdue_follow_ups", 1),
+    ("interviews_today", 2),
+    ("follow_ups_due_today", 3),
+    ("upcoming_interviews", 4),
+    ("applications_needing_update", 5),
+)
 
 
 def count_applications(
@@ -29,12 +43,77 @@ def count_applications(
     return db.scalar(statement) or 0
 
 
+def _open_follow_up_summary(user_id: uuid.UUID):
+    return (
+        select(
+            FollowUp.application_id.label("application_id"),
+            func.min(FollowUp.due_at_utc).label("next_open_follow_up_at"),
+        )
+        .where(
+            FollowUp.user_id == user_id,
+            FollowUp.completed_at.is_(None),
+        )
+        .group_by(FollowUp.application_id)
+        .subquery()
+    )
+
+
+def _dashboard_day_bounds(timezone_name: str) -> tuple[ZoneInfo, datetime, datetime]:
+    try:
+        requested_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
+
+    now_utc = datetime.now(timezone.utc)
+    local_date = now_utc.astimezone(requested_timezone).date()
+    local_start = datetime.combine(local_date, time.min, requested_timezone)
+    local_next_start = datetime.combine(
+        local_date + timedelta(days=1),
+        time.min,
+        requested_timezone,
+    )
+    return (
+        requested_timezone,
+        local_start.astimezone(timezone.utc),
+        local_next_start.astimezone(timezone.utc),
+    )
+
+
+def _local_date_for_utc(value: datetime, requested_timezone: ZoneInfo) -> date:
+    if value.tzinfo is None or value.utcoffset() is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(requested_timezone).date()
+
+
 @router.get("/summary", response_model=DashboardSummaryOut)
 def get_dashboard_summary(
+    timezone_name: str = Query(
+        default="UTC",
+        alias="timezone",
+        min_length=1,
+        max_length=100,
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardSummaryOut:
-    today = date.today()
+    _, utc_start, utc_next_start = _dashboard_day_bounds(timezone_name)
+    open_follow_up_summary = _open_follow_up_summary(current_user.id)
+    next_open_follow_up_at = open_follow_up_summary.c.next_open_follow_up_at
+
+    def count_open_follow_up_applications(*conditions: object) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Application)
+            .join(
+                open_follow_up_summary,
+                open_follow_up_summary.c.application_id == Application.id,
+            )
+            .where(
+                Application.user_id == current_user.id,
+                *conditions,
+            )
+        )
+        return db.scalar(statement) or 0
 
     applications_saved = count_applications(
         db,
@@ -53,16 +132,12 @@ def get_dashboard_summary(
     )
 
     return DashboardSummaryOut(
-        follow_ups_due_today=count_applications(
-            db,
-            current_user.id,
-            Application.follow_up_on == today,
+        follow_ups_due_today=count_open_follow_up_applications(
+            next_open_follow_up_at >= utc_start,
+            next_open_follow_up_at < utc_next_start,
         ),
-        follow_ups_overdue=count_applications(
-            db,
-            current_user.id,
-            Application.follow_up_on.is_not(None),
-            Application.follow_up_on < today,
+        follow_ups_overdue=count_open_follow_up_applications(
+            next_open_follow_up_at < utc_start,
         ),
         applications_saved=applications_saved,
         applications_applied=applications_applied,
@@ -74,22 +149,34 @@ def get_dashboard_summary(
 @router.get("/follow-ups", response_model=DashboardFollowUpsOut)
 def get_dashboard_follow_ups(
     limit: int = Query(default=6, ge=1, le=20),
+    timezone_name: str = Query(
+        default="UTC",
+        alias="timezone",
+        min_length=1,
+        max_length=100,
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardFollowUpsOut:
-    today = date.today()
+    requested_timezone, _, utc_next_start = _dashboard_day_bounds(timezone_name)
+    open_follow_up_summary = _open_follow_up_summary(current_user.id)
+    next_open_follow_up_at = open_follow_up_summary.c.next_open_follow_up_at
 
     rows = db.execute(
-        select(Application, Job)
+        select(Application, Job, next_open_follow_up_at)
         .join(Job, Job.id == Application.job_id)
+        .join(
+            open_follow_up_summary,
+            open_follow_up_summary.c.application_id == Application.id,
+        )
         .where(
             Application.user_id == current_user.id,
-            Application.follow_up_on.is_not(None),
-            Application.follow_up_on <= today,
+            next_open_follow_up_at < utc_next_start,
         )
         .order_by(
-            Application.follow_up_on.asc(),
+            next_open_follow_up_at.asc(),
             Application.updated_at.desc(),
+            Application.id.asc(),
         )
         .limit(limit)
     ).all()
@@ -103,7 +190,10 @@ def get_dashboard_follow_ups(
                 "status": application.status,
                 "applied_at": application.applied_at,
                 "notes": application.notes,
-                "follow_up_on": application.follow_up_on,
+                "follow_up_on": _local_date_for_utc(
+                    next_open_due_at,
+                    requested_timezone,
+                ),
                 "created_at": application.created_at,
                 "updated_at": application.updated_at,
                 "job": {
@@ -116,6 +206,118 @@ def get_dashboard_follow_ups(
                     "application_url": job.application_url,
                 },
             }
-            for application, job in rows
+            for application, job, next_open_due_at in rows
         ]
+    )
+
+
+@router.get("/today", response_model=TodayPrioritiesOut)
+def get_today_priorities(
+    timezone_name: str = Query(alias="timezone", min_length=1, max_length=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TodayPrioritiesOut:
+    try:
+        requested_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
+
+    now_utc = datetime.now(timezone.utc)
+    local_date = now_utc.astimezone(requested_timezone).date()
+    local_start = datetime.combine(local_date, time.min, requested_timezone)
+    local_next_start = datetime.combine(
+        local_date + timedelta(days=1),
+        time.min,
+        requested_timezone,
+    )
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_next_start = local_next_start.astimezone(timezone.utc)
+
+    follow_up_rows = db.execute(
+        select(FollowUp, Job, Interview)
+        .join(Application, Application.id == FollowUp.application_id)
+        .join(Job, Job.id == Application.job_id)
+        .outerjoin(Interview, Interview.id == FollowUp.interview_id)
+        .where(
+            FollowUp.user_id == current_user.id,
+            Application.user_id == current_user.id,
+            FollowUp.completed_at.is_(None),
+            FollowUp.due_at_utc < utc_next_start,
+        )
+        .order_by(FollowUp.due_at_utc.asc(), FollowUp.id.asc())
+    ).all()
+
+    overdue_follow_ups = []
+    due_today_follow_ups = []
+    for follow_up, job, interview in follow_up_rows:
+        item = {
+            "id": follow_up.id,
+            "action_kind": "follow_up",
+            "title": follow_up.title,
+            "application_id": follow_up.application_id,
+            "company_name": job.company_name,
+            "job_title": job.title,
+            "interview_id": follow_up.interview_id,
+            "interview_title": interview.title if interview else None,
+            "interview_round": interview.round if interview else None,
+            "occurs_at": follow_up.due_at_utc,
+            "timezone": follow_up.timezone,
+            "status": "pending",
+        }
+        if follow_up.due_at_utc < utc_start:
+            overdue_follow_ups.append(item)
+        else:
+            due_today_follow_ups.append(item)
+
+    # Interview.scheduled_at is the project's legacy UTC-naive column.
+    interview_utc_start = utc_start.replace(tzinfo=None)
+    interview_utc_next_start = utc_next_start.replace(tzinfo=None)
+    interview_rows = db.execute(
+        select(Interview, Job)
+        .join(Application, Application.id == Interview.application_id)
+        .join(Job, Job.id == Application.job_id)
+        .where(
+            Application.user_id == current_user.id,
+            Interview.scheduled_at.is_not(None),
+            Interview.scheduled_at >= interview_utc_start,
+            Interview.status != "cancelled",
+        )
+        .order_by(Interview.scheduled_at.asc(), Interview.id.asc())
+    ).all()
+
+    interviews_today = []
+    upcoming_interviews = []
+    for interview, job in interview_rows:
+        item = {
+            "id": interview.id,
+            "action_kind": "interview",
+            "title": interview.title,
+            "application_id": interview.application_id,
+            "company_name": job.company_name,
+            "job_title": job.title,
+            "interview_id": interview.id,
+            "occurs_at": interview.scheduled_at.replace(tzinfo=timezone.utc),
+            "timezone": interview.timezone,
+            "status": interview.status,
+        }
+        if interview.scheduled_at < interview_utc_next_start:
+            interviews_today.append(item)
+        else:
+            upcoming_interviews.append(item)
+
+    items_by_group = {
+        "overdue_follow_ups": overdue_follow_ups,
+        "interviews_today": interviews_today,
+        "follow_ups_due_today": due_today_follow_ups,
+        "upcoming_interviews": upcoming_interviews,
+        # No current explicit application-staleness convention exists.
+        "applications_needing_update": [],
+    }
+    return TodayPrioritiesOut(
+        timezone=timezone_name,
+        local_date=local_date,
+        groups=[
+            TodayPriorityGroup(key=key, priority=priority, items=items_by_group[key])
+            for key, priority in TODAY_GROUPS
+        ],
     )

@@ -30,37 +30,49 @@ SORT_COLUMNS = {
 }
 
 CURATED_KEYWORDS = [
-    "mlops",
-    "ml infrastructure",
-    "ai infrastructure",
-    "ml platform",
-    "ai platform",
-    "kernel",
-    "gpu",
-    "tpu",
-    "compiler",
-    "distributed training",
-    "cluster",
-    "cuda",
+    # Software & IT
+    "software engineer",
+    "frontend engineer",
+    "backend engineer",
+    "full stack engineer",
+    "devops",
     "site reliability",
     "sre",
-    "platform engineer",
     "infrastructure engineer",
-    "software engineer",
-    "backend engineer",
-    "frontend engineer",
-    "full stack engineer",
-    "ai agent",
-    "agent engineer",
-    "llm",
-    "prompt engineering",
-    "data engineer",
-    "data scientist",
     "security engineer",
-    "devops",
+    # Data & AI
+    "data analyst",
+    "data scientist",
+    "data engineer",
+    "analytics engineer",
+    "business intelligence",
+    "machine learning engineer",
+    "ml engineer",
+    "ai engineer",
+    "research scientist",
+    # Product & Design
     "product manager",
-    "engineering manager",
-    "solutions architect",
+    "technical product manager",
+    "product designer",
+    "ux designer",
+    "ui designer",
+    "ux researcher",
+    # Business, Finance & Operations
+    "financial analyst",
+    "fp&a",
+    "accountant",
+    "operations analyst",
+    "business operations",
+    "supply chain analyst",
+    "strategy consultant",
+    # Marketing, Sales & People
+    "growth marketing",
+    "marketing manager",
+    "account executive",
+    "sales engineer",
+    "business development",
+    "technical recruiter",
+    "people operations",
 ]
 
 
@@ -159,25 +171,21 @@ def list_jobs(
     cleaned_keywords = [keyword.strip() for keyword in keywords if keyword and keyword.strip()]
 
     legacy_category_keywords: dict[str, list[str]] = {
-        "mlops": [
-            "mlops",
-            "ml infrastructure",
-            "ai infrastructure",
-            "ml platform",
-            "ai platform",
-        ],
-        "hardware": [
-            "kernel",
-            "gpu",
-            "tpu",
-            "compiler",
-            "distributed training",
-            "cluster",
-            "cuda",
-        ],
-        "sre": ["site reliability", "sre"],
+        "software": ["software engineer", "backend engineer", "frontend engineer", "full stack"],
+        "data": ["data analyst", "data scientist", "data engineer", "analytics", "business intelligence", "sql"],
+        "ai": ["machine learning", "ai engineer", "applied scientist", "research scientist", "llm"],
+        "design": ["product designer", "ux designer", "ui designer", "ux researcher"],
+        "product": ["product manager", "product operations", "product analyst"],
+        "finance": ["financial analyst", "investment analyst", "accountant", "fp&a"],
+        "marketing": ["growth marketing", "marketing manager", "content marketing", "seo"],
+        "sales": ["account executive", "sales engineer", "business development", "sdr"],
+        "operations": ["operations analyst", "business operations", "supply chain", "logistics"],
+        "people": ["recruiter", "talent acquisition", "people operations", "hrbp"],
+        # Backward compatibility
+        "mlops": ["mlops", "ml infrastructure", "ai infrastructure", "ml platform"],
+        "hardware": ["kernel", "gpu", "tpu", "compiler", "distributed training", "cuda"],
+        "sre": ["site reliability", "sre", "platform engineer"],
         "platform": ["platform engineer", "infrastructure engineer"],
-        "software": ["software engineer", "backend engineer"],
         "ai-agent": ["ai agent", "agent engineer", "llm", "prompt engineering"],
     }
 
@@ -273,7 +281,11 @@ def update_job_status(
 
 
 @router.post("/manual", response_model=JobOut, status_code=201)
-def create_manual_job(payload: JobManualCreate, db: Session = Depends(get_db)) -> Job:
+def create_manual_job(
+    payload: JobManualCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+) -> Job:
     job = Job(
         company_name=payload.company_name,
         source="manual",
@@ -290,6 +302,24 @@ def create_manual_job(payload: JobManualCreate, db: Session = Depends(get_db)) -
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    if current_user:
+        existing_app = db.scalar(
+            select(Application).where(
+                Application.user_id == current_user.id,
+                Application.job_id == job.id,
+            )
+        )
+        if not existing_app:
+            app_record = Application(
+                user_id=current_user.id,
+                job_id=job.id,
+                status="saved",
+                notes=payload.notes,
+            )
+            db.add(app_record)
+            db.commit()
+
     return job
 
 

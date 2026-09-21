@@ -1,5 +1,6 @@
 import uuid
-from datetime import date, datetime
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -7,7 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Application, ApplicationContact, Job, Resume, User
+from app.models import (
+    Application,
+    ApplicationContact,
+    Contact,
+    FollowUp,
+    Job,
+    Resume,
+    User,
+)
 from app.schemas import (
     ApplicationByJobUpdate,
     ApplicationContactCreate,
@@ -16,6 +25,7 @@ from app.schemas import (
     ApplicationCreate,
     ApplicationJobState,
     ApplicationJobStateMap,
+    ApplicationListItemOut,
     ApplicationOut,
     ApplicationUpdate,
     ApplicationWithJobOut,
@@ -26,19 +36,50 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 ALLOWED_FOLLOW_UP_FILTERS = {"all", "today", "overdue", "scheduled"}
 
 
-@router.get("", response_model=list[ApplicationWithJobOut])
+@router.get("", response_model=list[ApplicationListItemOut])
 def list_applications(
     response: Response,
     status: str | None = Query(default=None, max_length=50),
     follow_up: str = Query(default="all", max_length=20),
+    timezone_name: str = Query(
+        default="UTC",
+        alias="timezone",
+        min_length=1,
+        max_length=100,
+    ),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
+    open_follow_up_summary = (
+        select(
+            FollowUp.application_id.label("application_id"),
+            func.min(FollowUp.due_at_utc).label("next_open_follow_up_at"),
+            func.count(FollowUp.id).label("open_follow_up_count"),
+        )
+        .where(
+            FollowUp.user_id == current_user.id,
+            FollowUp.completed_at.is_(None),
+        )
+        .group_by(FollowUp.application_id)
+        .subquery()
+    )
+
     statement = (
-        select(Application, Job)
+        select(
+            Application,
+            Job,
+            open_follow_up_summary.c.next_open_follow_up_at,
+            func.coalesce(open_follow_up_summary.c.open_follow_up_count, 0).label(
+                "open_follow_up_count"
+            ),
+        )
         .join(Job, Job.id == Application.job_id)
+        .outerjoin(
+            open_follow_up_summary,
+            open_follow_up_summary.c.application_id == Application.id,
+        )
         .where(Application.user_id == current_user.id)
     )
 
@@ -53,14 +94,32 @@ def list_applications(
     if status and status.strip():
         statement = statement.where(Application.status == status.strip().lower())
 
-    today = date.today()
+    try:
+        requested_timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
+
+    now_utc = datetime.now(timezone.utc)
+    local_date = now_utc.astimezone(requested_timezone).date()
+    local_start = datetime.combine(local_date, time.min, requested_timezone)
+    local_next_start = datetime.combine(
+        local_date + timedelta(days=1),
+        time.min,
+        requested_timezone,
+    )
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_next_start = local_next_start.astimezone(timezone.utc)
+    next_open_follow_up_at = open_follow_up_summary.c.next_open_follow_up_at
 
     if follow_up_filter == "today":
-        statement = statement.where(Application.follow_up_on == today)
+        statement = statement.where(
+            next_open_follow_up_at >= utc_start,
+            next_open_follow_up_at < utc_next_start,
+        )
     elif follow_up_filter == "overdue":
-        statement = statement.where(Application.follow_up_on < today)
+        statement = statement.where(next_open_follow_up_at < utc_start)
     elif follow_up_filter == "scheduled":
-        statement = statement.where(Application.follow_up_on.is_not(None))
+        statement = statement.where(next_open_follow_up_at.is_not(None))
 
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 
@@ -96,8 +155,10 @@ def list_applications(
                 "workplace_type": job.workplace_type,
                 "application_url": job.application_url,
             },
+            "next_open_follow_up_at": next_open_follow_up_at,
+            "open_follow_up_count": open_follow_up_count,
         }
-        for application, job in rows
+        for application, job, next_open_follow_up_at, open_follow_up_count in rows
     ]
 
 
@@ -171,7 +232,7 @@ def upsert_application_for_job(
             job_id=job_id,
             resume_id=payload.resume_id,
             status=payload.status,
-            applied_at=datetime.utcnow() if payload.status == "applied" else None,
+            applied_at=datetime.now(timezone.utc) if payload.status == "applied" else None,
             notes=payload.notes,
         )
         db.add(application)
@@ -184,7 +245,7 @@ def upsert_application_for_job(
             application.notes = payload.notes
 
         if payload.status == "applied" and application.applied_at is None:
-            application.applied_at = datetime.utcnow()
+            application.applied_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(application)
@@ -303,10 +364,45 @@ def create_application_contact(
     db: Session = Depends(get_db),
 ) -> ApplicationContact:
     _get_owned_application(application_id, current_user, db)
+    reusable_contact: Contact | None = None
+    if payload.contact_id is not None:
+        reusable_contact = db.scalar(
+            select(Contact).where(
+                Contact.id == payload.contact_id,
+                Contact.user_id == current_user.id,
+            )
+        )
+        if reusable_contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        existing_link = db.scalar(
+            select(ApplicationContact).where(
+                ApplicationContact.application_id == application_id,
+                ApplicationContact.contact_id == payload.contact_id,
+            )
+        )
+        if existing_link is not None:
+            return existing_link
+
+    contact_data = payload.model_dump()
+    if payload.contact_id is not None and reusable_contact is not None:
+        if not contact_data.get("name"):
+            contact_data["name"] = reusable_contact.name
+        if contact_data.get("contact_type") == "other" and reusable_contact.relationship_type in (
+            "recruiter",
+            "interviewer",
+            "hiring_manager",
+            "referral",
+        ):
+            contact_data["contact_type"] = reusable_contact.relationship_type
+        if contact_data.get("email") is None:
+            contact_data["email"] = reusable_contact.email
+        if contact_data.get("linkedin_url") is None:
+            contact_data["linkedin_url"] = reusable_contact.linkedin_url
 
     contact = ApplicationContact(
         application_id=application_id,
-        **payload.model_dump(),
+        **contact_data,
     )
     db.add(contact)
     db.commit()
@@ -337,7 +433,18 @@ def update_application_contact(
     if contact is None:
         raise HTTPException(status_code=404, detail="Application contact not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("contact_id") is not None:
+        reusable_contact = db.scalar(
+            select(Contact).where(
+                Contact.id == update_data["contact_id"],
+                Contact.user_id == current_user.id,
+            )
+        )
+        if reusable_contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+    for field, value in update_data.items():
         setattr(contact, field, value)
 
     db.commit()
@@ -370,6 +477,64 @@ def delete_application_contact(
     db.delete(contact)
     db.commit()
     return Response(status_code=204)
+
+
+SUPPORTED_CANONICAL_RELATIONSHIPS = {
+    "recruiter",
+    "hiring_manager",
+    "interviewer",
+    "referral",
+    "other",
+}
+
+
+@router.post(
+    "/{application_id}/contacts/{contact_id}/make-reusable",
+    response_model=ApplicationContactOut,
+)
+def make_application_contact_reusable(
+    application_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplicationContact:
+    _get_owned_application(application_id, current_user, db)
+
+    contact = db.scalar(
+        select(ApplicationContact).where(
+            ApplicationContact.id == contact_id,
+            ApplicationContact.application_id == application_id,
+        )
+    )
+
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Application contact not found")
+
+    if contact.contact_id is not None:
+        return contact
+
+    relationship_type = (
+        contact.contact_type
+        if contact.contact_type in SUPPORTED_CANONICAL_RELATIONSHIPS
+        else "other"
+    )
+
+    canonical_contact = Contact(
+        user_id=current_user.id,
+        name=contact.name,
+        title=None,
+        email=contact.email,
+        linkedin_url=contact.linkedin_url,
+        relationship_type=relationship_type,
+        notes=None,
+    )
+    db.add(canonical_contact)
+    db.flush()
+
+    contact.contact_id = canonical_contact.id
+    db.commit()
+    db.refresh(contact)
+    return contact
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
@@ -406,7 +571,7 @@ def save_job(
         job_id=payload.job_id,
         resume_id=payload.resume_id,
         status=payload.status,
-        applied_at=datetime.utcnow() if payload.status == "applied" else None,
+        applied_at=datetime.now(timezone.utc) if payload.status == "applied" else None,
         notes=payload.notes,
     )
     db.add(application)
@@ -432,6 +597,11 @@ def update_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "follow_up_on" in update_data:
+        raise HTTPException(
+            status_code=422,
+            detail="follow_up_on is deprecated; use the FollowUp endpoints instead",
+        )
 
     if update_data.get("resume_id") is not None:
         resume = db.scalar(
@@ -444,10 +614,11 @@ def update_application(
             raise HTTPException(status_code=404, detail="Resume not found")
 
     if update_data.get("status") == "applied" and application.applied_at is None:
-        update_data.setdefault("applied_at", datetime.utcnow())
+        update_data.setdefault("applied_at", datetime.now(timezone.utc))
 
-    for field, value in update_data.items():
-        setattr(application, field, value)
+    for field in ("status", "resume_id", "applied_at", "notes"):
+        if field in update_data:
+            setattr(application, field, update_data[field])
 
     db.commit()
     db.refresh(application)

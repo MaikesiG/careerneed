@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import PageContainer from "@/components/ui/PageContainer";
 import ApplicationContactsEditor from "./ApplicationContactsEditor";
-import ApplicationFollowUpEditor from "./ApplicationFollowUpEditor";
+import ApplicationFollowUpsSection from "./ApplicationFollowUpsSection";
+import ApplicationInterviewsSection from "./ApplicationInterviewsSection";
 import ApplicationNotesEditor from "./ApplicationNotesEditor";
 import ApplicationStatusEditor from "./ApplicationStatusEditor";
 
@@ -18,7 +20,6 @@ type ApplicationDetail = {
   status: ApplicationStatus;
   applied_at: string | null;
   notes: string | null;
-  follow_up_on: string | null;
   created_at: string;
   updated_at: string;
   job: {
@@ -115,6 +116,10 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isNotFound, setIsNotFound] = useState(false);
+  const [followUpsRevision, setFollowUpsRevision] = useState(0);
+  const onFollowUpsChanged = useCallback(() => {
+    setFollowUpsRevision((revision) => revision + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,61 +176,7 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
 
   if (isNotFound) {
     return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <Link
-            className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
-            href="/applications"
-          >
-            ← Back to applications
-          </Link>
-
-          <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8">
-            <h1 className="text-xl font-semibold">Application not found</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              It may have been deleted or is not available for this account.
-            </p>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <Link
-            className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
-            href="/applications"
-          >
-            ← Back to applications
-          </Link>
-
-          <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-8">
-            <h1 className="text-xl font-semibold">Application details are unavailable</h1>
-            <p className="mt-2 text-sm">{error}</p>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
-  if (!application) {
-    return (
-      <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
-            <p className="text-muted-foreground text-sm">Loading application details…</p>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="bg-background text-foreground min-h-screen px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
+      <PageContainer size="default">
         <Link
           className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
           href="/applications"
@@ -233,123 +184,170 @@ export default function ApplicationDetailClient({ applicationId }: ApplicationDe
           ← Back to applications
         </Link>
 
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
-            <div className="min-w-0">
-              <p className="text-primary text-sm font-semibold tracking-[0.2em] uppercase">
-                {application.job.company_name}
-              </p>
+        <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8">
+          <h1 className="text-xl font-semibold">Application not found</h1>
+          <p className="text-muted-foreground mt-2 text-sm">
+            It may have been deleted or is not available for this account.
+          </p>
+        </section>
+      </PageContainer>
+    );
+  }
 
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-                {application.job.title}
-              </h1>
+  if (error) {
+    return (
+      <PageContainer size="default">
+        <Link
+          className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
+          href="/applications"
+        >
+          ← Back to applications
+        </Link>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
-                    application.status
-                  )}`}
-                >
-                  {formatStatus(application.status)}
+        <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-8">
+          <h1 className="text-xl font-semibold">Application details are unavailable</h1>
+          <p className="mt-2 text-sm">{error}</p>
+        </section>
+      </PageContainer>
+    );
+  }
+
+  if (!application) {
+    return (
+      <PageContainer size="default">
+        <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
+          <p className="text-muted-foreground text-sm">Loading application details…</p>
+        </section>
+      </PageContainer>
+    );
+  }
+
+  return (
+    <PageContainer size="default">
+      <Link
+        className="text-primary inline-flex text-sm font-semibold transition hover:opacity-80"
+        href="/applications"
+      >
+        ← Back to applications
+      </Link>
+
+      <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
+          <div className="min-w-0">
+            <p className="text-primary text-xs font-semibold tracking-[0.2em] uppercase">
+              {application.job.company_name}
+            </p>
+
+            <h1 className="mt-1.5 text-2xl font-bold tracking-tight sm:text-3xl">
+              {application.job.title}
+            </h1>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
+                  application.status
+                )}`}
+              >
+                {formatStatus(application.status)}
+              </span>
+
+              <span
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${sourceClass(
+                  application.job.source
+                )}`}
+              >
+                {sourceLabel(application.job.source)}
+              </span>
+
+              {application.job.workplace_type ? (
+                <span className="border-border bg-muted text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-semibold">
+                  {application.job.workplace_type}
                 </span>
-
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${sourceClass(
-                    application.job.source
-                  )}`}
-                >
-                  {sourceLabel(application.job.source)}
-                </span>
-
-                {application.job.workplace_type ? (
-                  <span className="border-border bg-muted text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-semibold">
-                    {application.job.workplace_type}
-                  </span>
-                ) : null}
-              </div>
+              ) : null}
             </div>
-
-            <a
-              className="border-border bg-card text-foreground hover:bg-muted inline-flex shrink-0 items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition"
-              href={application.job.application_url}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              View original posting ↗
-            </a>
           </div>
 
-          <dl className="border-border mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-foreground font-medium">Location</dt>
-              <dd className="text-muted-foreground mt-1">
-                {application.job.location ?? "Not specified"}
-              </dd>
-            </div>
+          <a
+            className="border-border bg-card text-foreground hover:bg-muted inline-flex shrink-0 items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition"
+            href={application.job.application_url}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View original posting ↗
+          </a>
+        </div>
 
-            <div>
-              <dt className="text-foreground font-medium">Workplace type</dt>
-              <dd className="text-muted-foreground mt-1">
-                {application.job.workplace_type ?? "Not specified"}
-              </dd>
-            </div>
-
-            <div>
-              <dt className="text-foreground font-medium">Applied</dt>
-              <dd className="text-muted-foreground mt-1">{formatDate(application.applied_at)}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Application status</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Update this stage when the application moves forward, pauses, or closes.
-          </p>
-          <div className="mt-5">
-            <ApplicationStatusEditor
-              applicationId={application.id}
-              initialStatus={application.status}
-            />
+        <dl className="border-border mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-foreground font-medium">Location</dt>
+            <dd className="text-muted-foreground mt-1">
+              {application.job.location ?? "Not specified"}
+            </dd>
           </div>
-        </section>
 
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Follow-up</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Set a date so you know when to contact a recruiter or check on the application.
-          </p>
-          <div className="mt-5">
-            <ApplicationFollowUpEditor
-              applicationId={application.id}
-              initialFollowUpOn={application.follow_up_on}
-            />
+          <div>
+            <dt className="text-foreground font-medium">Workplace type</dt>
+            <dd className="text-muted-foreground mt-1">
+              {application.job.workplace_type ?? "Not specified"}
+            </dd>
           </div>
-        </section>
 
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Notes</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Keep recruiter messages, interview context, and follow-up details in one place.
-          </p>
-          <div className="mt-5">
-            <ApplicationNotesEditor
-              applicationId={application.id}
-              initialNotes={application.notes ?? ""}
-            />
+          <div>
+            <dt className="text-foreground font-medium">Applied</dt>
+            <dd className="text-muted-foreground mt-1">{formatDate(application.applied_at)}</dd>
           </div>
-        </section>
+        </dl>
+      </section>
 
-        <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-semibold">Contacts</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Track recruiters, hiring managers, referrals, and interviewers for this application.
-          </p>
-          <div className="mt-5">
-            <ApplicationContactsEditor applicationId={application.id} />
-          </div>
-        </section>
-      </div>
-    </main>
+      <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+        <h2 className="text-base font-semibold sm:text-lg">Application status</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Update this stage when the application moves forward, pauses, or closes.
+        </p>
+        <div className="mt-5">
+          <ApplicationStatusEditor
+            applicationId={application.id}
+            initialStatus={application.status}
+          />
+        </div>
+      </section>
+
+      <ApplicationInterviewsSection
+        applicationId={application.id}
+        companyName={application.job.company_name}
+        jobTitle={application.job.title}
+        followUpsRevision={followUpsRevision}
+        onFollowUpsChanged={onFollowUpsChanged}
+      />
+
+      <ApplicationFollowUpsSection
+        applicationId={application.id}
+        followUpsRevision={followUpsRevision}
+        onFollowUpsChanged={onFollowUpsChanged}
+      />
+
+      <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+        <h2 className="text-base font-semibold sm:text-lg">Notes</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Keep recruiter messages, interview context, and follow-up details in one place.
+        </p>
+        <div className="mt-5">
+          <ApplicationNotesEditor
+            applicationId={application.id}
+            initialNotes={application.notes ?? ""}
+          />
+        </div>
+      </section>
+
+      <section className="border-border bg-card mt-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+        <h2 className="text-base font-semibold sm:text-lg">Contacts</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Track recruiters, hiring managers, referrals, and interviewers for this application.
+        </p>
+        <div className="mt-5">
+          <ApplicationContactsEditor applicationId={application.id} />
+        </div>
+      </section>
+    </PageContainer>
   );
 }

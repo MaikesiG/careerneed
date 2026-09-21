@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import uuid
 
 import pytest
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
 from app.main import app
-from app.models import Application, Job, User
+from app.models import Application, FollowUp, Job, User
 
 
 @pytest.fixture
@@ -60,6 +60,25 @@ def create_job(db_session: Session, *, title: str, workplace_type: str = "unknow
     db_session.add(job)
     db_session.flush()
     return job
+
+
+def create_follow_up(
+    db_session: Session,
+    *,
+    application: Application,
+    due_at: datetime,
+) -> FollowUp:
+    follow_up = FollowUp(
+        user_id=application.user_id,
+        application_id=application.id,
+        type="custom",
+        title="Dashboard reminder",
+        due_at_utc=due_at,
+        timezone="UTC",
+    )
+    db_session.add(follow_up)
+    db_session.flush()
+    return follow_up
 
 
 def test_list_jobs_returns_ok(client: TestClient) -> None:
@@ -376,55 +395,84 @@ def test_dashboard_summary_counts_added_records_and_excludes_other_users(
     future_follow_up_job = create_job(db_session, title="Dashboard future follow-up role")
     other_user_job = create_job(db_session, title="Other user dashboard role")
 
+    saved_application = Application(
+        user_id=authenticated_user_id,
+        job_id=saved_job.id,
+        status="saved",
+    )
+    applied_application = Application(
+        user_id=authenticated_user_id,
+        job_id=applied_job.id,
+        status="applied",
+        follow_up_on=today,
+    )
+    interviewing_application = Application(
+        user_id=authenticated_user_id,
+        job_id=interviewing_job.id,
+        status="interviewing",
+        follow_up_on=today - timedelta(days=1),
+    )
+    offer_application = Application(
+        user_id=authenticated_user_id,
+        job_id=offer_job.id,
+        status="offer",
+        follow_up_on=today - timedelta(days=3),
+    )
+    rejected_application = Application(
+        user_id=authenticated_user_id,
+        job_id=rejected_job.id,
+        status="rejected",
+    )
+    withdrawn_application = Application(
+        user_id=authenticated_user_id,
+        job_id=withdrawn_job.id,
+        status="withdrawn",
+    )
+    future_application = Application(
+        user_id=authenticated_user_id,
+        job_id=future_follow_up_job.id,
+        status="saved",
+        follow_up_on=today + timedelta(days=1),
+    )
+    other_application = Application(
+        user_id=other_user.id,
+        job_id=other_user_job.id,
+        status="applied",
+        follow_up_on=today,
+    )
     db_session.add_all(
         [
-            Application(
-                user_id=authenticated_user_id,
-                job_id=saved_job.id,
-                status="saved",
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=applied_job.id,
-                status="applied",
-                follow_up_on=today,
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=interviewing_job.id,
-                status="interviewing",
-                follow_up_on=today - timedelta(days=1),
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=offer_job.id,
-                status="offer",
-                follow_up_on=today - timedelta(days=3),
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=rejected_job.id,
-                status="rejected",
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=withdrawn_job.id,
-                status="withdrawn",
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=future_follow_up_job.id,
-                status="saved",
-                follow_up_on=today + timedelta(days=1),
-            ),
-            Application(
-                user_id=other_user.id,
-                job_id=other_user_job.id,
-                status="applied",
-                follow_up_on=today,
-            ),
+            saved_application,
+            applied_application,
+            interviewing_application,
+            offer_application,
+            rejected_application,
+            withdrawn_application,
+            future_application,
+            other_application,
         ]
     )
+    db_session.flush()
+
+    now_utc = datetime.now(timezone.utc)
+    due_today = now_utc.replace(hour=12, minute=0, second=0, microsecond=0)
+    create_follow_up(db_session, application=applied_application, due_at=due_today)
+    create_follow_up(
+        db_session,
+        application=interviewing_application,
+        due_at=due_today - timedelta(days=1),
+    )
+    create_follow_up(
+        db_session,
+        application=offer_application,
+        due_at=due_today - timedelta(days=3),
+    )
+    create_follow_up(
+        db_session,
+        application=future_application,
+        due_at=due_today + timedelta(days=1),
+    )
+    create_follow_up(db_session, application=other_application, due_at=due_today)
     db_session.commit()
 
     after_response = client.get("/dashboard/summary")
@@ -457,44 +505,75 @@ def test_dashboard_follow_ups_returns_due_and_overdue_in_priority_order(
     no_follow_up_job = create_job(db_session, title="Follow-up no date role")
     other_user_job = create_job(db_session, title="Follow-up other user role")
 
+    oldest_application = Application(
+        user_id=authenticated_user_id,
+        job_id=oldest_overdue_job.id,
+        status="applied",
+        follow_up_on=today - timedelta(days=4),
+    )
+    recent_application = Application(
+        user_id=authenticated_user_id,
+        job_id=recent_overdue_job.id,
+        status="interviewing",
+        follow_up_on=today - timedelta(days=1),
+    )
+    today_application = Application(
+        user_id=authenticated_user_id,
+        job_id=due_today_job.id,
+        status="applied",
+        follow_up_on=today,
+    )
+    future_application = Application(
+        user_id=authenticated_user_id,
+        job_id=future_job.id,
+        status="saved",
+        follow_up_on=today + timedelta(days=1),
+    )
+    no_follow_up_application = Application(
+        user_id=authenticated_user_id,
+        job_id=no_follow_up_job.id,
+        status="saved",
+    )
+    other_application = Application(
+        user_id=other_user.id,
+        job_id=other_user_job.id,
+        status="interviewing",
+        follow_up_on=today - timedelta(days=7),
+    )
     db_session.add_all(
         [
-            Application(
-                user_id=authenticated_user_id,
-                job_id=oldest_overdue_job.id,
-                status="applied",
-                follow_up_on=today - timedelta(days=4),
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=recent_overdue_job.id,
-                status="interviewing",
-                follow_up_on=today - timedelta(days=1),
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=due_today_job.id,
-                status="applied",
-                follow_up_on=today,
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=future_job.id,
-                status="saved",
-                follow_up_on=today + timedelta(days=1),
-            ),
-            Application(
-                user_id=authenticated_user_id,
-                job_id=no_follow_up_job.id,
-                status="saved",
-            ),
-            Application(
-                user_id=other_user.id,
-                job_id=other_user_job.id,
-                status="interviewing",
-                follow_up_on=today - timedelta(days=7),
-            ),
+            oldest_application,
+            recent_application,
+            today_application,
+            future_application,
+            no_follow_up_application,
+            other_application,
         ]
+    )
+    db_session.flush()
+
+    now_utc = datetime.now(timezone.utc)
+    due_today = now_utc.replace(hour=12, minute=0, second=0, microsecond=0)
+    create_follow_up(
+        db_session,
+        application=oldest_application,
+        due_at=due_today - timedelta(days=4),
+    )
+    create_follow_up(
+        db_session,
+        application=recent_application,
+        due_at=due_today - timedelta(days=1),
+    )
+    create_follow_up(db_session, application=today_application, due_at=due_today)
+    create_follow_up(
+        db_session,
+        application=future_application,
+        due_at=due_today + timedelta(days=1),
+    )
+    create_follow_up(
+        db_session,
+        application=other_application,
+        due_at=due_today - timedelta(days=7),
     )
     db_session.commit()
 

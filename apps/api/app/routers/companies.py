@@ -1,15 +1,118 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.curated_targets import CURATED_TARGETS, normalize_curated_target_name
 from app.database import get_db
 from app.models import Company, User
-from app.schemas import CompanyCreate, CompanyOut
+from app.schemas import (
+    CompanyCreate,
+    CompanyOut,
+    CompanySourceSyncOut,
+    CuratedTargetsAddAllOut,
+    CuratedTargetsPreviewOut,
+)
+from app.services.source_sync import SourceNotSynchronizableError, sync_configured_source
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
 ATS_SOURCE_TYPES = {"ashby", "greenhouse", "lever"}
+
+
+@router.post("/{source_id}/sync", response_model=CompanySourceSyncOut)
+def sync_company_source(
+    source_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CompanySourceSyncOut:
+    source = (
+        db.query(Company)
+        .filter(Company.id == source_id, Company.user_id == current_user.id)
+        .one_or_none()
+    )
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company source not found",
+        )
+
+    try:
+        result = sync_configured_source(db=db, source=source, owner_id=current_user.id)
+    except SourceNotSynchronizableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from None
+
+    return CompanySourceSyncOut(
+        status=result.status,
+        jobs_created=result.jobs_created,
+        jobs_updated=result.jobs_updated,
+        message=result.message,
+    )
+
+
+def _existing_curated_target_names(db: Session, user_id: uuid.UUID) -> set[str]:
+    names = db.query(Company.name).filter(Company.user_id == user_id).all()
+    return {normalize_curated_target_name(name) for (name,) in names}
+
+
+@router.get("/curated-targets/preview", response_model=CuratedTargetsPreviewOut)
+def preview_curated_targets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CuratedTargetsPreviewOut:
+    existing_names = _existing_curated_target_names(db, current_user.id)
+    already_present = sum(
+        normalize_curated_target_name(target["name"]) in existing_names
+        for target in CURATED_TARGETS
+    )
+    return CuratedTargetsPreviewOut(
+        total_curated=len(CURATED_TARGETS),
+        to_create=len(CURATED_TARGETS) - already_present,
+        already_present=already_present,
+    )
+
+
+@router.post("/curated-targets/add-all", response_model=CuratedTargetsAddAllOut)
+def add_all_curated_targets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CuratedTargetsAddAllOut:
+    # Serialize this user's bulk operations so concurrent requests remain idempotent.
+    db.query(User).filter(User.id == current_user.id).with_for_update().one()
+    existing_names = _existing_curated_target_names(db, current_user.id)
+    created = 0
+
+    for target in CURATED_TARGETS:
+        normalized_name = normalize_curated_target_name(target["name"])
+        if normalized_name in existing_names:
+            continue
+        db.add(
+            Company(
+                user_id=current_user.id,
+                name=target["name"],
+                source_type="manual",
+                board_token=None,
+                careers_url=None,
+                priority="medium",
+            )
+        )
+        existing_names.add(normalized_name)
+        created += 1
+
+    if created:
+        db.commit()
+
+    total_curated = len(CURATED_TARGETS)
+    return CuratedTargetsAddAllOut(
+        created=created,
+        already_present=total_curated - created,
+        total_curated=total_curated,
+    )
 
 
 @router.get("", response_model=list[CompanyOut])
@@ -61,3 +164,46 @@ def create_company(
         ) from exc
 
     return company
+
+
+@router.post("/batch", response_model=list[CompanyOut], status_code=status.HTTP_201_CREATED)
+def create_companies_batch(
+    payload: list[CompanyCreate],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[Company]:
+    added: list[Company] = []
+    for item in payload:
+        board_token = item.board_token.strip() if item.board_token else None
+        if item.source_type in ATS_SOURCE_TYPES and not board_token:
+            continue
+
+        existing = (
+            db.query(Company)
+            .filter(
+                Company.user_id == current_user.id,
+                Company.source_type == item.source_type,
+                Company.board_token == board_token,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        company = Company(
+            user_id=current_user.id,
+            name=item.name.strip(),
+            source_type=item.source_type,
+            board_token=board_token,
+            careers_url=item.careers_url.strip() if item.careers_url else None,
+            priority=item.priority,
+        )
+        db.add(company)
+        added.append(company)
+
+    if added:
+        db.commit()
+        for company in added:
+            db.refresh(company)
+
+    return added

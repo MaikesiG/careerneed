@@ -92,10 +92,16 @@ def normalize_location(raw_job: dict) -> str:
     return "Location not specified"
 
 
-def sync_ashby_jobs(db: Session, board_token: str, company_name: str) -> dict:
+def sync_ashby_jobs(
+    db: Session,
+    board_token: str,
+    company_name: str,
+    *,
+    company: Company | None = None,
+) -> dict:
     """Fetch, normalize, and persist current public jobs for one Ashby board."""
     raw_jobs = fetch_ashby_jobs(board_token)
-    company = get_or_create_company(db, board_token, company_name)
+    company = company or get_or_create_company(db, board_token, company_name)
 
     created = 0
     skipped = 0

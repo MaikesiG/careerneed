@@ -1,20 +1,22 @@
-# CareerNeed
+# CareerNeed — AI 驱动的通用职业操作系统
 
 <p align="center">
   <a href="README.md">English</a> | <b>简体中文</b>
 </p>
 
-CareerNeed 是一款专为技术从业者打造的 **AI 驱动型职业发展操作系统与隐私保护求职工作台**。其核心目标是**消除求职过程中机械重复的管理杂务**，串联起从简历分析到面试复盘的全生命周期，帮助候选人将更多时间和精力专注于自我提升与高效备战。
+> **CareerNeed 帮助每一位职场人发现优质机会、管理全流程申请、针对性备战面试，并实现持续的职业进阶。**
+
+CareerNeed 是一款 **AI 驱动的通用职业操作系统（Career Operating System）**。其核心目标是**消除求职与职业成长中的机械管理杂务**，服务于涵盖软件工程、数据、人工智能、产品、设计、金融、市场、销售、运营、医疗、法律等所有领域的职场人士。
 
 ```text
-简历录入与 AI 深度分析
-  ↳ 目标公司发现与职位自动同步
-    ↳ JD 匹配评估与职业差距分析
-      ↳ 申请全生命周期追踪 (列表与看板视图)
-        ↳ 面试日程规划与 Fast Capture 快捷录入
-          ↳ AI 针对性备战与专项实战指引
-            ↳ 赛后失败归因诊断与深度复盘
-              ↳ 持续职业成长
+职业画像与发展方向 (Career Profile & Directions)
+  ↳ 机会发现与多渠道职位归集 (Job Discovery & Ingestion)
+    ↳ 候选人 ↔ 岗位精准匹配与技能差距分析 (Matching & Gap Analysis)
+      ↳ 申请全流程看板与进度追踪 (Application Pipeline)
+        ↳ 面试中心与 Fast Capture 智能调度 (Interviews & Prep Notes)
+          ↳ AI 职业教练针对性备战 (AI Career Coach)
+            ↳ 面试复盘与成败归因分析 (Outcome Analysis)
+              ↳ 持续成长与职业智能 (Career Intelligence)
 ```
 
 ---

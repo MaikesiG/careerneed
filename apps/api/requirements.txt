@@ -13,5 +13,6 @@ ruff==0.16.6
 pdfplumber==0.11.10
 python-multipart
 cryptography
-openai
+openai>=3.9.0,<4
+google-genai>=2.24.0,<3
 argon2-cffi
