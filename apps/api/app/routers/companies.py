@@ -11,13 +11,48 @@ from app.models import Company, User
 from app.schemas import (
     CompanyCreate,
     CompanyOut,
+    CompanySourceSyncOut,
     CuratedTargetsAddAllOut,
     CuratedTargetsPreviewOut,
 )
+from app.services.source_sync import SourceNotSynchronizableError, sync_configured_source
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
 ATS_SOURCE_TYPES = {"ashby", "greenhouse", "lever"}
+
+
+@router.post("/{source_id}/sync", response_model=CompanySourceSyncOut)
+def sync_company_source(
+    source_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CompanySourceSyncOut:
+    source = (
+        db.query(Company)
+        .filter(Company.id == source_id, Company.user_id == current_user.id)
+        .one_or_none()
+    )
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company source not found",
+        )
+
+    try:
+        result = sync_configured_source(db=db, source=source, owner_id=current_user.id)
+    except SourceNotSynchronizableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from None
+
+    return CompanySourceSyncOut(
+        status=result.status,
+        jobs_created=result.jobs_created,
+        jobs_updated=result.jobs_updated,
+        message=result.message,
+    )
 
 
 def _existing_curated_target_names(db: Session, user_id: uuid.UUID) -> set[str]:

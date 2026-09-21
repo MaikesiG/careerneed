@@ -47,6 +47,13 @@ type CuratedTargetsAddAllResult = {
   total_curated: number;
 };
 
+type CompanySourceSyncResult = {
+  status: "synced" | "failed";
+  jobs_created?: number | null;
+  jobs_updated?: number | null;
+  message?: string | null;
+};
+
 type PresetCompany = {
   name: string;
   source_type: Provider;
@@ -636,42 +643,14 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
 
   // Per-company Sync
   async function handleSyncCompany(company: Company) {
-    if (
-      company.source_type !== "ashby" &&
-      company.source_type !== "greenhouse" &&
-      company.source_type !== "lever"
-    ) {
-      setError(`${company.name} does not use a supported job-board connector.`);
-      return;
-    }
-
-    const token = company.board_token;
-    if (!token) {
-      setError(`No board token configured for ${company.name}. Please re-add with token.`);
-      return;
-    }
-
     clearFeedback();
     setSyncResults([]);
     setSyncingCompanyId(company.id);
 
-    const params = new URLSearchParams({
-      company_name: company.name,
-    });
-
-    if (company.source_type === "lever") {
-      params.set("company_slug", token);
-    } else {
-      params.set("board_token", token);
-    }
-
     try {
-      const response = await apiFetch(
-        `/connectors/${company.source_type}/sync?${params.toString()}`,
-        {
-          method: "POST",
-        }
-      );
+      const response = await apiFetch(`/companies/${company.id}/sync`, {
+        method: "POST",
+      });
 
       if (response.status === 401) {
         handleUnauthenticated();
@@ -682,9 +661,13 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
         throw new Error(await getApiErrorMessage(response, `Unable to sync ${company.name}.`));
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as CompanySourceSyncResult;
+      if (result.status === "failed") {
+        setError(result.message ?? "The source could not be synchronized. Please try again later.");
+        return;
+      }
       setNotice(
-        `Synced ${company.name}: ${result.fetched ?? 0} jobs fetched, ${result.created ?? 0} new jobs added, ${result.skipped ?? 0} up to date.`
+        `Synced ${company.name}: ${result.jobs_created ?? 0} new jobs added, ${result.jobs_updated ?? 0} up to date.`
       );
     } catch (caughtError) {
       setError(

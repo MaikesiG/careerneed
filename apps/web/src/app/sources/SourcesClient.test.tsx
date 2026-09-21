@@ -99,3 +99,98 @@ describe("SourcesClient curated targets", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+describe("SourcesClient owner-scoped source sync", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends only the source ID and renders the sanitized result", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({ status: "synced", jobs_created: 2, jobs_updated: 4, message: null })
+    );
+    render(
+      <SourcesClient
+        initialCompanies={[
+          {
+            id: "source-1",
+            name: "Configured source",
+            source_type: "greenhouse",
+            board_token: "private-token",
+            careers_url: "https://external.example.test/jobs",
+            priority: "high",
+            active: true,
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync this source" }));
+
+    expect(
+      await screen.findByText("Synced Configured source: 2 new jobs added, 4 up to date.")
+    ).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][0].toString()).toContain("/companies/source-1/sync");
+    expect(fetchSpy.mock.calls[0][0].toString()).not.toContain("private-token");
+    expect(fetchSpy.mock.calls[0][0].toString()).not.toContain("external.example.test");
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      credentials: "include",
+    });
+    expect(fetchSpy.mock.calls[0][1]?.body).toBeUndefined();
+  });
+
+  it("renders only the server's sanitized failure message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        status: "failed",
+        jobs_created: null,
+        jobs_updated: null,
+        message: "The source could not be synchronized. Please try again later.",
+      })
+    );
+    render(
+      <SourcesClient
+        initialCompanies={[
+          {
+            id: "source-2",
+            name: "Configured source",
+            source_type: "lever",
+            board_token: "private-token",
+            careers_url: null,
+            priority: "medium",
+            active: true,
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync this source" }));
+
+    expect(
+      await screen.findByText("The source could not be synchronized. Please try again later.")
+    ).toBeInTheDocument();
+  });
+
+  it("does not render a per-source sync control for a manual curated target", () => {
+    render(
+      <SourcesClient
+        initialCompanies={[
+          {
+            id: "manual-source",
+            name: "Manual target",
+            source_type: "manual",
+            board_token: null,
+            careers_url: null,
+            priority: "medium",
+            active: true,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Sync this source" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add all" })).toBeInTheDocument();
+  });
+});

@@ -88,6 +88,13 @@ class CuratedTargetsAddAllOut(BaseModel):
     total_curated: int
 
 
+class CompanySourceSyncOut(BaseModel):
+    status: Literal["synced", "failed"]
+    jobs_created: int | None = None
+    jobs_updated: int | None = None
+    message: str | None = None
+
+
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
