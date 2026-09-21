@@ -82,11 +82,7 @@ export default function ApplicationsClient() {
     : "all";
 
   const requestPath = useMemo(() => {
-    return buildApplicationsRequestPath(
-      selectedStatus,
-      selectedFollowUp,
-      browserTimezone()
-    );
+    return buildApplicationsRequestPath(selectedStatus, selectedFollowUp, browserTimezone());
   }, [selectedFollowUp, selectedStatus]);
 
   const [applications, setApplications] = useState<ApplicationListItem[]>([]);
@@ -148,7 +144,7 @@ export default function ApplicationsClient() {
             <ApplicationViewTabs currentView="list" />
             <Link
               href="/jobs"
-              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 sm:h-10 items-center justify-center rounded-lg border px-3.5 text-xs sm:text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-lg border px-3.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none sm:h-10 sm:text-sm"
             >
               Browse jobs
             </Link>
@@ -156,144 +152,149 @@ export default function ApplicationsClient() {
         }
       />
 
-        <nav aria-label="Application status filters" className="mb-2.5 flex flex-wrap gap-1.5 sm:gap-2">
+      <nav
+        aria-label="Application status filters"
+        className="mb-2.5 flex flex-wrap gap-1.5 sm:gap-2"
+      >
+        <Link
+          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
+            selectedStatus === null
+              ? "border-primary/30 bg-primary/10 text-primary"
+              : "border-border bg-card text-foreground hover:bg-muted"
+          }`}
+          href={buildApplicationsHref(null, selectedFollowUp)}
+        >
+          All statuses
+        </Link>
+        {STATUS_OPTIONS.map((option) => (
           <Link
-            className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
-              selectedStatus === null
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
+              selectedStatus === option.value
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-card text-foreground hover:bg-muted"
             }`}
-            href={buildApplicationsHref(null, selectedFollowUp)}
+            href={buildApplicationsHref(option.value, selectedFollowUp)}
+            key={option.value}
           >
-            All statuses
+            {option.label}
           </Link>
-          {STATUS_OPTIONS.map((option) => (
-            <Link
-              className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
-                selectedStatus === option.value
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-border bg-card text-foreground hover:bg-muted"
-              }`}
-              href={buildApplicationsHref(option.value, selectedFollowUp)}
-              key={option.value}
-            >
-              {option.label}
-            </Link>
-          ))}
-        </nav>
+        ))}
+      </nav>
 
-        <nav aria-label="Follow-up filters" className="mb-5 flex flex-wrap gap-1.5 sm:gap-2">
-          {FOLLOW_UP_OPTIONS.map((option) => (
-            <Link
-              className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
-                selectedFollowUp === option.value
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-border bg-card text-foreground hover:bg-muted"
-              }`}
-              href={buildApplicationsHref(selectedStatus, option.value)}
-              key={option.value}
-            >
-              {option.label}
-            </Link>
-          ))}
-        </nav>
+      <nav aria-label="Follow-up filters" className="mb-5 flex flex-wrap gap-1.5 sm:gap-2">
+        {FOLLOW_UP_OPTIONS.map((option) => (
+          <Link
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${
+              selectedFollowUp === option.value
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border bg-card text-foreground hover:bg-muted"
+            }`}
+            href={buildApplicationsHref(selectedStatus, option.value)}
+            key={option.value}
+          >
+            {option.label}
+          </Link>
+        ))}
+      </nav>
 
-        {error ? (
-          <section className="border-error-border bg-error-background text-destructive rounded-2xl border p-6">
-            <h2 className="text-lg font-semibold">Applications are temporarily unavailable</h2>
-            <p className="mt-2 text-sm">{error}</p>
-          </section>
-        ) : isLoading ? (
-          <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
-            <p className="text-muted-foreground text-sm">Loading your applications…</p>
-          </section>
-        ) : (
-          <>
-            <p className="text-muted-foreground mb-4 text-sm">{applications.length} tracked jobs</p>
+      {error ? (
+        <section className="border-error-border bg-error-background text-destructive rounded-2xl border p-6">
+          <h2 className="text-lg font-semibold">Applications are temporarily unavailable</h2>
+          <p className="mt-2 text-sm">{error}</p>
+        </section>
+      ) : isLoading ? (
+        <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
+          <p className="text-muted-foreground text-sm">Loading your applications…</p>
+        </section>
+      ) : (
+        <>
+          <p className="text-muted-foreground mb-4 text-sm">{applications.length} tracked jobs</p>
 
-            {applications.length === 0 ? (
-              <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
-                <h2 className="text-lg font-semibold">No tracked jobs here yet</h2>
-                <p className="text-muted-foreground mt-2 text-sm">
-                  Choose a tracking status from any job card to start your workflow.
-                </p>
-              </section>
-            ) : (
-              <section className="grid gap-4">
-                {applications.map((application) => {
-                  const followUp = getApplicationFollowUpSummaryDisplay(
-                    application.next_open_follow_up_at,
-                    application.open_follow_up_count
-                  );
+          {applications.length === 0 ? (
+            <section className="border-border bg-card rounded-2xl border border-dashed p-8 text-center shadow-sm">
+              <h2 className="text-lg font-semibold">No tracked jobs here yet</h2>
+              <p className="text-muted-foreground mt-2 text-sm">
+                Choose a tracking status from any job card to start your workflow.
+              </p>
+            </section>
+          ) : (
+            <section className="grid gap-4">
+              {applications.map((application) => {
+                const followUp = getApplicationFollowUpSummaryDisplay(
+                  application.next_open_follow_up_at,
+                  application.open_follow_up_count
+                );
 
-                  return (
-                    <article
-                      className="border-border bg-card rounded-2xl border p-5 shadow-sm"
-                      key={application.id}
-                    >
-                      <div className="flex flex-col justify-between gap-4 sm:flex-row">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-base sm:text-lg font-semibold">{application.job.title}</h2>
+                return (
+                  <article
+                    className="border-border bg-card rounded-2xl border p-5 shadow-sm"
+                    key={application.id}
+                  >
+                    <div className="flex flex-col justify-between gap-4 sm:flex-row">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-base font-semibold sm:text-lg">
+                            {application.job.title}
+                          </h2>
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
+                              application.status
+                            )}`}
+                          >
+                            {formatStatus(application.status)}
+                          </span>
+                          {followUp ? (
                             <span
-                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(
-                                application.status
-                              )}`}
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${followUp.className}`}
                             >
-                              {formatStatus(application.status)}
+                              {followUp.label}
+                              {followUp.countLabel ? ` · ${followUp.countLabel}` : ""}
                             </span>
-                            {followUp ? (
-                              <span
-                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${followUp.className}`}
-                              >
-                                {followUp.label}
-                                {followUp.countLabel ? ` · ${followUp.countLabel}` : ""}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="text-foreground mt-2 text-sm font-medium">
-                            {application.job.company_name}
-                          </p>
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            {application.job.location ?? "Location not specified"}
-                          </p>
-                          {application.notes ? (
-                            <p className="text-muted-foreground mt-3 text-sm whitespace-pre-wrap">
-                              {application.notes}
-                            </p>
                           ) : null}
                         </div>
-                        <div className="flex h-fit shrink-0 flex-wrap gap-2">
-                          <Link
-                            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
-                            href={`/applications/${application.id}`}
-                          >
-                            View details
-                          </Link>
-                          <a
-                            className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
-                            href={application.job.application_url}
-                            rel="noopener noreferrer"
-                            target="_blank"
-                          >
-                            View posting
-                          </a>
-                        </div>
-                      </div>
-                      <footer className="border-border text-muted-foreground mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t pt-4 text-sm">
-                        {application.applied_at ? (
-                          <span>Applied {formatDate(application.applied_at)}</span>
+                        <p className="text-foreground mt-2 text-sm font-medium">
+                          {application.job.company_name}
+                        </p>
+                        <p className="text-muted-foreground mt-1 text-sm">
+                          {application.job.location ?? "Location not specified"}
+                        </p>
+                        {application.notes ? (
+                          <p className="text-muted-foreground mt-3 text-sm whitespace-pre-wrap">
+                            {application.notes}
+                          </p>
                         ) : null}
-                        <span>Updated {formatDate(application.updated_at)}</span>
-                        <span>{application.resume_id ? "Resume linked" : "No resume linked"}</span>
-                      </footer>
-                    </article>
-                  );
-                })}
-              </section>
-            )}
-          </>
-        )}
+                      </div>
+                      <div className="flex h-fit shrink-0 flex-wrap gap-2">
+                        <Link
+                          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
+                          href={`/applications/${application.id}`}
+                        >
+                          View details
+                        </Link>
+                        <a
+                          className="border-border bg-card text-foreground hover:bg-muted rounded-lg border px-3 py-2 text-sm font-semibold transition"
+                          href={application.job.application_url}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          View posting
+                        </a>
+                      </div>
+                    </div>
+                    <footer className="border-border text-muted-foreground mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t pt-4 text-sm">
+                      {application.applied_at ? (
+                        <span>Applied {formatDate(application.applied_at)}</span>
+                      ) : null}
+                      <span>Updated {formatDate(application.updated_at)}</span>
+                      <span>{application.resume_id ? "Resume linked" : "No resume linked"}</span>
+                    </footer>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+        </>
+      )}
     </PageContainer>
   );
 }

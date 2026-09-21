@@ -82,7 +82,7 @@ export default function ApplicationsBoardClient() {
             <ApplicationViewTabs currentView="pipeline" />
             <Link
               href="/jobs"
-              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 sm:h-10 items-center justify-center rounded-lg border px-3.5 text-xs sm:text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+              className="border-border bg-card text-foreground hover:bg-muted focus-visible:ring-primary focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-lg border px-3.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none sm:h-10 sm:text-sm"
             >
               Browse jobs
             </Link>
@@ -90,61 +90,67 @@ export default function ApplicationsBoardClient() {
         }
       />
 
-        {error ? (
-          <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-6">
-            <h2 className="text-base sm:text-lg font-semibold">Pipeline is temporarily unavailable</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6">{error}</p>
-            <Link
-              href="/applications"
-              className="text-primary mt-4 inline-flex text-sm font-semibold transition hover:opacity-80"
-            >
-              View applications <span aria-hidden="true">&nbsp;→</span>
-            </Link>
-          </section>
-        ) : applications === null ? (
-          <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8 text-center shadow-sm">
-            <p className="text-muted-foreground text-sm">Loading your pipeline…</p>
-          </section>
-        ) : (
-          <>
-            <section
-              className="border-border bg-card rounded-2xl border p-5 sm:p-6"
-              aria-label="Pipeline summary"
-            >
-              <dl className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <dt className="text-muted-foreground text-xs sm:text-sm">Tracked jobs</dt>
-                  <dd className="mt-1 text-xl sm:text-2xl font-bold tracking-tight">{totalApplications}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground text-xs sm:text-sm">Active applications</dt>
-                  <dd className="mt-1 text-xl sm:text-2xl font-bold tracking-tight">{activeApplications}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground text-xs sm:text-sm">Need attention</dt>
-                  <dd
-                    className={`mt-1 text-xl sm:text-2xl font-bold tracking-tight ${
-                      attentionCount > 0 ? "text-destructive" : ""
-                    }`}
-                  >
-                    {attentionCount}
-                  </dd>
-                </div>
-              </dl>
-
-              {attentionCount > 0 ? (
-                <Link
-                  href="/applications?follow_up=scheduled"
-                  className="text-primary mt-4 inline-flex text-xs sm:text-sm font-semibold transition hover:opacity-80"
+      {error ? (
+        <section className="border-error-border bg-error-background text-destructive mt-6 rounded-2xl border p-6">
+          <h2 className="text-base font-semibold sm:text-lg">
+            Pipeline is temporarily unavailable
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6">{error}</p>
+          <Link
+            href="/applications"
+            className="text-primary mt-4 inline-flex text-sm font-semibold transition hover:opacity-80"
+          >
+            View applications <span aria-hidden="true">&nbsp;→</span>
+          </Link>
+        </section>
+      ) : applications === null ? (
+        <section className="border-border bg-card mt-6 rounded-2xl border border-dashed p-8 text-center shadow-sm">
+          <p className="text-muted-foreground text-sm">Loading your pipeline…</p>
+        </section>
+      ) : (
+        <>
+          <section
+            className="border-border bg-card rounded-2xl border p-5 sm:p-6"
+            aria-label="Pipeline summary"
+          >
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground text-xs sm:text-sm">Tracked jobs</dt>
+                <dd className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
+                  {totalApplications}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs sm:text-sm">Active applications</dt>
+                <dd className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
+                  {activeApplications}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs sm:text-sm">Need attention</dt>
+                <dd
+                  className={`mt-1 text-xl font-bold tracking-tight sm:text-2xl ${
+                    attentionCount > 0 ? "text-destructive" : ""
+                  }`}
                 >
-                  Review follow-ups <span aria-hidden="true">&nbsp;→</span>
-                </Link>
-              ) : null}
-            </section>
+                  {attentionCount}
+                </dd>
+              </div>
+            </dl>
 
-            <PipelineBoard applications={applications} />
-          </>
-        )}
+            {attentionCount > 0 ? (
+              <Link
+                href="/applications?follow_up=scheduled"
+                className="text-primary mt-4 inline-flex text-xs font-semibold transition hover:opacity-80 sm:text-sm"
+              >
+                Review follow-ups <span aria-hidden="true">&nbsp;→</span>
+              </Link>
+            ) : null}
+          </section>
+
+          <PipelineBoard applications={applications} />
+        </>
+      )}
     </PageContainer>
   );
 }

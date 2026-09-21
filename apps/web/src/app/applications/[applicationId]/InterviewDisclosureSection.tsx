@@ -39,9 +39,7 @@ export default function InterviewDisclosureSection({
   const panelId = `${id}-panel`;
 
   return (
-    <div
-      className={`border-border rounded-xl border bg-card/40 transition-colors ${className}`}
-    >
+    <div className={`border-border bg-card/40 rounded-xl border transition-colors ${className}`}>
       <button
         id={triggerId}
         type="button"
@@ -70,9 +68,7 @@ export default function InterviewDisclosureSection({
         aria-labelledby={triggerId}
         hidden={!isOpen}
         className={
-          !isOpen
-            ? "hidden"
-            : "border-border/60 border-t px-3.5 pb-3.5 pt-1 sm:px-4 sm:pb-4"
+          !isOpen ? "hidden" : "border-border/60 border-t px-3.5 pt-1 pb-3.5 sm:px-4 sm:pb-4"
         }
       >
         {children}

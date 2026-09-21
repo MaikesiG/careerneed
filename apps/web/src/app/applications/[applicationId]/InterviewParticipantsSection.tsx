@@ -666,9 +666,7 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
                           id={`edit-participant-role-${participant.id}`}
                           autoFocus
                           value={editRole}
-                          onChange={(event) =>
-                            setEditRole(event.target.value as ParticipantRole)
-                          }
+                          onChange={(event) => setEditRole(event.target.value as ParticipantRole)}
                           disabled={savingId === participant.id}
                           className={controlClass}
                         >

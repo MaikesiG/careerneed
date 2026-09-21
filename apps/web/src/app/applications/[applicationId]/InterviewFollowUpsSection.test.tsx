@@ -125,7 +125,9 @@ describe("InterviewFollowUpsSection route-local refresh", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Add follow-up" })
     );
 
-    expect(await screen.findByText("Unable to save this follow-up. Please try again.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Unable to save this follow-up. Please try again.")
+    ).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
     expect(screen.queryByText("private backend detail")).not.toBeInTheDocument();
   });

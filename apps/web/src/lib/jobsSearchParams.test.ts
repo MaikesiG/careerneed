@@ -47,27 +47,15 @@ describe("jobsSearchParams - Group 6: URL Search Parameter Helper", () => {
     expect(resetResult.has("page")).toBe(false);
 
     // 2. Explicitly setting page to 1 removes the parameter
-    const explicitPageOne = buildJobsSearchParams(
-      withPageFour,
-      { page: 1 },
-      defaultBaseFilters
-    );
+    const explicitPageOne = buildJobsSearchParams(withPageFour, { page: 1 }, defaultBaseFilters);
     expect(explicitPageOne.has("page")).toBe(false);
 
     // 3. Setting page to 0 or negative removes the parameter
-    const explicitPageZero = buildJobsSearchParams(
-      withPageFour,
-      { page: 0 },
-      defaultBaseFilters
-    );
+    const explicitPageZero = buildJobsSearchParams(withPageFour, { page: 0 }, defaultBaseFilters);
     expect(explicitPageZero.has("page")).toBe(false);
 
     // 4. Setting page > 1 retains the specific page number
-    const pageThreeResult = buildJobsSearchParams(
-      "",
-      { page: 3 },
-      defaultBaseFilters
-    );
+    const pageThreeResult = buildJobsSearchParams("", { page: 3 }, defaultBaseFilters);
     expect(pageThreeResult.get("page")).toBe("3");
   });
 
@@ -121,11 +109,7 @@ describe("jobsSearchParams - Group 6: URL Search Parameter Helper", () => {
     expect(nullScoreResult.has("min_match_score")).toBe(false);
 
     // 6. Retains numeric minMatchScore
-    const setScoreResult = buildJobsSearchParams(
-      "",
-      { minMatchScore: 80 },
-      defaultBaseFilters
-    );
+    const setScoreResult = buildJobsSearchParams("", { minMatchScore: 80 }, defaultBaseFilters);
     expect(setScoreResult.get("min_match_score")).toBe("80");
   });
 
@@ -163,11 +147,7 @@ describe("jobsSearchParams - Group 6: URL Search Parameter Helper", () => {
     expect(result.getAll("workplace_type")).toEqual(["remote", "hybrid"]);
 
     // Multi-value application statuses
-    expect(result.getAll("application_status")).toEqual([
-      "saved",
-      "interviewing",
-      "offer",
-    ]);
+    expect(result.getAll("application_status")).toEqual(["saved", "interviewing", "offer"]);
 
     // Multi-value keyword groups with encoding: enabled::id::label::keywords
     const encodedGroups = result.getAll("kw");

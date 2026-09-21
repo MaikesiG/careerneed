@@ -76,6 +76,18 @@ class CompanyOut(BaseModel):
     active: bool
 
 
+class CuratedTargetsPreviewOut(BaseModel):
+    total_curated: int
+    to_create: int
+    already_present: int
+
+
+class CuratedTargetsAddAllOut(BaseModel):
+    created: int
+    already_present: int
+    total_curated: int
+
+
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  FormEvent,
-  KeyboardEvent,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, FollowUpType, Interview, InterviewFollowUp } from "@/lib/api";
 import {
@@ -76,9 +68,8 @@ export function interviewContextLabel(
   if (!interview) return "Interview follow-up";
 
   const title = interview.title.trim();
-  const round = Number.isInteger(interview.round) && interview.round > 0
-    ? `Round ${interview.round}`
-    : "";
+  const round =
+    Number.isInteger(interview.round) && interview.round > 0 ? `Round ${interview.round}` : "";
   if (round && title) return `Interview · ${round} · ${title}`;
   if (round || title) return `Interview · ${round || title}`;
   return "Interview follow-up";
@@ -356,9 +347,7 @@ export default function ApplicationFollowUpsSection({
       if (!response.ok) throw new Error("request failed");
       const updated = (await response.json()) as InterviewFollowUp;
       if (!mountedRef.current) return;
-      setFollowUps((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item))
-      );
+      setFollowUps((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       notifyFollowUpsChanged();
     } catch {
       if (mountedRef.current) {
@@ -440,7 +429,7 @@ export default function ApplicationFollowUpsSection({
               </p>
             ) : null}
             {followUp.notes ? (
-              <p className="text-foreground mt-2 whitespace-pre-wrap text-sm">{followUp.notes}</p>
+              <p className="text-foreground mt-2 text-sm whitespace-pre-wrap">{followUp.notes}</p>
             ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -507,7 +496,10 @@ export default function ApplicationFollowUpsSection({
         </div>
       ) : null}
       {actionError ? (
-        <p className="border-destructive/30 bg-destructive/10 text-destructive mt-4 rounded-lg border px-3 py-2 text-sm" role="alert">
+        <p
+          className="border-destructive/30 bg-destructive/10 text-destructive mt-4 rounded-lg border px-3 py-2 text-sm"
+          role="alert"
+        >
           {actionError}
         </p>
       ) : null}
@@ -582,7 +574,10 @@ export default function ApplicationFollowUpsSection({
 
             <form onSubmit={submitFollowUp} className="mt-5 space-y-4">
               <div>
-                <label htmlFor={`${dialogTitleId}-title`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`${dialogTitleId}-title`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Title
                 </label>
                 <input
@@ -595,23 +590,33 @@ export default function ApplicationFollowUpsSection({
                 />
               </div>
               <div>
-                <label htmlFor={`${dialogTitleId}-type`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`${dialogTitleId}-type`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Type
                 </label>
                 <select
                   id={`${dialogTitleId}-type`}
                   value={form.type}
-                  onChange={(event) => setForm({ ...form, type: event.target.value as FollowUpType })}
+                  onChange={(event) =>
+                    setForm({ ...form, type: event.target.value as FollowUpType })
+                  }
                   className={`${controlClass} h-10`}
                 >
                   {TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor={`${dialogTitleId}-due`} className="text-foreground text-sm font-medium">
+                  <label
+                    htmlFor={`${dialogTitleId}-due`}
+                    className="text-foreground text-sm font-medium"
+                  >
                     Due date and time
                   </label>
                   <input
@@ -624,7 +629,10 @@ export default function ApplicationFollowUpsSection({
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${dialogTitleId}-timezone`} className="text-foreground text-sm font-medium">
+                  <label
+                    htmlFor={`${dialogTitleId}-timezone`}
+                    className="text-foreground text-sm font-medium"
+                  >
                     IANA timezone
                   </label>
                   <input
@@ -639,7 +647,10 @@ export default function ApplicationFollowUpsSection({
                 </div>
               </div>
               <div>
-                <label htmlFor={`${dialogTitleId}-notes`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`${dialogTitleId}-notes`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Notes <span className="text-muted-foreground">(optional)</span>
                 </label>
                 <textarea
@@ -652,7 +663,10 @@ export default function ApplicationFollowUpsSection({
                 />
               </div>
               {formError ? (
-                <p className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm" role="alert">
+                <p
+                  className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm"
+                  role="alert"
+                >
                   {formError}
                 </p>
               ) : null}

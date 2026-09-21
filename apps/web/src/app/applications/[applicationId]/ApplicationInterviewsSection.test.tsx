@@ -145,7 +145,8 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
   }
 
   it("renders one child-owned disclosure for questions, participants, and follow-ups", async () => {
-    const { questionsTrigger, participantsTrigger, followUpsTrigger } = await renderInterviewsSection();
+    const { questionsTrigger, participantsTrigger, followUpsTrigger } =
+      await renderInterviewsSection();
 
     expect(questionsTrigger).toHaveAttribute("aria-expanded", "false");
     expect(participantsTrigger).toHaveAttribute("aria-expanded", "false");
@@ -154,7 +155,9 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
     expect(screen.getAllByRole("button", { name: /Questions and reflections/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Participants/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Follow-ups/ })).toHaveLength(1);
-    expect(screen.getByText("Capture prompts, answers, reflections, and practice links.")).toBeVisible();
+    expect(
+      screen.getByText("Capture prompts, answers, reflections, and practice links.")
+    ).toBeVisible();
     expect(screen.getByText("Manage contacts who participate in this round.")).toBeVisible();
     expect(screen.getByText("Manage reminders related to this interview round.")).toBeVisible();
 
@@ -194,9 +197,7 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
     expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark complete" })).toBeInTheDocument();
 
-    const requestedUrls = vi
-      .mocked(globalThis.fetch)
-      .mock.calls.map(([input]) => input.toString());
+    const requestedUrls = vi.mocked(globalThis.fetch).mock.calls.map(([input]) => input.toString());
     expect(requestedUrls.filter((url) => url.includes("/questions"))).toHaveLength(1);
     expect(requestedUrls.filter((url) => url.includes("/participants"))).toHaveLength(1);
     expect(requestedUrls.filter((url) => url.includes("/follow-ups"))).toHaveLength(1);
@@ -232,9 +233,7 @@ describe("ApplicationInterviewsSection - Interview Completion Workflow", () => {
   let followUpResponseStatus = 201;
   let followUpResponseBody: FollowUpMockResponse = { id: "fu-1", title: "Send thank-you note" };
 
-  function isThankYouFollowUpPayload(
-    value: unknown
-  ): value is ThankYouFollowUpPayload {
+  function isThankYouFollowUpPayload(value: unknown): value is ThankYouFollowUpPayload {
     return (
       typeof value === "object" &&
       value !== null &&

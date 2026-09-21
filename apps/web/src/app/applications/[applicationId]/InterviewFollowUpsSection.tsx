@@ -309,9 +309,7 @@ export default function InterviewFollowUpsSection({
       if (!response.ok) throw new Error("request failed");
       const updated = (await response.json()) as InterviewFollowUp;
       if (!mountedRef.current) return;
-      setFollowUps((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item))
-      );
+      setFollowUps((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       notifyFollowUpsChanged();
     } catch {
       if (mountedRef.current) {
@@ -387,7 +385,11 @@ export default function InterviewFollowUpsSection({
           {loadError ? (
             <div className="border-destructive/30 bg-destructive/10 text-destructive flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
               <span>{loadError}</span>
-              <button type="button" onClick={() => void loadFollowUps()} className="font-semibold underline">
+              <button
+                type="button"
+                onClick={() => void loadFollowUps()}
+                className="font-semibold underline"
+              >
                 Retry
               </button>
             </div>
@@ -441,7 +443,7 @@ export default function InterviewFollowUpsSection({
                         </p>
                       ) : null}
                       {followUp.notes ? (
-                        <p className="text-foreground mt-2 whitespace-pre-wrap text-sm">
+                        <p className="text-foreground mt-2 text-sm whitespace-pre-wrap">
                           {followUp.notes}
                         </p>
                       ) : null}
@@ -498,7 +500,10 @@ export default function InterviewFollowUpsSection({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id={`follow-up-editor-title-${interviewId}`} className="text-foreground text-lg font-bold">
+                <h3
+                  id={`follow-up-editor-title-${interviewId}`}
+                  className="text-foreground text-lg font-bold"
+                >
                   {editing ? "Edit follow-up" : "Add follow-up"}
                 </h3>
                 <p className="text-muted-foreground mt-1 text-xs">
@@ -518,7 +523,10 @@ export default function InterviewFollowUpsSection({
 
             <form onSubmit={submitFollowUp} className="mt-5 space-y-4">
               <div>
-                <label htmlFor={`follow-up-title-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`follow-up-title-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Title
                 </label>
                 <input
@@ -531,23 +539,33 @@ export default function InterviewFollowUpsSection({
                 />
               </div>
               <div>
-                <label htmlFor={`follow-up-type-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`follow-up-type-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Type
                 </label>
                 <select
                   id={`follow-up-type-${interviewId}`}
                   value={form.type}
-                  onChange={(event) => setForm({ ...form, type: event.target.value as FollowUpType })}
+                  onChange={(event) =>
+                    setForm({ ...form, type: event.target.value as FollowUpType })
+                  }
                   className={`${controlClass} h-10`}
                 >
                   {TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor={`follow-up-due-${interviewId}`} className="text-foreground text-sm font-medium">
+                  <label
+                    htmlFor={`follow-up-due-${interviewId}`}
+                    className="text-foreground text-sm font-medium"
+                  >
                     Due date and time
                   </label>
                   <input
@@ -560,7 +578,10 @@ export default function InterviewFollowUpsSection({
                   />
                 </div>
                 <div>
-                  <label htmlFor={`follow-up-timezone-${interviewId}`} className="text-foreground text-sm font-medium">
+                  <label
+                    htmlFor={`follow-up-timezone-${interviewId}`}
+                    className="text-foreground text-sm font-medium"
+                  >
                     IANA timezone
                   </label>
                   <input
@@ -575,7 +596,10 @@ export default function InterviewFollowUpsSection({
                 </div>
               </div>
               <div>
-                <label htmlFor={`follow-up-notes-${interviewId}`} className="text-foreground text-sm font-medium">
+                <label
+                  htmlFor={`follow-up-notes-${interviewId}`}
+                  className="text-foreground text-sm font-medium"
+                >
                   Notes <span className="text-muted-foreground">(optional)</span>
                 </label>
                 <textarea

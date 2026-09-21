@@ -398,14 +398,11 @@ export default function ApplicationInterviewsSection({
       if (scheduleFollowUp) {
         try {
           const followUpPayload = buildThankYouFollowUpPayload(activeInterview);
-          const followUpRes = await apiFetch(
-            `/applications/${applicationId}/follow-ups`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(followUpPayload),
-            }
-          );
+          const followUpRes = await apiFetch(`/applications/${applicationId}/follow-ups`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(followUpPayload),
+          });
 
           if (!followUpRes.ok) {
             followUpError =
@@ -436,7 +433,7 @@ export default function ApplicationInterviewsSection({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-semibold">Interviews</h2>
+            <h2 className="text-base font-semibold sm:text-lg">Interviews</h2>
             <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
               {interviews.length}
             </span>
@@ -1102,7 +1099,8 @@ export default function ApplicationInterviewsSection({
                       Schedule Follow-up: Send thank-you note
                     </span>
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      Creates a follow-up reminder for tomorrow at 10:00 AM linked to this interview.
+                      Creates a follow-up reminder for tomorrow at 10:00 AM linked to this
+                      interview.
                     </p>
                   </div>
                 </label>

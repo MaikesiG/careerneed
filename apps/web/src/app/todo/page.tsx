@@ -308,13 +308,10 @@ export default function TodoClient() {
 
     async function loadSummary() {
       try {
-        const summaryResponse = await apiFetch(
-          dashboardSummaryRequestPath(browserTimezone()),
-          {
-            cache: "no-store",
-            signal: controller.signal,
-          }
-        );
+        const summaryResponse = await apiFetch(dashboardSummaryRequestPath(browserTimezone()), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
         if (controller.signal.aborted) {
           return;

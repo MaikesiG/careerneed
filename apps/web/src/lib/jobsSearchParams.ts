@@ -1,10 +1,5 @@
 export type ApplicationStatus =
-  | "saved"
-  | "applied"
-  | "interviewing"
-  | "offer"
-  | "rejected"
-  | "withdrawn";
+  "saved" | "applied" | "interviewing" | "offer" | "rejected" | "withdrawn";
 
 export type KeywordGroup = {
   id: string;
@@ -65,12 +60,9 @@ export function buildJobsSearchParams(
     next.locationQuery !== undefined ? next.locationQuery : (baseFilters?.locationQuery ?? "");
   const sources = next.sources ?? baseFilters?.sources ?? [];
   const workplaceTypes = next.workplaceTypes ?? baseFilters?.workplaceTypes ?? [];
-  const applicationStatuses =
-    next.applicationStatuses ?? baseFilters?.applicationStatuses ?? [];
+  const applicationStatuses = next.applicationStatuses ?? baseFilters?.applicationStatuses ?? [];
   const minMatchScore =
-    next.minMatchScore !== undefined
-      ? next.minMatchScore
-      : (baseFilters?.minMatchScore ?? null);
+    next.minMatchScore !== undefined ? next.minMatchScore : (baseFilters?.minMatchScore ?? null);
   const dateRange = next.dateRange ?? baseFilters?.dateRange ?? "all";
   const sort = next.sort ?? baseFilters?.sort ?? "match_score";
   const sortDirection = next.sortDirection ?? baseFilters?.sortDirection ?? "desc";

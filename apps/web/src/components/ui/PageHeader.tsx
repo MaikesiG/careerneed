@@ -24,13 +24,15 @@ export default function PageHeader({
   return (
     <header className={`mb-6 ${className}`}>
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div className="min-w-0 max-w-3xl">
+        <div className="max-w-3xl min-w-0">
           {hasEyebrow ? (
             <p className="text-primary text-xs font-semibold tracking-[0.2em] uppercase">
               {eyebrow}
             </p>
           ) : null}
-          <div className={`${hasEyebrow ? "mt-1 " : ""}flex flex-wrap items-center gap-2 sm:gap-2.5`}>
+          <div
+            className={`${hasEyebrow ? "mt-1" : ""}flex flex-wrap items-center gap-2 sm:gap-2.5`}
+          >
             {typeof title === "string" ? (
               <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
                 {title}
@@ -41,15 +43,13 @@ export default function PageHeader({
             {badge}
           </div>
           {description ? (
-            <div className="text-muted-foreground mt-1.5 text-sm sm:text-base leading-relaxed">
+            <div className="text-muted-foreground mt-1.5 text-sm leading-relaxed sm:text-base">
               {description}
             </div>
           ) : null}
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:self-end">
-            {actions}
-          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:self-end">{actions}</div>
         ) : null}
       </div>
       {children ? <div className="mt-4">{children}</div> : null}

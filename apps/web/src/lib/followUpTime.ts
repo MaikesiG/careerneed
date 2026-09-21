@@ -164,9 +164,7 @@ export function buildThankYouFollowUpPayload(
   options?: { timeZone?: string; referenceDate?: Date }
 ): ThankYouFollowUpPayload {
   const resolvedTimeZone =
-    options?.timeZone && isValidTimezone(options.timeZone)
-      ? options.timeZone
-      : browserTimezone();
+    options?.timeZone && isValidTimezone(options.timeZone) ? options.timeZone : browserTimezone();
   const localDatetime = getTomorrow10amLocalDatetime(resolvedTimeZone, options?.referenceDate);
   const dueAtUtc = serializeZonedDatetime(localDatetime, resolvedTimeZone);
 

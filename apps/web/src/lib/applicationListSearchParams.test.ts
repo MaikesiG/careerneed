@@ -1,16 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildApplicationsHref,
-  buildApplicationsRequestPath,
-} from "./applicationListSearchParams";
+import { buildApplicationsHref, buildApplicationsRequestPath } from "./applicationListSearchParams";
 
 describe("application list search parameters", () => {
   it("includes browser timezone in the API request while preserving status and follow-up", () => {
-    const path = buildApplicationsRequestPath(
-      "interviewing",
-      "today",
-      "America/New_York"
-    );
+    const path = buildApplicationsRequestPath("interviewing", "today", "America/New_York");
     const params = new URL(path, "https://careerneed.test").searchParams;
 
     expect(params.get("limit")).toBe("100");

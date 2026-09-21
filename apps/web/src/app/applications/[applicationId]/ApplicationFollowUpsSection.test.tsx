@@ -124,7 +124,9 @@ describe("ApplicationFollowUpsSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Completed (1)" }));
     const completedRow = screen.getByText("Send thank-you").closest("article")!;
-    expect(within(completedRow).getByText("Interview · Round 2 · System design")).toBeInTheDocument();
+    expect(
+      within(completedRow).getByText("Interview · Round 2 · System design")
+    ).toBeInTheDocument();
     expect(within(completedRow).getByText(/· UTC$/)).toBeInTheDocument();
     expect(within(completedRow).getByRole("button", { name: "Reopen" })).toBeInTheDocument();
     expect(within(completedRow).getByRole("button", { name: "Edit" })).toBeInTheDocument();
@@ -148,8 +150,12 @@ describe("ApplicationFollowUpsSection", () => {
   it("uses complete, title-only, round-only, and missing interview label fallbacks", () => {
     const linked = followUp({ interview_id: "interview-1" });
     expect(interviewContextLabel(linked, interview())).toBe("Interview · Round 2 · System design");
-    expect(interviewContextLabel(linked, interview({ round: 0, title: "Panel" }))).toBe("Interview · Panel");
-    expect(interviewContextLabel(linked, interview({ round: 3, title: "  " }))).toBe("Interview · Round 3");
+    expect(interviewContextLabel(linked, interview({ round: 0, title: "Panel" }))).toBe(
+      "Interview · Panel"
+    );
+    expect(interviewContextLabel(linked, interview({ round: 3, title: "  " }))).toBe(
+      "Interview · Round 3"
+    );
     expect(interviewContextLabel(linked, undefined)).toBe("Interview follow-up");
     expect(interviewContextLabel(followUp(), undefined)).toBe("Application");
   });
@@ -162,7 +168,11 @@ describe("ApplicationFollowUpsSection", () => {
       requests.push({ url, init });
       if (init?.method === "POST") {
         return jsonResponse(
-          followUp({ id: "created", title: "Email recruiter", due_at_utc: "2026-10-21T10:30:00.000Z" }),
+          followUp({
+            id: "created",
+            title: "Email recruiter",
+            due_at_utc: "2026-10-21T10:30:00.000Z",
+          }),
           201
         );
       }
@@ -178,7 +188,9 @@ describe("ApplicationFollowUpsSection", () => {
       target: { value: "2026-10-21T10:30" },
     });
     fireEvent.change(screen.getByLabelText("IANA timezone"), { target: { value: "UTC" } });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add follow-up" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Add follow-up" })
+    );
 
     await screen.findByText("Email recruiter");
     const post = requests.find((request) => request.init?.method === "POST");
@@ -218,7 +230,9 @@ describe("ApplicationFollowUpsSection", () => {
     const firstRow = title.closest("article")!;
     fireEvent.click(within(firstRow).getByRole("button", { name: "Mark complete" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Completed (1)" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Completed (1)" })).toBeInTheDocument()
+    );
     expect(screen.getByText(second.title)).toBeInTheDocument();
     expect(patchBodies).toHaveLength(1);
     expect(patchBodies[0]).toEqual({ completed_at: expect.stringMatching(/Z$/) });
@@ -249,7 +263,9 @@ describe("ApplicationFollowUpsSection", () => {
     expect(within(row).getByText("Interview · Round 2 · System design")).toBeInTheDocument();
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Updated title" } });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save changes" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save changes" })
+    );
 
     const updatedRow = (await screen.findByText("Updated title")).closest("article")!;
     expect(patchBody).not.toHaveProperty("interview_id");
