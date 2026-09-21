@@ -577,9 +577,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
       }
 
       if (!response.ok) {
-        throw new Error(
-          await getApiErrorMessage(response, "Unable to preview curated targets.")
-        );
+        throw new Error(await getApiErrorMessage(response, "Unable to preview curated targets."));
       }
 
       const preview = (await response.json()) as CuratedTargetsPreview;
@@ -591,9 +589,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
       setIsAddAllDialogOpen(true);
     } catch (caughtError) {
       setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Unable to preview curated targets."
+        caughtError instanceof Error ? caughtError.message : "Unable to preview curated targets."
       );
     } finally {
       setIsPreviewingCurated(false);
@@ -881,11 +877,18 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="border-border bg-muted/40 inline-flex rounded-lg border p-1 text-xs">
+                <div className="border-border bg-muted/40 inline-flex h-8 items-center rounded-lg border p-1 text-xs">
                   {(["All", "AI", "Tech"] as const).map((cat) => (
                     <button
                       key={cat}
                       type="button"
+                      title={
+                        cat === "AI"
+                          ? "AI & Infrastructure"
+                          : cat === "Tech"
+                            ? "Platform & Enterprise"
+                            : "All target companies"
+                      }
                       onClick={() => setPresetCategory(cat)}
                       className={`rounded-md px-2.5 py-1 font-semibold transition ${
                         presetCategory === cat
@@ -893,11 +896,7 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {cat === "AI"
-                        ? "AI & Infrastructure"
-                        : cat === "Tech"
-                          ? "Platform & Enterprise"
-                          : "All"}
+                      {cat}
                     </button>
                   ))}
                 </div>
@@ -906,11 +905,9 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
                   type="button"
                   onClick={() => void handlePreviewCuratedTargets()}
                   disabled={
-                    isPreviewingCurated ||
-                    isAddingAllCurated ||
-                    curatedPreview?.to_create === 0
+                    isPreviewingCurated || isAddingAllCurated || curatedPreview?.to_create === 0
                   }
-                  className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-8 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition"
+                  className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-8 shrink-0 items-center justify-center rounded-lg border px-3 text-xs font-semibold whitespace-nowrap transition"
                 >
                   {curatedPreview?.to_create === 0
                     ? "All added"
@@ -1356,8 +1353,8 @@ export default function SourcesClient({ initialCompanies }: SourcesClientProps) 
           curatedPreview ? (
             <div className="space-y-2">
               <p>
-                {curatedPreview.to_create} curated targets will be added. {curatedPreview.already_present}{" "}
-                already present will be skipped.
+                {curatedPreview.to_create} curated targets will be added.{" "}
+                {curatedPreview.already_present} already present will be skipped.
               </p>
               <p>
                 New entries are user-owned manual targets. This does not sync jobs or access
