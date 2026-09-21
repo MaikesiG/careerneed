@@ -128,11 +128,8 @@ def test_generate_content_request_and_valid_result_are_normalized(
     assert config.max_output_tokens == 512
     assert config.tools is None
     assert config.tool_config is None
-    assert isinstance(
-        config.automatic_function_calling,
-        types.AutomaticFunctionCallingConfig,
-    )
-    assert config.automatic_function_calling.disable is True
+    assert config.automatic_function_calling is None
+    assert "automatic_function_calling" not in config.model_fields_set
     assert result.content == {"answer": "ready"}
     assert result.usage == SafeUsageMetadata(
         input_tokens=8,

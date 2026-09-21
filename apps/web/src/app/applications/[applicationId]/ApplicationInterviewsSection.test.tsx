@@ -38,7 +38,7 @@ const mockParticipant: InterviewParticipant = {
     title: "Staff Engineer",
     email: "jordan@example.test",
     linkedin_url: null,
-  relationship_type: "interviewer",
+    relationship_type: "interviewer",
   },
   updated_at: "2026-10-01T12:00:00Z",
 };
@@ -125,29 +125,19 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
       expect(screen.getByText("Systems Architecture Round")).toBeInTheDocument();
     });
 
-    // Grab the sole disclosure trigger for each conceptual section.
-    const prepTrigger = screen.getByRole("button", {
-      name: /^preparation/i,
-    });
     const questionsTrigger = screen.getByRole("button", {
-      name: "Show questions",
+      name: "Show Questions and reflections",
     });
-    const participantDisclosureButtons = screen.getAllByRole("button", {
-      name: /^Participants$/,
-      expanded: false,
-    });
-    expect(participantDisclosureButtons).toHaveLength(1);
     const participantsTrigger = screen.getByRole("button", {
-      name: /^Participants$/,
+      name: "Show Participants",
       expanded: false,
     });
     const followUpsTrigger = screen.getByRole("button", {
-      name: /^follow-ups/i,
+      name: "Show Follow-ups",
       expanded: false,
     });
 
     return {
-      prepTrigger,
       questionsTrigger,
       participantsTrigger,
       followUpsTrigger,
@@ -155,19 +145,32 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
   }
 
   it("renders one child-owned disclosure for questions, participants, and follow-ups", async () => {
-    const { prepTrigger, questionsTrigger, participantsTrigger, followUpsTrigger } =
-      await renderInterviewsSection();
+    const { questionsTrigger, participantsTrigger, followUpsTrigger } = await renderInterviewsSection();
 
-    expect(prepTrigger).toHaveAttribute("aria-expanded", "true");
     expect(questionsTrigger).toHaveAttribute("aria-expanded", "false");
     expect(participantsTrigger).toHaveAttribute("aria-expanded", "false");
     expect(followUpsTrigger).toHaveAttribute("aria-expanded", "false");
 
-    expect(screen.getAllByRole("button", { name: /questions/i })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /^Participants$/ })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /^follow-ups/i })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: /participants.*(?:show|hide)/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /follow-ups.*(?:show|hide)/i })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Questions and reflections/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Participants/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Follow-ups/ })).toHaveLength(1);
+    expect(screen.getByText("Capture prompts, answers, reflections, and practice links.")).toBeVisible();
+    expect(screen.getByText("Manage contacts who participate in this round.")).toBeVisible();
+    expect(screen.getByText("Manage reminders related to this interview round.")).toBeVisible();
+
+    const controlledIds = [questionsTrigger, participantsTrigger, followUpsTrigger].map((trigger) =>
+      trigger.getAttribute("aria-controls")
+    );
+    expect(new Set(controlledIds).size).toBe(3);
+  });
+
+  it("does not render preparation or post-interview analysis workspace UI", async () => {
+    await renderInterviewsSection();
+
+    expect(screen.queryByRole("heading", { name: "Preparation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate preparation brief|Retry/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Post-interview analysis" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open analysis" })).toBeNull();
   });
 
   it("keeps question, participant, and canonical follow-up content reachable", async () => {
@@ -178,19 +181,27 @@ describe("ApplicationInterviewsSection - Progressive Disclosure", () => {
     expect(await screen.findByText("No questions captured yet")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ Add question" })).toBeInTheDocument();
 
-    expect(
-      screen.getAllByRole("button", { name: /^Participants$/, expanded: false })
-    ).toHaveLength(1);
     fireEvent.click(participantsTrigger);
     expect(await screen.findByText(mockParticipant.contact.name)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Participants · 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ Add participant" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit role" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
 
     fireEvent.click(followUpsTrigger);
     expect(await screen.findByText(mockFollowUp.title)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Follow-ups · 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark complete" })).toBeInTheDocument();
+
+    const requestedUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.map(([input]) => input.toString());
+    expect(requestedUrls.filter((url) => url.includes("/questions"))).toHaveLength(1);
+    expect(requestedUrls.filter((url) => url.includes("/participants"))).toHaveLength(1);
+    expect(requestedUrls.filter((url) => url.includes("/follow-ups"))).toHaveLength(1);
+    expect(requestedUrls.some((url) => url.includes("/outcome-analysis"))).toBe(false);
+    expect(requestedUrls.some((url) => url.includes("/preparation-brief"))).toBe(false);
   });
 
   it("keeps each child disclosure independently keyboard-operable", async () => {

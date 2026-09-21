@@ -32,7 +32,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 async function openLoadedSection() {
-  fireEvent.click(screen.getByRole("button", { name: /^follow-ups/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Show Follow-ups" }));
   await screen.findByText("No follow-ups yet");
 }
 

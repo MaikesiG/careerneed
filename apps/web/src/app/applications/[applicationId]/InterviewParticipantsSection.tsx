@@ -532,32 +532,34 @@ export default function InterviewParticipantsSection({ applicationId, interviewI
 
   return (
     <div className="border-border mt-3 border-t pt-3">
-      {/* Collapsed/Expanded Toggle Header */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded((current) => !current)}
-        aria-expanded={isExpanded}
-        aria-controls={`participants-${interviewId}`}
-        className="text-foreground hover:text-primary flex h-10 w-full items-center justify-between text-left text-sm font-semibold transition"
-      >
-        <span className="flex items-center gap-2">
-          Participants
-          {hasLoaded ? (
-            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
-              {participants.length}
-            </span>
-          ) : null}
-        </span>
-        <span aria-hidden="true">{isExpanded ? "▴" : "▾"}</span>
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-foreground text-sm font-semibold">
+            Participants{hasLoaded ? ` · ${participants.length}` : ""}
+          </h4>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            Manage contacts who participate in this round.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          aria-expanded={isExpanded}
+          aria-controls={`participants-${interviewId}`}
+          aria-label={`${isExpanded ? "Hide" : "Show"} Participants`}
+          className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-3 text-sm font-medium transition"
+        >
+          {isExpanded ? "Hide" : "Show"}
+          <span aria-hidden="true" className="ml-2">
+            {isExpanded ? "▴" : "▾"}
+          </span>
+        </button>
+      </div>
 
       {isExpanded ? (
         <div id={`participants-${interviewId}`} className="pt-2">
           {/* Action Row */}
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-muted-foreground text-xs">
-              Manage contacts who participate in this round.
-            </p>
+          <div className="mb-3 flex justify-end">
             <button
               type="button"
               onClick={openDialog}

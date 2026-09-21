@@ -347,30 +347,33 @@ export default function InterviewFollowUpsSection({
 
   return (
     <div className="border-border mt-3 border-t pt-3">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((current) => !current)}
-        aria-expanded={isExpanded}
-        aria-controls={`follow-ups-${interviewId}`}
-        className="text-foreground hover:text-primary flex h-10 w-full items-center justify-between text-left text-sm font-semibold"
-      >
-        <span className="flex items-center gap-2">
-          Follow-ups
-          {hasLoaded ? (
-            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
-              {followUps.length}
-            </span>
-          ) : null}
-        </span>
-        <span aria-hidden="true">{isExpanded ? "▴" : "▾"}</span>
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-foreground text-sm font-semibold">
+            Follow-ups{hasLoaded ? ` · ${followUps.length}` : ""}
+          </h4>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            Manage reminders related to this interview round.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          aria-expanded={isExpanded}
+          aria-controls={`follow-ups-${interviewId}`}
+          aria-label={`${isExpanded ? "Hide" : "Show"} Follow-ups`}
+          className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-3 text-sm font-medium transition"
+        >
+          {isExpanded ? "Hide" : "Show"}
+          <span aria-hidden="true" className="ml-2">
+            {isExpanded ? "▴" : "▾"}
+          </span>
+        </button>
+      </div>
 
       {isExpanded ? (
         <div id={`follow-ups-${interviewId}`} className="pt-2">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-muted-foreground text-xs">
-              Manage reminders linked only to this interview.
-            </p>
+          <div className="mb-3 flex justify-end">
             <button
               type="button"
               onClick={openCreate}

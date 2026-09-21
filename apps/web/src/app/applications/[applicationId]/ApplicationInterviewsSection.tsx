@@ -12,12 +12,9 @@ import {
 } from "@/lib/api";
 import { buildThankYouFollowUpPayload } from "@/lib/followUpTime";
 import InterviewParticipantsSection from "./InterviewParticipantsSection";
-import InterviewPreparationBriefSection from "./InterviewPreparationBriefSection";
 import InterviewQuestionsSection from "./InterviewQuestionsSection";
-import InterviewOutcomeAnalysisSection from "./InterviewOutcomeAnalysisSection";
 import InterviewFollowUpsSection from "./InterviewFollowUpsSection";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import InterviewDisclosureSection from "./InterviewDisclosureSection";
 
 type ApplicationInterviewsSectionProps = {
   applicationId: string;
@@ -650,30 +647,7 @@ export default function ApplicationInterviewsSection({
                 </div>
 
                 <div className="mt-4 space-y-2.5">
-                  <InterviewDisclosureSection
-                    id={`interview-${interview.id}-preparation`}
-                    title="Preparation"
-                    defaultOpen={true}
-                  >
-                    {interview.preparation_notes ? (
-                      <div className="border-border bg-muted/20 my-2 rounded-lg border p-3 text-xs sm:text-sm">
-                        <span className="text-foreground font-medium">Prep notes: </span>
-                        <span className="text-muted-foreground whitespace-pre-wrap">
-                          {interview.preparation_notes}
-                        </span>
-                      </div>
-                    ) : null}
-                    <InterviewPreparationBriefSection
-                      applicationId={applicationId}
-                      interviewId={interview.id}
-                    />
-                  </InterviewDisclosureSection>
-
                   <InterviewQuestionsSection
-                    applicationId={applicationId}
-                    interviewId={interview.id}
-                  />
-                  <InterviewOutcomeAnalysisSection
                     applicationId={applicationId}
                     interviewId={interview.id}
                   />

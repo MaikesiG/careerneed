@@ -255,14 +255,7 @@ export default function InterviewQuestionsSection({
     <div className="border-border/70 mt-4 border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h4 className="text-foreground text-sm font-semibold">Questions and reflections</h4>
-            {hasLoaded ? (
-              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium">
-                {questions.length}
-              </span>
-            ) : null}
-          </div>
+          <h4 className="text-foreground text-sm font-semibold">Questions and reflections</h4>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Capture prompts, answers, reflections, and practice links.
           </p>
@@ -282,9 +275,13 @@ export default function InterviewQuestionsSection({
             onClick={toggleExpanded}
             aria-expanded={isExpanded}
             aria-controls={`questions-${interviewId}`}
+            aria-label={`${isExpanded ? "Hide" : "Show"} Questions and reflections`}
             className="border-border bg-card text-foreground hover:bg-muted inline-flex h-10 items-center rounded-lg border px-3 text-sm font-medium transition"
           >
-            {isExpanded ? "Hide questions" : "Show questions"}
+            {isExpanded ? "Hide" : "Show"}
+            <span aria-hidden="true" className="ml-2">
+              {isExpanded ? "▴" : "▾"}
+            </span>
           </button>
         </div>
       </div>

@@ -135,7 +135,6 @@ class GeminiAdapter:
                 response_mime_type="application/json",
                 response_json_schema=prepared_response_schema,
                 max_output_tokens=max_output_tokens,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             )
             stage = "client construction"
             with genai.Client(
